@@ -4,10 +4,13 @@ import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, Cal
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
+import { useAuth } from '../auth/AuthContext'
 import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
+import { sendEmail } from '../lib/send-email'
+import { buildQuoteEmail, buildInvoiceEmail } from '../lib/email-templates'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { LimitWarning } from '../components/FeatureGate'
-import LoadingSpinner from '../components/LoadingSpinner'
+import { SkeletonKanban } from '../components/Skeleton'
 
 /* ── helpers ── */
 
@@ -57,6 +60,7 @@ const invoiceStatusColors: Record<string, string> = {
 export default function Jobs() {
   const { C } = useTheme()
   const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, isDataLoading } = useData()
+  const { user } = useAuth()
   const { features, plan } = useSubscription()
   const activeJobCount = useMemo(() => jobs.filter(j => j.status !== 'Paid').length, [jobs])
 
@@ -408,7 +412,7 @@ export default function Jobs() {
     return (
       <div style={s.page}>
         <h1 style={s.heading}>Jobs</h1>
-        <LoadingSpinner message="Loading jobs..." />
+        <SkeletonKanban />
       </div>
     )
   }
@@ -766,7 +770,7 @@ export default function Jobs() {
                             }}
                           >
                             {[...columns, 'Paid' as JobStatus].map(col => (
-                              <option key={col} value={col} style={{ color: '#fff', background: '#1A1C20' }}>{col}</option>
+                              <option key={col} value={col} style={{ color: C.white, background: C.black }}>{col}</option>
                             ))}
                           </select>
                           <div style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>

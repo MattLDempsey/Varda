@@ -2,9 +2,12 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { CheckCircle, FileDown, Plus, Trash2, Lock, MapPin, ChevronDown } from 'lucide-react'
 import { useData } from '../data/DataContext'
+import { useAuth } from '../auth/AuthContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { generateQuotePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { validateEmail, validatePhone } from '../lib/validation'
+import { sendEmail } from '../lib/send-email'
+import { buildQuoteEmail } from '../lib/email-templates'
 import PricingSuggestion from '../components/PricingSuggestion'
 import { estimateDistance, getDistanceHassleAdjustment } from '../lib/postcode-distance'
 import './QuickQuote.css'
@@ -68,6 +71,7 @@ let nextLineId = 1
 
 export default function QuickQuote() {
   const { addQuote, updateQuote, updateJob, moveJob, addJob, addCustomer, quotes, jobs, customers, settings, getNextQuoteRef, pricingConfig, jobTypeConfigs } = useData()
+  const { user } = useAuth()
   const { canUse } = useSubscription()
   const canMultiLine = canUse('multiLineQuotes')
 
@@ -1116,9 +1120,28 @@ export default function QuickQuote() {
 
           if (sendVia.email) {
             const email = selectedCustomer?.email || ''
-            const subject = `Your quote from Grey Havens Electrical — ${activeQuote?.ref || ''}`
-            const body = `Hi ${customerName},\n\nPlease find your quote here:\n${url}\n\nTotal: £${fmt(totals.grandTotal)} (inc. VAT)\n\nKind regards,\nGrey Havens Electrical`
-            window.open(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`)
+            const biz = settings.business
+            const quoteEmailData = buildQuoteEmail({
+              customerName,
+              businessName: biz.businessName,
+              quoteRef: activeQuote?.ref || '',
+              total: `£${fmt(totals.grandTotal)}`,
+              quoteUrl: url,
+              validityDays: settings.quoteConfig.validityDays,
+              businessPhone: biz.phone,
+              businessEmail: biz.email,
+            })
+            // Try real email, falls back to mailto automatically
+            sendEmail({
+              to: email,
+              subject: quoteEmailData.subject,
+              htmlBody: quoteEmailData.html,
+              textBody: quoteEmailData.text,
+              replyTo: biz.email,
+              orgId: user?.orgId || '',
+              customerId: selectedCustomer?.id,
+              templateName: 'Send Quote',
+            })
           }
           if (sendVia.whatsapp) {
             const phone = selectedCustomer?.phone?.replace(/\s/g, '').replace(/^0/, '44') || ''

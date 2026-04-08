@@ -8,7 +8,7 @@ import {
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { useFollowUps, priorityColor } from '../components/FollowUpManager'
-import LoadingSpinner from '../components/LoadingSpinner'
+import { SkeletonDashboard } from '../components/Skeleton'
 import type { CSSProperties } from 'react'
 
 /* ── helpers ── */
@@ -195,7 +195,7 @@ export default function Dashboard() {
       <div style={s.page}>
         <h1 style={s.heading}>Dashboard</h1>
         <p style={s.subheading}>Your business at a glance.</p>
-        <LoadingSpinner message="Loading dashboard..." />
+        <SkeletonDashboard />
       </div>
     )
   }

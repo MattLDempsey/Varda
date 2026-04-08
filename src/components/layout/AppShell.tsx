@@ -35,6 +35,7 @@ import { supabase } from '../../lib/supabase'
 import type { CSSProperties } from 'react'
 import TrialBanner from '../TrialBanner'
 import GlobalSearch from '../GlobalSearch'
+import { useNotificationChecker, requestNotificationPermission } from '../../lib/notifications'
 import './AppShell.css'
 
 interface TeamMember {
@@ -97,9 +98,17 @@ const roleColors: Record<string, string> = {
 export default function AppShell() {
   const { mode, C, toggle } = useTheme()
   const { user, signOut } = useAuth()
-  const { quotes, jobs, invoices, settings } = useData()
+  const { quotes, jobs, invoices, events, settings } = useData()
   const { activeCount: followUpCount } = useFollowUps(quotes, jobs, invoices, settings)
   const navigate = useNavigate()
+
+  // Push notification checker — runs every 5 minutes
+  useNotificationChecker({ settings, jobs, quotes, invoices, events })
+
+  // Request notification permission on first load
+  useEffect(() => {
+    requestNotificationPermission()
+  }, [])
   const [showProfile, setShowProfile] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [showMobileMore, setShowMobileMore] = useState(false)

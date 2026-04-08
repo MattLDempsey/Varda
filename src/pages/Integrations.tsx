@@ -4,11 +4,12 @@ import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { exportInvoicesCSV, exportExpensesCSV, exportContactsCSV } from '../lib/xero-export'
+import { exportAllEvents } from '../lib/calendar-export'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 export default function Integrations() {
   const { C } = useTheme()
-  const { invoices, expenses, customers, isDataLoading } = useData()
+  const { invoices, expenses, customers, events, isDataLoading } = useData()
   const [exportedType, setExportedType] = useState<string | null>(null)
 
   const showExportFeedback = (type: string) => {
@@ -156,11 +157,28 @@ export default function Integrations() {
           <Calendar size={24} color="#4285F4" />
         </div>
         <div style={s.cardContent}>
-          <div style={s.cardTitle}>Google Calendar</div>
+          <div style={s.cardTitle}>Export to Calendar</div>
           <div style={s.cardDesc}>
-            Sync your scheduled jobs with Google Calendar for easy access on the go.
+            Download your schedule as a .ics file to import into Google Calendar, Apple Calendar, or Outlook.
           </div>
-          <div style={s.comingSoon}>Coming Soon</div>
+
+          <div style={s.statRow}>
+            <div style={s.stat}><span style={s.statValue}>{events.length}</span> events</div>
+          </div>
+
+          <div style={s.btnRow}>
+            <button
+              style={{ ...s.exportBtn, background: '#4285F420', color: '#4285F4' }}
+              onClick={() => exportAllEvents(events, customers)}
+              disabled={events.length === 0}
+            >
+              <Download size={14} /> Export All Events
+            </button>
+          </div>
+
+          <div style={{ fontSize: 12, color: C.steel, marginTop: 12, fontStyle: 'italic' }}>
+            Full Google Calendar sync coming soon.
+          </div>
         </div>
       </div>
 

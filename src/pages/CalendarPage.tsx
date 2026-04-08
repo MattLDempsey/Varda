@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Plus, Clock, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Clock, X, Download, Calendar } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type ScheduleEvent, type EventSlot } from '../data/DataContext'
+import { exportWeekEvents, exportAllEvents, exportSingleEvent } from '../lib/calendar-export'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const statusColor: Record<string, string> = {
@@ -70,7 +71,7 @@ function getMonthGridDates(year: number, month: number): Date[] {
 /* ── component ── */
 export default function CalendarPage() {
   const { C } = useTheme()
-  const { events, addEvent, updateEvent, deleteEvent, isDataLoading } = useData()
+  const { events, customers, addEvent, updateEvent, deleteEvent, isDataLoading } = useData()
 
   const [view, setView] = useState<'month' | 'week' | 'day'>('week')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -156,6 +157,13 @@ export default function CalendarPage() {
     viewBtn: {
       padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13,
       fontWeight: 500, minHeight: 40, transition: 'background .15s, color .15s',
+    },
+    exportBtn: {
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+      background: `${C.steel}15`, border: `1px solid ${C.steel}33`,
+      color: C.silver, cursor: 'pointer', minHeight: 40,
+      transition: 'background .15s',
     },
     grid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: `${C.steel}22`, borderRadius: 12, overflow: 'hidden' },
     dayHeader: {
@@ -290,6 +298,25 @@ export default function CalendarPage() {
             onClick={() => setView('day')}
           >
             Day
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            style={s.exportBtn}
+            onClick={() => exportWeekEvents(events, customers, monday)}
+            onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}33` }}
+            onMouseLeave={e => { e.currentTarget.style.background = `${C.steel}15` }}
+          >
+            <Download size={14} /> Export Week
+          </button>
+          <button
+            style={s.exportBtn}
+            onClick={() => exportAllEvents(events, customers)}
+            onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}33` }}
+            onMouseLeave={e => { e.currentTarget.style.background = `${C.steel}15` }}
+          >
+            <Calendar size={14} /> Export All
           </button>
         </div>
       </div>
@@ -597,6 +624,22 @@ export default function CalendarPage() {
                   + Add
                 </button>
               </div>
+
+              {/* Add to Calendar export */}
+              <button
+                onClick={() => exportSingleEvent(selectedEvent, customers)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  width: '100%', padding: '10px 16px', borderRadius: 10, marginTop: 14,
+                  background: `${C.steel}15`, border: `1px solid ${C.steel}33`,
+                  color: C.silver, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  transition: 'background .15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}33` }}
+                onMouseLeave={e => { e.currentTarget.style.background = `${C.steel}15` }}
+              >
+                <Download size={14} /> Add to Calendar (.ics)
+              </button>
             </div>
           </div>
         )

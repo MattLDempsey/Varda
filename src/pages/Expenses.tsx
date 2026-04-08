@@ -586,7 +586,7 @@ export default function Expenses() {
                 }}
               >
                 {taxYears.map(yr => (
-                  <option key={yr} value={yr} style={{ color: '#fff', background: '#1A1C20' }}>FY {yr}</option>
+                  <option key={yr} value={yr} style={{ color: C.white, background: C.black }}>FY {yr}</option>
                 ))}
               </select>
               <div style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>
