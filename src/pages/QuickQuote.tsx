@@ -661,67 +661,57 @@ export default function QuickQuote() {
           )}
         </div>
 
-        {/* Job Site Postcode */}
-        <div className="qq-field">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
-              <MapPin size={14} style={{ color: 'var(--color-steel-light)' }} />
-              <span className="qq-label" style={{ margin: 0 }}>Job Site</span>
-            </div>
+        {/* Job Site + Description in one row */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+          <div style={{ flex: '0 0 auto' }}>
+            <span className="qq-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <MapPin size={12} /> Job Site
+            </span>
             <input
               className="qq-input"
               type="text"
-              placeholder="e.g. CO3 4AB"
+              placeholder="Postcode"
               value={jobPostcode}
               onChange={e => {
                 setJobPostcode(e.target.value.toUpperCase())
                 setHassleManuallyOverridden(false)
               }}
-              style={{ maxWidth: 140, textTransform: 'uppercase', fontSize: 13 }}
+              style={{ width: 110, textTransform: 'uppercase', fontSize: 13 }}
             />
-            {distanceMiles !== null && (
-              <span style={{
-                fontSize: 12, color: 'var(--color-steel-light)',
-                display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-              }}>
-                ~{distanceMiles} miles from base
-                {distanceHassleAdj > 0 && (
-                  <span style={{
-                    fontSize: 11, color: 'var(--color-gold)',
-                    background: 'var(--color-gold)15', padding: '2px 6px',
-                    borderRadius: 4, fontWeight: 500,
-                  }}>
-                    +{distanceHassleAdj} hassle
-                  </span>
-                )}
+          </div>
+          <div style={{ flex: 1 }}>
+            <span className="qq-label">Job Description</span>
+            <input
+              className="qq-input"
+              type="text"
+              placeholder="Brief overview of the work..."
+              value={description}
+            onChange={e => setDescription(e.target.value)}
+          />
+          </div>
+        </div>
+        {distanceMiles !== null && (
+          <div style={{ fontSize: 11, color: 'var(--color-steel-light)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            📍 ~{distanceMiles} miles from base
+            {distanceHassleAdj > 0 && (
+              <span style={{ fontSize: 10, color: 'var(--color-gold)', background: 'var(--color-gold)15', padding: '1px 6px', borderRadius: 4, fontWeight: 500 }}>
+                +{distanceHassleAdj} hassle
               </span>
             )}
           </div>
-        </div>
-
-        {/* Description */}
-        <div className="qq-field">
-          <span className="qq-label">Job Description</span>
-          <input
-            className="qq-input"
-            type="text"
-            placeholder="Brief overview of the work..."
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-          />
-        </div>
+        )}
         </>}
         </div>{/* end qq-section: Customer & Job Info */}
 
         {/* ── SECTION 2: Line Items ── */}
         <div className="qq-section">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div className="qq-section-header" style={{ marginBottom: 0 }}>
-            Line Items{lines.length > 0 ? ` (${lines.length})` : ''}
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+        <div className="qq-section-header">Job Details</div>
+
+        {/* Quote-level options */}
+        <div className="qq-field">
+          <div className="qq-toggles-row">
             <Toggle label="Emergency" on={isEmergency} onToggle={() => setIsEmergency(!isEmergency)} />
-            <Toggle label="OOH" on={isOutOfHours} onToggle={() => setIsOutOfHours(!isOutOfHours)} />
+            <Toggle label="Out of hours" on={isOutOfHours} onToggle={() => setIsOutOfHours(!isOutOfHours)} />
           </div>
         </div>
 
