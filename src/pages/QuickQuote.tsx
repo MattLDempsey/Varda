@@ -559,13 +559,27 @@ export default function QuickQuote() {
           )}
           {/* Selected customer info */}
           {selectedCustomer && (
-            <div style={{
-              marginTop: 6, padding: '8px 12px', background: 'var(--color-black)',
-              borderRadius: 'var(--radius-md)', fontSize: 12, color: 'var(--color-steel-light)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <span>{selectedCustomer.address1}{selectedCustomer.city ? `, ${selectedCustomer.city}` : ''} {selectedCustomer.postcode}</span>
-              <span style={{ color: 'var(--color-steel)' }}>{selectedCustomer.phone}</span>
+            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 12 }}>
+              {selectedCustomer.postcode && (
+                <span style={{ padding: '4px 10px', background: 'var(--color-black)', borderRadius: 6, color: 'var(--color-silver)' }}>
+                  📍 {selectedCustomer.postcode}
+                </span>
+              )}
+              {selectedCustomer.phone && (
+                <span style={{ padding: '4px 10px', background: 'var(--color-black)', borderRadius: 6, color: 'var(--color-silver)' }}>
+                  📞 {selectedCustomer.phone}
+                </span>
+              )}
+              {selectedCustomer.email && (
+                <span style={{ padding: '4px 10px', background: 'var(--color-black)', borderRadius: 6, color: 'var(--color-steel)' }}>
+                  ✉ {selectedCustomer.email}
+                </span>
+              )}
+              {selectedCustomer.city && (
+                <span style={{ padding: '4px 10px', background: 'var(--color-black)', borderRadius: 6, color: 'var(--color-steel)' }}>
+                  {selectedCustomer.city}
+                </span>
+              )}
             </div>
           )}
           {/* New customer inline form */}
