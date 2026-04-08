@@ -1,14 +1,16 @@
 import React, { useState } from 'react'
-import { Save, Building2, Clock, FileText, Bell, Link, Copy, Check } from 'lucide-react'
+import { Save, Building2, Clock, FileText, Bell, Link, Copy, Check, MessageSquare, Mail, MessageCircle, Smartphone, ChevronDown, RotateCcw } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useAuth } from '../auth/AuthContext'
 import { useData } from '../data/DataContext'
 import SettingsNav from '../components/SettingsNav'
 import type { AppSettings } from '../data/DataContext'
+import { loadTemplates, saveTemplate, resetTemplate, DEFAULT_TEMPLATES } from '../data/templates'
+import type { MessageTemplate } from '../data/templates'
 
 /* ── types ── */
-type SettingsTab = 'business' | 'hours' | 'quotes' | 'notifications'
+type SettingsTab = 'business' | 'hours' | 'quotes' | 'notifications' | 'templates'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -33,6 +35,11 @@ export default function SettingsPage() {
   const [hours, setHours] = useState<AppSettings['workingHours']>(JSON.parse(JSON.stringify(settings.workingHours)))
   const [quoteSettings, setQuoteSettings] = useState<AppSettings['quoteConfig']>({ ...settings.quoteConfig })
   const [notifications, setNotifications] = useState<AppSettings['notifications']>({ ...settings.notifications })
+  const [templates, setTemplates] = useState<MessageTemplate[]>(loadTemplates())
+  const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null)
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null)
+  const [editBody, setEditBody] = useState('')
+  const [editSubject, setEditSubject] = useState('')
 
   const handleSave = () => {
     updateSettings('business', business)
@@ -134,6 +141,7 @@ export default function SettingsPage() {
     { id: 'hours', label: 'Working Hours', icon: <Clock size={18} /> },
     { id: 'quotes', label: 'Quotes & Invoices', icon: <FileText size={18} /> },
     { id: 'notifications', label: 'Notifications', icon: <Bell size={18} /> },
+    { id: 'templates', label: 'Templates', icon: <MessageSquare size={18} /> },
   ]
 
   return (
@@ -388,6 +396,199 @@ export default function SettingsPage() {
                   </button>
                 </div>
               ))}
+            </>
+          )}
+          {/* Templates */}
+          {activeTab === 'templates' && (
+            <>
+              <div style={s.panelTitle}>Message Templates</div>
+              <p style={s.panelSub}>Customise the templates used when sending quotes, invoices, and reminders to customers.</p>
+
+              {templates.map(tmpl => {
+                const channelIcon = tmpl.channel === 'email'
+                  ? <Mail size={14} color="#5B9BD5" />
+                  : tmpl.channel === 'whatsapp'
+                  ? <MessageCircle size={14} color="#25D366" />
+                  : <Smartphone size={14} color={C.silver} />
+
+                const channelLabel = tmpl.channel === 'email' ? 'Email'
+                  : tmpl.channel === 'whatsapp' ? 'WhatsApp' : 'SMS'
+
+                const isExpanded = expandedTemplate === tmpl.id
+                const isEditing = editingTemplate === tmpl.id
+
+                const defaultTmpl = DEFAULT_TEMPLATES.find(d => d.id === tmpl.id)
+                const isModified = defaultTmpl && (tmpl.body !== defaultTmpl.body || tmpl.subject !== defaultTmpl.subject)
+
+                return (
+                  <div
+                    key={tmpl.id}
+                    style={{
+                      background: `${C.steel}11`, borderRadius: 10, padding: '14px 16px',
+                      marginBottom: 10, border: `1px solid ${C.steel}22`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => {
+                        setExpandedTemplate(isExpanded ? null : tmpl.id)
+                        if (isEditing) setEditingTemplate(null)
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {channelIcon}
+                        <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>{tmpl.name}</span>
+                        <span style={{
+                          fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+                          color: C.silver, background: `${C.steel}22`,
+                          textTransform: 'uppercase' as const, letterSpacing: 0.5,
+                        }}>
+                          {channelLabel}
+                        </span>
+                        {isModified && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+                            color: C.gold, background: `${C.gold}1A`,
+                            textTransform: 'uppercase' as const, letterSpacing: 0.5,
+                          }}>
+                            Modified
+                          </span>
+                        )}
+                      </div>
+                      <ChevronDown size={16} color={C.steel} style={{
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform .15s',
+                      }} />
+                    </div>
+
+                    {!isExpanded && (
+                      <div style={{
+                        fontSize: 12, color: C.silver, marginTop: 6,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {tmpl.body.split('\n')[0].slice(0, 80)}{tmpl.body.length > 80 ? '...' : ''}
+                      </div>
+                    )}
+
+                    {isExpanded && !isEditing && (
+                      <div style={{ marginTop: 12 }}>
+                        {tmpl.subject && (
+                          <div style={{ marginBottom: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: C.silver, textTransform: 'uppercase' as const }}>Subject: </span>
+                            <span style={{ fontSize: 13, color: C.white }}>{tmpl.subject}</span>
+                          </div>
+                        )}
+                        <div style={{
+                          padding: '12px 14px', borderRadius: 8, background: C.black,
+                          fontSize: 12, color: C.silver, whiteSpace: 'pre-wrap', lineHeight: 1.5,
+                          maxHeight: 240, overflowY: 'auto',
+                        }}>
+                          {tmpl.body}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingTemplate(tmpl.id)
+                              setEditBody(tmpl.body)
+                              setEditSubject(tmpl.subject || '')
+                            }}
+                            style={{
+                              padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                              background: C.gold, color: C.black, border: 'none', cursor: 'pointer',
+                              minHeight: 36,
+                            }}
+                          >
+                            Edit Template
+                          </button>
+                          {isModified && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                resetTemplate(tmpl.id)
+                                setTemplates(loadTemplates())
+                              }}
+                              style={{
+                                padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                                background: 'transparent', color: C.silver, border: `1px solid ${C.steel}44`,
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                                minHeight: 36,
+                              }}
+                            >
+                              <RotateCcw size={12} /> Reset to Default
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {isExpanded && isEditing && (
+                      <div style={{ marginTop: 12 }}>
+                        {tmpl.channel === 'email' && (
+                          <div style={{ marginBottom: 10 }}>
+                            <label style={{ fontSize: 11, fontWeight: 600, color: C.silver, textTransform: 'uppercase' as const, display: 'block', marginBottom: 4 }}>Subject</label>
+                            <input
+                              style={{
+                                width: '100%', background: C.black, border: `1px solid ${C.steel}44`,
+                                borderRadius: 8, padding: '8px 12px', color: C.white, fontSize: 13,
+                                outline: 'none', boxSizing: 'border-box' as const, minHeight: 36,
+                              }}
+                              value={editSubject}
+                              onChange={e => setEditSubject(e.target.value)}
+                            />
+                          </div>
+                        )}
+                        <label style={{ fontSize: 11, fontWeight: 600, color: C.silver, textTransform: 'uppercase' as const, display: 'block', marginBottom: 4 }}>Body</label>
+                        <textarea
+                          style={{
+                            width: '100%', background: C.black, border: `1px solid ${C.steel}44`,
+                            borderRadius: 8, padding: '10px 12px', color: C.white, fontSize: 12,
+                            outline: 'none', minHeight: 160, resize: 'vertical' as const,
+                            lineHeight: 1.5, fontFamily: 'inherit', boxSizing: 'border-box' as const,
+                          }}
+                          value={editBody}
+                          onChange={e => setEditBody(e.target.value)}
+                        />
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const updates: Partial<MessageTemplate> = { body: editBody }
+                              if (tmpl.channel === 'email') updates.subject = editSubject
+                              saveTemplate(tmpl.id, updates)
+                              setTemplates(loadTemplates())
+                              setEditingTemplate(null)
+                            }}
+                            style={{
+                              padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                              background: C.gold, color: C.black, border: 'none', cursor: 'pointer',
+                              minHeight: 36,
+                            }}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingTemplate(null)
+                            }}
+                            style={{
+                              padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                              background: 'transparent', color: C.silver, border: `1px solid ${C.steel}44`,
+                              cursor: 'pointer', minHeight: 36,
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </>
           )}
         </div>

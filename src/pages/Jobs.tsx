@@ -10,6 +10,7 @@ import { uploadJobFile, deleteJobFile, getJobAttachments, formatFileSize, type A
 import { sendEmail } from '../lib/send-email'
 import { buildQuoteEmail, buildInvoiceEmail } from '../lib/email-templates'
 import { useSubscription } from '../subscription/SubscriptionContext'
+import { useUndo } from '../hooks/useUndo'
 import { LimitWarning } from '../components/FeatureGate'
 import { SkeletonKanban } from '../components/Skeleton'
 
@@ -63,6 +64,7 @@ export default function Jobs() {
   const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, isDataLoading } = useData()
   const { user } = useAuth()
   const { features, plan } = useSubscription()
+  const { showUndo } = useUndo()
   const activeJobCount = useMemo(() => jobs.filter(j => j.status !== 'Paid').length, [jobs])
 
   // History view state (must be declared before useMemos that reference them)
@@ -1105,7 +1107,14 @@ export default function Jobs() {
                                   <span style={{ fontSize: 12, color: C.steel, marginLeft: 8 }}>{slotLabels[ev.slot]}</span>
                                 </div>
                                 <button
-                                  onClick={() => { if (window.confirm('Remove this event from the calendar?')) deleteEvent(ev.id) }}
+                                  onClick={() => {
+                                    const evData = { ...ev }
+                                    deleteEvent(ev.id)
+                                    showUndo({
+                                      message: `Event removed: ${ev.customerName}`,
+                                      undo: () => addEvent({ jobId: evData.jobId, customerId: evData.customerId, customerName: evData.customerName, jobType: evData.jobType, date: evData.date, slot: evData.slot, status: evData.status, notes: evData.notes }),
+                                    })
+                                  }}
                                   style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
                                   onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
                                   onMouseLeave={e => { e.currentTarget.style.color = C.steel }}

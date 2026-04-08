@@ -16,7 +16,7 @@ import QuickQuote from './pages/QuickQuote'
 import Jobs from './pages/Jobs'
 import CalendarPage from './pages/CalendarPage'
 import Customers from './pages/Customers'
-import Comms from './pages/Comms'
+
 import Insights from './pages/Insights'
 import PricingRules from './pages/PricingRules'
 import SettingsPage from './pages/SettingsPage'
@@ -117,7 +117,7 @@ export default function App() {
                 <Route path="jobs" element={<Jobs />} />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="customers" element={<Customers />} />
-                <Route path="comms" element={<Comms />} />
+
                 <Route path="insights" element={<RoleGuard minRole="admin"><Insights /></RoleGuard>} />
                 <Route path="pricing" element={<RoleGuard minRole="admin"><PricingRules /></RoleGuard>} />
                 <Route path="settings" element={<RoleGuard minRole="admin"><SettingsPage /></RoleGuard>} />

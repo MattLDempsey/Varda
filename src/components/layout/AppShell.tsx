@@ -5,7 +5,7 @@ import {
   Briefcase,
   Calendar,
   Users,
-  MessageSquare,
+
   BarChart3,
   Tags,
   Settings,
@@ -69,19 +69,7 @@ function hasMinRole(userRole: string, minRole: string): boolean {
   return (ROLE_LEVEL[userRole] ?? 0) >= (ROLE_LEVEL[minRole] ?? 0)
 }
 
-const allNavItems: NavItem[] = [
-  { to: '/',          icon: <LayoutDashboard size={24} />, label: 'Dashboard' },
-  { to: '/quote',     icon: <FileText size={24} />,       label: 'Quick Quote' },
-  { to: '/jobs',      icon: <Briefcase size={24} />,      label: 'Jobs' },
-  { to: '/calendar',  icon: <Calendar size={24} />,       label: 'Calendar' },
-  { to: '/customers', icon: <Users size={24} />,          label: 'Customers' },
-  { to: '/comms',     icon: <MessageSquare size={24} />,  label: 'Comms' },
-  { to: '/expenses',  icon: <Receipt size={24} />,        label: 'Expenses',      minRole: 'admin' },
-  { to: '/insights',  icon: <BarChart3 size={24} />,      label: 'Insights',      minRole: 'admin' },
-  { to: '/pricing',   icon: <Tags size={24} />,           label: 'Pricing Rules', minRole: 'admin' },
-  { to: '/integrations', icon: <Plug size={24} />,          label: 'Integrations',  minRole: 'admin' },
-  { to: '/settings',  icon: <Settings size={24} />,       label: 'Settings',      minRole: 'admin' },
-]
+const allNavItems: NavItem[] = [{ to: '/', icon: <LayoutDashboard size={24} />, label: 'Dashboard' }, { to: '/quote', icon: <FileText size={24} />, label: 'Quick Quote' }, { to: '/jobs', icon: <Briefcase size={24} />, label: 'Jobs' }, { to: '/calendar', icon: <Calendar size={24} />, label: 'Calendar' }, { to: '/customers', icon: <Users size={24} />, label: 'Customers' }, { to: '/expenses', icon: <Receipt size={24} />, label: 'Expenses', minRole: 'admin' }, { to: '/insights', icon: <BarChart3 size={24} />, label: 'Insights', minRole: 'admin' }, { to: '/pricing', icon: <Tags size={24} />, label: 'Pricing Rules', minRole: 'admin' }, { to: '/integrations', icon: <Plug size={24} />, label: 'Integrations', minRole: 'admin' }, { to: '/settings', icon: <Settings size={24} />, label: 'Settings', minRole: 'admin' }]
 
 const roleLabels: Record<string, string> = {
   owner: 'Owner',
@@ -136,6 +124,7 @@ export default function AppShell() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const isOwner = user?.role === 'owner'
+  const isAdmin = hasMinRole(user?.role ?? 'member', 'admin')
   const userRole = user?.role ?? 'member'
   const navItems = allNavItems.filter(item => hasMinRole(userRole, item.minRole ?? 'member'))
 
@@ -330,14 +319,14 @@ export default function AppShell() {
 
   // Mobile bottom nav items (primary 4 + More)
   const mobileNavItems = navItems.slice(0, 4) // Dashboard, Quick Quote, Jobs, Calendar
-  const mobileMoreItems = navItems.slice(4)    // Customers, Comms, Expenses, Insights, Pricing, Settings
+  const mobileMoreItems = navItems.slice(4)    // Customers, Expenses, Insights, Pricing, etc.
 
   return (
     <div className="app-shell">
       {/* Desktop sidebar */}
       <nav className="sidebar sidebar--desktop" aria-label="Main navigation">
         <div className="sidebar-top">
-          <div className="sidebar-brand">V</div>
+          <div className="sidebar-brand" onClick={() => navigate('/')} style={{ cursor: 'pointer' }} title="Dashboard">V</div>
           <button
             className="sidebar-link"
             onClick={() => setShowSearch(true)}

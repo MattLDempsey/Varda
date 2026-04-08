@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Plus, X, ChevronRight, FileText } from 'lucide-react'
+import { Search, Plus, X, ChevronRight, FileText, Mail, MessageCircle, Smartphone, ChevronDown } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
@@ -8,17 +8,80 @@ import { useUndo } from '../hooks/useUndo'
 import { LimitWarning } from '../components/FeatureGate'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { validateRequired, validateEmail } from '../lib/validation'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { Customer } from '../data/DataContext'
 
 const emptyForm = {
   name: '', phone: '', email: '', address1: '', address2: '', city: '', postcode: '', notes: '',
 }
 
+function CommRow({ cm, channelIcon, statusColors, C }: {
+  cm: { id: string; date: string; channel: string; templateName: string; status: string; body: string }
+  channelIcon: (ch: string) => ReactNode
+  statusColors: Record<string, string>
+  C: any
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const dateStr = (() => {
+    try {
+      const d = new Date(cm.date)
+      if (isNaN(d.getTime())) return cm.date
+      const day = d.getDate()
+      const mon = d.toLocaleString('en-GB', { month: 'short' })
+      return `${day} ${mon}`
+    } catch {
+      return cm.date
+    }
+  })()
+
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 8px', borderRadius: 8, cursor: 'pointer',
+          borderBottom: `1px solid ${C.steel}1A`,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: C.silver, minWidth: 48 }}>{dateStr}</span>
+          {channelIcon(cm.channel)}
+          <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{cm.templateName}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+            color: statusColors[cm.status] || C.steel,
+            background: (statusColors[cm.status] || C.steel) + '1A',
+            textTransform: 'uppercase' as const, letterSpacing: 0.5,
+          }}>
+            {cm.status}
+          </span>
+          <ChevronDown size={14} color={C.steel} style={{
+            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform .15s',
+          }} />
+        </div>
+      </div>
+      {expanded && (
+        <div style={{
+          padding: '10px 12px', margin: '4px 0 8px', borderRadius: 8,
+          background: C.black, fontSize: 12, color: C.silver,
+          whiteSpace: 'pre-wrap', lineHeight: 1.5, maxHeight: 200,
+          overflowY: 'auto',
+        }}>
+          {cm.body}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Customers() {
   const { C } = useTheme()
   const navigate = useNavigate()
-  const { customers, jobs, addCustomer, deleteCustomer, isDataLoading } = useData()
+  const { customers, jobs, comms, addCustomer, deleteCustomer, isDataLoading } = useData()
   const { features, plan } = useSubscription()
   const { showUndo } = useUndo()
 
@@ -507,6 +570,45 @@ export default function Customers() {
                       ))}
                     </div>
                   )}
+
+                  {/* Communications */}
+                  {(() => {
+                    const custComms = comms
+                      .filter(cm => cm.customerId === selected.id)
+                      .sort((a, b) => b.date.localeCompare(a.date))
+
+                    const channelIcon = (ch: string) => {
+                      if (ch === 'email') return <Mail size={13} color={C.silver} />
+                      if (ch === 'whatsapp') return <MessageCircle size={13} color="#25D366" />
+                      return <Smartphone size={13} color={C.silver} />
+                    }
+
+                    const commStatusColors: Record<string, string> = {
+                      Sent: '#5B9BD5', Delivered: '#6ABF8A', Read: '#C6A86A', Failed: '#D46A6A',
+                    }
+
+                    return (
+                      <div style={{ borderTop: `1px solid ${C.steel}33`, paddingTop: 16, marginTop: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: C.white, display: 'block', marginBottom: 10 }}>
+                          Communications ({custComms.length})
+                        </span>
+                        {custComms.length === 0 && (
+                          <div style={{ fontSize: 13, color: C.steel, fontStyle: 'italic', padding: '8px 0' }}>
+                            No communications yet
+                          </div>
+                        )}
+                        {custComms.map(cm => (
+                          <CommRow
+                            key={cm.id}
+                            cm={cm}
+                            channelIcon={channelIcon}
+                            statusColors={commStatusColors}
+                            C={C}
+                          />
+                        ))}
+                      </div>
+                    )
+                  })()}
 
                   {/* Delete Customer */}
                   {(() => {

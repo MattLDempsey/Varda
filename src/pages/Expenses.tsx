@@ -428,7 +428,7 @@ export default function Expenses() {
       undo: () => addExpense({
         date: expData.date, supplier: expData.supplier, description: expData.description,
         category: expData.category, amount: expData.amount, vat: expData.vat,
-        total: expData.total, jobId: expData.jobId, receipt: expData.receipt,
+        total: expData.total, jobId: expData.jobId, receipt: expData.receipt ?? false,
       }),
     })
   }
