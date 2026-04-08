@@ -39,7 +39,7 @@ export default function TrialBanner() {
     return (
       <div style={s}>
         Your trial has expired —
-        <a href="/pricing" style={linkStyle}>choose a plan to continue</a>
+        <a href="/plans" style={linkStyle}>choose a plan to continue</a>
       </div>
     )
   }
@@ -47,7 +47,7 @@ export default function TrialBanner() {
   return (
     <div style={s}>
       You're on a free trial — {daysLeft} day{daysLeft !== 1 ? 's' : ''} left
-      <a href="/pricing" style={linkStyle}>Choose Plan</a>
+      <a href="/plans" style={linkStyle}>Choose Plan</a>
     </div>
   )
 }

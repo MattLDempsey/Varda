@@ -4,21 +4,12 @@ import { CheckCircle, FileDown, Plus, Trash2, Lock } from 'lucide-react'
 import { useData } from '../data/DataContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { generateQuotePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
+import { validateEmail, validatePhone } from '../lib/validation'
 import './QuickQuote.css'
 
 /* ──────────────────────────────────────────────────────
    Types
    ────────────────────────────────────────────────────── */
-
-interface JobTypeConfig {
-  id: string
-  label: string
-  materials: number
-  hours: number
-  certRequired: boolean
-  perUnit: boolean
-  minCharge?: number
-}
 
 interface LineItem {
   id: number
@@ -39,67 +30,6 @@ interface LineItem {
   adjustments: number
   lineTotal: number
   estHours: number
-}
-
-/* ──────────────────────────────────────────────────────
-   Default Job Types
-   ────────────────────────────────────────────────────── */
-
-const DEFAULT_JOB_TYPES: JobTypeConfig[] = [
-  { id: 'consumer-unit',   label: 'Consumer Unit',     materials: 320, hours: 6,   certRequired: true,  perUnit: false },
-  { id: 'ev-charger',      label: 'EV Charger',        materials: 450, hours: 5,   certRequired: true,  perUnit: false },
-  { id: 'fault-finding',   label: 'Fault Finding',     materials: 10,  hours: 2,   certRequired: false, perUnit: false },
-  { id: 'rewire',          label: 'Rewire',            materials: 180, hours: 8,   certRequired: false, perUnit: true },
-  { id: 'lighting',        label: 'Lighting',          materials: 15,  hours: 0.5, certRequired: false, perUnit: true },
-  { id: 'eicr',            label: 'EICR',              materials: 0,   hours: 3,   certRequired: true,  perUnit: false },
-  { id: 'smart-home',      label: 'Smart Home',        materials: 200, hours: 6,   certRequired: false, perUnit: false },
-  { id: 'ethernet',        label: 'Ethernet',          materials: 60,  hours: 1.5, certRequired: false, perUnit: true },
-  { id: 'smoke-detectors', label: 'Smoke Detectors',   materials: 35,  hours: 0.5, certRequired: false, perUnit: true },
-  { id: 'minor-works',     label: 'Minor Works',       materials: 20,  hours: 1,   certRequired: false, perUnit: false },
-  { id: 'other',           label: 'Other',             materials: 0,   hours: 1,   certRequired: false, perUnit: false },
-]
-
-/* ──────────────────────────────────────────────────────
-   Pricing Engine (per line)
-   ────────────────────────────────────────────────────── */
-
-const LABOUR_RATE = 55
-const CERT_COST = 45
-const WASTE_PERCENT = 0.05
-const VAT_RATE = 0.20
-
-function calculateLine(
-  jobTypeId: string, quantity: number, difficulty: number, hassleFactor: number,
-  emergency: boolean, outOfHours: boolean, certRequired: boolean, customerSuppliesMaterials: boolean,
-  manualMaterials?: number, manualHours?: number,
-): Omit<LineItem, 'id' | 'jobTypeId' | 'jobTypeName' | 'quantity' | 'difficulty' | 'hassleFactor' | 'emergency' | 'outOfHours' | 'certRequired' | 'customerSuppliesMaterials'> {
-  const jobType = DEFAULT_JOB_TYPES.find(j => j.id === jobTypeId)
-  if (!jobType) return { materials: 0, labour: 0, certificates: 0, waste: 0, adjustments: 0, lineTotal: 0, estHours: 0 }
-
-  const isManual = jobTypeId === 'other'
-  const qty = quantity
-  const baseMat = isManual ? (manualMaterials || 0) : jobType.materials
-  const baseHrs = isManual ? (manualHours || 1) : jobType.hours
-  const materials = customerSuppliesMaterials ? 0 : baseMat * qty
-  const hours = baseHrs * qty
-  const labour = hours * LABOUR_RATE
-  const certificates = certRequired ? CERT_COST : 0
-  const waste = materials * WASTE_PERCENT
-  const subtotal = materials + labour + certificates + waste
-
-  const diffMult = 1 + (difficulty / 100) * 0.5
-  const hassleMult = 1 + (hassleFactor / 100) * 0.3
-  const emergencyMult = emergency ? 1.5 : 1
-  const oohMult = outOfHours ? 1.25 : 1
-
-  const adjustments = subtotal * (diffMult - 1) + subtotal * (hassleMult - 1) + subtotal * (emergencyMult - 1) + subtotal * (oohMult - 1)
-  let lineTotal = subtotal + adjustments
-
-  if (jobType.minCharge && lineTotal < jobType.minCharge) lineTotal = jobType.minCharge
-  // Emergency minimum charge
-  if (emergency && lineTotal < 150) lineTotal = 150
-
-  return { materials, labour, certificates, waste, adjustments, lineTotal, estHours: hours }
 }
 
 /* ──────────────────────────────────────────────────────
@@ -135,9 +65,43 @@ function AnimatedValue({ value, prefix = '' }: { value: number; prefix?: string 
 let nextLineId = 1
 
 export default function QuickQuote() {
-  const { addQuote, updateQuote, updateJob, moveJob, addJob, addCustomer, quotes, jobs, customers, settings, getNextQuoteRef } = useData()
+  const { addQuote, updateQuote, updateJob, moveJob, addJob, addCustomer, quotes, jobs, customers, settings, getNextQuoteRef, pricingConfig, jobTypeConfigs } = useData()
   const { canUse } = useSubscription()
   const canMultiLine = canUse('multiLineQuotes')
+
+  // ── Pricing engine (uses DataContext values) ──
+  const calculateLine = useCallback((
+    jobTypeId: string, quantity: number, difficulty: number, hassleFactor: number,
+    emergency: boolean, outOfHours: boolean, certRequired: boolean, customerSuppliesMaterials: boolean,
+    manualMaterials?: number, manualHours?: number,
+  ): Omit<LineItem, 'id' | 'jobTypeId' | 'jobTypeName' | 'quantity' | 'difficulty' | 'hassleFactor' | 'emergency' | 'outOfHours' | 'certRequired' | 'customerSuppliesMaterials'> => {
+    const jobType = jobTypeConfigs.find(j => j.id === jobTypeId)
+    if (!jobType) return { materials: 0, labour: 0, certificates: 0, waste: 0, adjustments: 0, lineTotal: 0, estHours: 0 }
+
+    const isManual = jobTypeId === 'other'
+    const qty = quantity
+    const baseMat = isManual ? (manualMaterials || 0) : jobType.baseMaterialCost
+    const baseHrs = isManual ? (manualHours || 1) : jobType.baseHours
+    const materials = customerSuppliesMaterials ? 0 : baseMat * qty
+    const hours = baseHrs * qty
+    const labour = hours * pricingConfig.labourRate
+    const certificates = certRequired ? pricingConfig.certFee : 0
+    const waste = materials * pricingConfig.wastePct
+    const subtotal = materials + labour + certificates + waste
+
+    const diffMult = 1 + (difficulty / 100) * 0.5
+    const hassleMult = 1 + (hassleFactor / 100) * 0.3
+    const emergencyMult = emergency ? pricingConfig.emergencyMult : 1
+    const oohMult = outOfHours ? pricingConfig.outOfHoursMult : 1
+
+    const adjustments = subtotal * (diffMult - 1) + subtotal * (hassleMult - 1) + subtotal * (emergencyMult - 1) + subtotal * (oohMult - 1)
+    let lineTotal = subtotal + adjustments
+
+    if (jobType.minCharge && lineTotal < jobType.minCharge) lineTotal = jobType.minCharge
+    if (emergency && lineTotal < pricingConfig.emergencyMinCharge) lineTotal = pricingConfig.emergencyMinCharge
+
+    return { materials, labour, certificates, waste, adjustments, lineTotal, estHours: hours }
+  }, [pricingConfig, jobTypeConfigs])
   const [searchParams] = useSearchParams()
   const editQuoteId = searchParams.get('quoteId')
   const editJobId = searchParams.get('jobId')
@@ -169,6 +133,7 @@ export default function QuickQuote() {
   const [newCustPhone, setNewCustPhone] = useState('')
   const [newCustEmail, setNewCustEmail] = useState('')
   const [newCustPostcode, setNewCustPostcode] = useState('')
+  const [newCustErrors, setNewCustErrors] = useState<Record<string, string>>({})
 
   // ── Current line being built ──
   const [curJobTypeId, setCurJobTypeId] = useState('')
@@ -246,20 +211,20 @@ export default function QuickQuote() {
   // ── Auto-set cert when job type changes ──
   const handleJobTypeSelect = useCallback((id: string) => {
     setCurJobTypeId(id)
-    const jt = DEFAULT_JOB_TYPES.find(j => j.id === id)
+    const jt = jobTypeConfigs.find(j => j.id === id)
     if (jt) setCurCert(jt.certRequired)
-  }, [])
+  }, [jobTypeConfigs])
 
   // ── Add current line to quote ──
   const addLine = useCallback(() => {
-    const jt = DEFAULT_JOB_TYPES.find(j => j.id === curJobTypeId)
+    const jt = jobTypeConfigs.find(j => j.id === curJobTypeId)
     if (!jt) return
 
     const calc = calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours)
     setLines(prev => [...prev, {
       id: nextLineId++,
       jobTypeId: curJobTypeId,
-      jobTypeName: curJobTypeId === 'other' ? 'Other' : jt.label,
+      jobTypeName: curJobTypeId === 'other' ? 'Other' : jt.name,
       quantity: curQuantity,
       difficulty: curDifficulty,
       hassleFactor: curHassle,
@@ -279,7 +244,7 @@ export default function QuickQuote() {
     setCurCustMaterials(false)
     setCurManualMaterials(0)
     setCurManualHours(1)
-  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours])
+  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine, jobTypeConfigs])
 
   const removeLine = useCallback((id: number) => {
     setLines(prev => prev.filter(l => l.id !== id))
@@ -293,7 +258,7 @@ export default function QuickQuote() {
     const waste = lines.reduce((s, l) => s + l.waste, 0)
     const adjustments = lines.reduce((s, l) => s + l.adjustments, 0)
     const netTotal = lines.reduce((s, l) => s + l.lineTotal, 0)
-    const vat = netTotal * VAT_RATE
+    const vat = netTotal * pricingConfig.vatRate
     const grandTotal = netTotal + vat
     const estHours = lines.reduce((s, l) => s + l.estHours, 0)
     const margin = netTotal > 0 ? ((netTotal - materials) / netTotal) * 100 : 0
@@ -321,10 +286,10 @@ export default function QuickQuote() {
   const curPreview = useMemo(() => {
     if (!curJobTypeId) return null
     return calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours)
-  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours])
+  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine])
 
   // ── Grand total including current unsaved line ──
-  const grandWithPreview = totals.grandTotal + (curPreview ? (curPreview.lineTotal * 1.2) : 0)
+  const grandWithPreview = totals.grandTotal + (curPreview ? (curPreview.lineTotal * (1 + pricingConfig.vatRate)) : 0)
 
   // ── Flash on total change ──
   const [totalFlash, setTotalFlash] = useState(false)
@@ -470,7 +435,7 @@ export default function QuickQuote() {
   }, [customerName, customers])
 
   const hasLines = lines.length > 0
-  const hasJobSelected = !!DEFAULT_JOB_TYPES.find(j => j.id === curJobTypeId)
+  const hasJobSelected = !!jobTypeConfigs.find(j => j.id === curJobTypeId)
 
   // ── Render ──
   return (
@@ -579,11 +544,24 @@ export default function QuickQuote() {
                   <input className="qq-input" placeholder="CO3 4QR" value={newCustPostcode} onChange={e => setNewCustPostcode(e.target.value)} />
                 </div>
               </div>
+              {newCustErrors.email && <div style={{ fontSize: 12, color: '#D46A6A', marginTop: -8, marginBottom: 8 }}>{newCustErrors.email}</div>}
+              {newCustErrors.phone && <div style={{ fontSize: 12, color: '#D46A6A', marginTop: -8, marginBottom: 8 }}>{newCustErrors.phone}</div>}
               <button
                 type="button"
                 className="qq-btn qq-btn--primary"
                 style={{ width: '100%' }}
                 onClick={() => {
+                  const errs: Record<string, string> = {}
+                  if (newCustEmail.trim()) {
+                    const emailErr = validateEmail(newCustEmail.trim())
+                    if (emailErr) errs.email = emailErr
+                  }
+                  if (newCustPhone.trim()) {
+                    const phoneErr = validatePhone(newCustPhone.trim())
+                    if (phoneErr) errs.phone = phoneErr
+                  }
+                  setNewCustErrors(errs)
+                  if (Object.keys(errs).length > 0) return
                   const c = addCustomer({
                     name: customerName.trim(),
                     phone: newCustPhone.trim(),
@@ -599,6 +577,7 @@ export default function QuickQuote() {
                   setNewCustPhone('')
                   setNewCustEmail('')
                   setNewCustPostcode('')
+                  setNewCustErrors({})
                 }}
               >
                 Save Customer
@@ -688,14 +667,14 @@ export default function QuickQuote() {
           {/* Job Type Grid */}
           <div className="qq-field">
             <div className="qq-job-grid">
-              {DEFAULT_JOB_TYPES.map(jt => (
+              {jobTypeConfigs.map(jt => (
                 <button
                   key={jt.id}
                   className={`qq-job-btn${curJobTypeId === jt.id ? ' qq-job-btn--active' : ''}`}
                   onClick={() => handleJobTypeSelect(jt.id)}
                   type="button"
                 >
-                  {jt.label}
+                  {jt.name}
                 </button>
               ))}
             </div>
@@ -790,7 +769,7 @@ export default function QuickQuote() {
                 style={{ width: '100%', marginTop: 4 }}
               >
                 <Plus size={18} style={{ marginRight: 6 }} />
-                Add {DEFAULT_JOB_TYPES.find(j => j.id === curJobTypeId)?.label || 'Line'}
+                Add {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name || 'Line'}
               </button>
             </>
           )}
@@ -859,7 +838,7 @@ export default function QuickQuote() {
             {curPreview && curJobTypeId && (
               <div className="qq-breakdown__row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2, opacity: 0.5 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontStyle: 'italic' }}>{DEFAULT_JOB_TYPES.find(j => j.id === curJobTypeId)?.label} (unsaved)</span>
+                  <span style={{ fontStyle: 'italic' }}>{jobTypeConfigs.find(j => j.id === curJobTypeId)?.name} (unsaved)</span>
                   <span className="qq-breakdown__value">£{fmt(curPreview.lineTotal)}</span>
                 </div>
               </div>
@@ -871,7 +850,7 @@ export default function QuickQuote() {
           <div className="qq-breakdown">
             <div className="qq-breakdown__row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2, opacity: 0.6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontStyle: 'italic' }}>{DEFAULT_JOB_TYPES.find(j => j.id === curJobTypeId)?.label} (click Add to confirm)</span>
+                <span style={{ fontStyle: 'italic' }}>{jobTypeConfigs.find(j => j.id === curJobTypeId)?.name} (click Add to confirm)</span>
                 <span className="qq-breakdown__value">£{fmt(curPreview.lineTotal)}</span>
               </div>
             </div>
@@ -886,7 +865,7 @@ export default function QuickQuote() {
             <span>Materials</span><AnimatedValue value={totals.materials} prefix="£" />
           </div>
           <div className="qq-breakdown__row">
-            <span>Labour ({totals.estHours}h @ £{LABOUR_RATE}/h)</span><AnimatedValue value={totals.labour} prefix="£" />
+            <span>Labour ({totals.estHours}h @ £{pricingConfig.labourRate}/h)</span><AnimatedValue value={totals.labour} prefix="£" />
           </div>
           {totals.certificates > 0 && (
             <div className="qq-breakdown__row">
@@ -910,7 +889,7 @@ export default function QuickQuote() {
             <span>Net Total</span><AnimatedValue value={totals.netTotal} prefix="£" />
           </div>
           <div className="qq-breakdown__row">
-            <span>VAT (20%)</span><AnimatedValue value={totals.vat} prefix="£" />
+            <span>VAT ({Math.round(pricingConfig.vatRate * 100)}%)</span><AnimatedValue value={totals.vat} prefix="£" />
           </div>
           <div className="qq-breakdown__row qq-breakdown__row--total">
             <span>Grand Total</span><AnimatedValue value={totals.grandTotal} prefix="£" />

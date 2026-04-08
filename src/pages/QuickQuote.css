@@ -552,6 +552,70 @@
   flex: 1;
 }
 
+/* ══════════════════════════════════════════════════
+   MOBILE — screens < 768px
+   ══════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .qq-page {
+    grid-template-columns: 1fr;
+    height: auto;
+    gap: var(--space-4);
+  }
+
+  .qq-panel {
+    padding: var(--space-4);
+    gap: var(--space-4);
+  }
+
+  .qq-job-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .qq-row {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .qq-qty-desc-row {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .qq-toggles-row {
+    flex-direction: column;
+  }
+
+  .qq-actions {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .qq-metrics {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
+  .qq-total__amount {
+    font-size: 40px;
+  }
+}
+
+/* Very small screens — single column job grid */
+@media (max-width: 400px) {
+  .qq-job-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   TABLET — 769px to 1024px
+   ══════════════════════════════════════════════════ */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .qq-panel {
+    padding: var(--space-5);
+  }
+}
+
 /* ── Separator ───────────────────────────────────── */
 
 .qq-sep {

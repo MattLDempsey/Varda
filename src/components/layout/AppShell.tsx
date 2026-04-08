@@ -22,6 +22,8 @@ import {
   Mail,
   Copy,
   Check,
+  Search,
+  MoreHorizontal,
 } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '../../theme/ThemeContext'
@@ -29,6 +31,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { supabase } from '../../lib/supabase'
 import type { CSSProperties } from 'react'
 import TrialBanner from '../TrialBanner'
+import GlobalSearch from '../GlobalSearch'
 import './AppShell.css'
 
 interface TeamMember {
@@ -52,19 +55,27 @@ interface NavItem {
   to: string
   icon: React.ReactNode
   label: string
+  /** Minimum role required: 'member' = everyone, 'admin' = admin+owner, 'owner' = owner only */
+  minRole?: 'member' | 'admin' | 'owner'
 }
 
-const navItems: NavItem[] = [
+const ROLE_LEVEL: Record<string, number> = { member: 0, admin: 1, owner: 2 }
+
+function hasMinRole(userRole: string, minRole: string): boolean {
+  return (ROLE_LEVEL[userRole] ?? 0) >= (ROLE_LEVEL[minRole] ?? 0)
+}
+
+const allNavItems: NavItem[] = [
   { to: '/',          icon: <LayoutDashboard size={24} />, label: 'Dashboard' },
   { to: '/quote',     icon: <FileText size={24} />,       label: 'Quick Quote' },
   { to: '/jobs',      icon: <Briefcase size={24} />,      label: 'Jobs' },
   { to: '/calendar',  icon: <Calendar size={24} />,       label: 'Calendar' },
   { to: '/customers', icon: <Users size={24} />,          label: 'Customers' },
   { to: '/comms',     icon: <MessageSquare size={24} />,  label: 'Comms' },
-  { to: '/expenses',  icon: <Receipt size={24} />,        label: 'Expenses' },
-  { to: '/insights',  icon: <BarChart3 size={24} />,      label: 'Insights' },
-  { to: '/pricing',   icon: <Tags size={24} />,           label: 'Pricing Rules' },
-  { to: '/settings',  icon: <Settings size={24} />,       label: 'Settings' },
+  { to: '/expenses',  icon: <Receipt size={24} />,        label: 'Expenses',      minRole: 'admin' },
+  { to: '/insights',  icon: <BarChart3 size={24} />,      label: 'Insights',      minRole: 'admin' },
+  { to: '/pricing',   icon: <Tags size={24} />,           label: 'Pricing Rules', minRole: 'admin' },
+  { to: '/settings',  icon: <Settings size={24} />,       label: 'Settings',      minRole: 'admin' },
 ]
 
 const roleLabels: Record<string, string> = {
@@ -84,6 +95,20 @@ export default function AppShell() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const [showProfile, setShowProfile] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const [showMobileMore, setShowMobileMore] = useState(false)
+
+  // Ctrl+K / Cmd+K keyboard shortcut for global search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowSearch(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // Team management state
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -96,6 +121,8 @@ export default function AppShell() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const isOwner = user?.role === 'owner'
+  const userRole = user?.role ?? 'member'
+  const navItems = allNavItems.filter(item => hasMinRole(userRole, item.minRole ?? 'member'))
 
   const initials = user?.displayName
     ? user.displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -173,7 +200,7 @@ export default function AppShell() {
   const ps: Record<string, CSSProperties> = {
     overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200 },
     panel: {
-      position: 'fixed', top: 0, left: 72, bottom: 0, width: 400, maxWidth: 'calc(100vw - 72px)',
+      position: 'fixed', top: 0, left: 0, bottom: 0, width: 400, maxWidth: '100vw',
       background: C.charcoal, borderRight: `1px solid ${C.steel}44`, zIndex: 210,
       overflowY: 'auto', padding: '28px 24px 40px', boxShadow: '8px 0 32px rgba(0,0,0,.5)',
     },
@@ -286,11 +313,23 @@ export default function AppShell() {
     emptyText: { fontSize: 13, color: C.silver, fontStyle: 'italic' as const },
   }
 
+  // Mobile bottom nav items (primary 4 + More)
+  const mobileNavItems = navItems.slice(0, 4) // Dashboard, Quick Quote, Jobs, Calendar
+  const mobileMoreItems = navItems.slice(4)    // Customers, Comms, Expenses, Insights, Pricing, Settings
+
   return (
     <div className="app-shell">
-      <nav className="sidebar" aria-label="Main navigation">
+      {/* Desktop sidebar */}
+      <nav className="sidebar sidebar--desktop" aria-label="Main navigation">
         <div className="sidebar-top">
           <div className="sidebar-brand">V</div>
+          <button
+            className="sidebar-link"
+            onClick={() => setShowSearch(true)}
+            title="Search (Ctrl+K)"
+          >
+            <Search size={24} />
+          </button>
           <ul className="sidebar-nav">
             {navItems.map((item) => (
               <li key={item.to}>
@@ -327,6 +366,77 @@ export default function AppShell() {
           </div>
         </div>
       </nav>
+
+      {/* Mobile bottom navigation bar */}
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        {mobileNavItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            className={({ isActive }) =>
+              `mobile-nav-item${isActive ? ' mobile-nav-item--active' : ''}`
+            }
+          >
+            {item.icon}
+            <span className="mobile-nav-label">{item.label}</span>
+          </NavLink>
+        ))}
+        <button
+          className={`mobile-nav-item${showMobileMore ? ' mobile-nav-item--active' : ''}`}
+          onClick={() => setShowMobileMore(prev => !prev)}
+        >
+          <MoreHorizontal size={24} />
+          <span className="mobile-nav-label">More</span>
+        </button>
+      </nav>
+
+      {/* Mobile "More" slide-up menu */}
+      {showMobileMore && (
+        <>
+          <div className="mobile-more-overlay" onClick={() => setShowMobileMore(false)} />
+          <div className="mobile-more-menu">
+            <div className="mobile-more-header">
+              <span>More</span>
+              <button onClick={() => setShowMobileMore(false)} style={{ background: 'none', border: 'none', color: C.silver, padding: 8, cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <button
+              className="mobile-more-item"
+              onClick={() => { setShowMobileMore(false); setShowSearch(true) }}
+            >
+              <Search size={20} />
+              <span>Search</span>
+            </button>
+            {mobileMoreItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className="mobile-more-item"
+                onClick={() => setShowMobileMore(false)}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+            <button
+              className="mobile-more-item"
+              onClick={toggle}
+            >
+              {mode === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+              <span>{mode === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+            </button>
+            <button
+              className="mobile-more-item"
+              onClick={() => { setShowMobileMore(false); setShowProfile(true) }}
+            >
+              <Users size={20} />
+              <span>Profile</span>
+            </button>
+          </div>
+        </>
+      )}
 
       <main className="main-content">
         <TrialBanner />
@@ -539,6 +649,9 @@ export default function AppShell() {
           </div>
         </>
       )}
+
+      {/* Global Search Modal */}
+      {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} />}
     </div>
   )
 }

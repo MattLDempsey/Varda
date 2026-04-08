@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Building2, ChevronRight, Sparkles } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../theme/ThemeContext'
+import { validateRequired } from '../lib/validation'
 import type { CSSProperties } from 'react'
 
 type Step = 'setup' | 'success'
@@ -23,20 +24,19 @@ export default function Onboarding() {
   const [tradeType, setTradeType] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
 
   const handleSetup = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
-    if (!businessName.trim()) {
-      setError('Please enter your business name')
-      return
-    }
-    if (!tradeType) {
-      setError('Please select your trade')
-      return
-    }
+    const errs: Record<string, string> = {}
+    const nameErr = validateRequired(businessName, 'Business name')
+    if (nameErr) errs.businessName = nameErr
+    if (!tradeType) errs.tradeType = 'Please select your trade'
+    setFieldErrors(errs)
+    if (Object.keys(errs).length > 0) return
 
     setLoading(true)
     const result = await createOrganization(businessName.trim(), tradeType, phone.trim() || undefined)
@@ -94,6 +94,7 @@ export default function Onboarding() {
       padding: '12px 16px', fontSize: 13, color: '#D46A6A', marginBottom: 20,
       textAlign: 'center',
     },
+    fieldError: { fontSize: 12, color: '#D46A6A', marginTop: 4, marginBottom: 0 },
     submitBtn: {
       width: '100%', background: C.gold, color: C.black, border: 'none',
       borderRadius: 12, padding: '14px', fontSize: 16, fontWeight: 600,
@@ -156,19 +157,20 @@ export default function Onboarding() {
           <div style={s.field}>
             <label style={s.label}>Business Name</label>
             <input
-              style={s.input}
+              style={{ ...s.input, ...(fieldErrors.businessName ? { borderColor: '#D46A6A' } : {}) }}
               type="text"
               value={businessName}
               onChange={e => setBusinessName(e.target.value)}
               placeholder="e.g. Grey Havens Electrical"
               autoFocus
             />
+            {fieldErrors.businessName && <div style={s.fieldError}>{fieldErrors.businessName}</div>}
           </div>
 
           <div style={s.field}>
             <label style={s.label}>Trade</label>
             <select
-              style={s.select}
+              style={{ ...s.select, ...(fieldErrors.tradeType ? { borderColor: '#D46A6A' } : {}) }}
               value={tradeType}
               onChange={e => setTradeType(e.target.value)}
             >
@@ -177,6 +179,7 @@ export default function Onboarding() {
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
+            {fieldErrors.tradeType && <div style={s.fieldError}>{fieldErrors.tradeType}</div>}
           </div>
 
           <div style={s.field}>

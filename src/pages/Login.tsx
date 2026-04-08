@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, LogIn, Building2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../theme/ThemeContext'
+import { validateEmail, validateMinLength } from '../lib/validation'
 import type { CSSProperties } from 'react'
 
 type Mode = 'signin' | 'register'
@@ -20,13 +21,19 @@ export default function Login() {
   const [displayName, setDisplayName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [registerSuccess, setRegisterSuccess] = useState(false)
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!email || !password) { setError('Please enter your email and password'); return }
+    const errs: Record<string, string> = {}
+    if (!email) errs.email = 'Email is required'
+    else { const emailErr = validateEmail(email); if (emailErr) errs.email = emailErr }
+    if (!password) errs.password = 'Password is required'
+    setFieldErrors(errs)
+    if (Object.keys(errs).length > 0) return
     setLoading(true)
     const result = await signIn(email, password)
     setLoading(false)
@@ -36,10 +43,15 @@ export default function Login() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!displayName.trim()) { setError('Please enter your name'); return }
-    if (!email || !password) { setError('Please fill in all fields'); return }
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
-    if (password !== confirmPassword) { setError('Passwords do not match'); return }
+    const errs: Record<string, string> = {}
+    if (!displayName.trim()) errs.displayName = 'Name is required'
+    if (!email) errs.email = 'Email is required'
+    else { const emailErr = validateEmail(email); if (emailErr) errs.email = emailErr }
+    if (!password) errs.password = 'Password is required'
+    else { const pwErr = validateMinLength(password, 6, 'Password'); if (pwErr) errs.password = pwErr }
+    if (password && confirmPassword !== password) errs.confirmPassword = 'Passwords do not match'
+    setFieldErrors(errs)
+    if (Object.keys(errs).length > 0) return
     setLoading(true)
     const result = await signUp(email, password, displayName.trim())
     setLoading(false)
@@ -61,6 +73,7 @@ export default function Login() {
     submitBtn: { width: '100%', background: C.gold, color: C.black, border: 'none', borderRadius: 12, padding: '14px', fontSize: 16, fontWeight: 600, cursor: 'pointer', minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 },
     toggle: { marginTop: 24, textAlign: 'center', fontSize: 14, color: C.silver },
     toggleLink: { background: 'none', border: 'none', color: C.gold, cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: 0, textDecoration: 'underline', textUnderlineOffset: 2 },
+    fieldError: { fontSize: 12, color: '#D46A6A', marginTop: 4, marginBottom: 0 },
   }
 
   // Registration success
@@ -98,16 +111,18 @@ export default function Login() {
           <form onSubmit={handleSignIn}>
             <div style={s.field}>
               <label style={s.label}>Email</label>
-              <input style={s.input} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" autoFocus />
+              <input style={{ ...s.input, ...(fieldErrors.email ? { borderColor: '#D46A6A' } : {}) }} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" autoFocus />
+              {fieldErrors.email && <div style={s.fieldError}>{fieldErrors.email}</div>}
             </div>
             <div style={s.field}>
               <label style={s.label}>Password</label>
               <div style={s.inputWrap as CSSProperties}>
-                <input style={s.input} type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" />
+                <input style={{ ...s.input, ...(fieldErrors.password ? { borderColor: '#D46A6A' } : {}) }} type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" />
                 <button type="button" style={s.eyeBtn as CSSProperties} onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              {fieldErrors.password && <div style={s.fieldError}>{fieldErrors.password}</div>}
             </div>
             {error && <div style={s.error as CSSProperties}>{error}</div>}
             <button type="submit" style={{ ...s.submitBtn, opacity: loading ? 0.7 : 1 } as CSSProperties} disabled={loading}>
@@ -144,24 +159,28 @@ export default function Login() {
         <form onSubmit={handleRegister}>
           <div style={s.field}>
             <label style={s.label}>Your Name</label>
-            <input style={s.input} type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Full name" autoComplete="name" autoFocus />
+            <input style={{ ...s.input, ...(fieldErrors.displayName ? { borderColor: '#D46A6A' } : {}) }} type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Full name" autoComplete="name" autoFocus />
+            {fieldErrors.displayName && <div style={s.fieldError}>{fieldErrors.displayName}</div>}
           </div>
           <div style={s.field}>
             <label style={s.label}>Email</label>
-            <input style={s.input} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@business.com" autoComplete="email" />
+            <input style={{ ...s.input, ...(fieldErrors.email ? { borderColor: '#D46A6A' } : {}) }} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@business.com" autoComplete="email" />
+            {fieldErrors.email && <div style={s.fieldError}>{fieldErrors.email}</div>}
           </div>
           <div style={s.field}>
             <label style={s.label}>Password</label>
             <div style={s.inputWrap as CSSProperties}>
-              <input style={s.input} type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete="new-password" />
+              <input style={{ ...s.input, ...(fieldErrors.password ? { borderColor: '#D46A6A' } : {}) }} type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete="new-password" />
               <button type="button" style={s.eyeBtn as CSSProperties} onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+            {fieldErrors.password && <div style={s.fieldError}>{fieldErrors.password}</div>}
           </div>
           <div style={s.field}>
             <label style={s.label}>Confirm Password</label>
-            <input style={s.input} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter password" autoComplete="new-password" />
+            <input style={{ ...s.input, ...(fieldErrors.confirmPassword ? { borderColor: '#D46A6A' } : {}) }} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter password" autoComplete="new-password" />
+            {fieldErrors.confirmPassword && <div style={s.fieldError}>{fieldErrors.confirmPassword}</div>}
           </div>
           {error && <div style={s.error as CSSProperties}>{error}</div>}
           <button type="submit" style={{ ...s.submitBtn, opacity: loading ? 0.7 : 1 } as CSSProperties} disabled={loading}>

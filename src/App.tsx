@@ -19,6 +19,7 @@ import SettingsPage from './pages/SettingsPage'
 import Expenses from './pages/Expenses'
 import PricingPage from './pages/Pricing'
 import QuoteView from './pages/QuoteView'
+import InvoiceView from './pages/InvoiceView'
 import { useTheme } from './theme/ThemeContext'
 import type { ReactNode, CSSProperties } from 'react'
 
@@ -56,6 +57,17 @@ function PublicRoute({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+const ROLE_LEVEL: Record<string, number> = { member: 0, admin: 1, owner: 2 }
+
+/** Guards a route so only users with the minimum role can access it */
+function RoleGuard({ minRole, children }: { minRole: 'admin' | 'owner'; children: ReactNode }) {
+  const { user } = useAuth()
+  const userLevel = ROLE_LEVEL[user?.role ?? 'member'] ?? 0
+  const requiredLevel = ROLE_LEVEL[minRole] ?? 0
+  if (userLevel < requiredLevel) return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
 /** Wraps all authenticated routes — provides DataProvider with orgId from auth */
 function AuthenticatedApp() {
   const { user, isLoading, isAuthenticated, needsOnboarding } = useAuth()
@@ -83,6 +95,7 @@ export default function App() {
             <Routes>
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/q/:quoteId" element={<QuoteView />} />
+              <Route path="/inv/:invoiceId" element={<InvoiceView />} />
               <Route path="/*" element={<AuthenticatedApp />}>
                 <Route index element={<Dashboard />} />
                 <Route path="quote" element={<QuickQuote />} />
@@ -90,11 +103,11 @@ export default function App() {
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="customers" element={<Customers />} />
                 <Route path="comms" element={<Comms />} />
-                <Route path="insights" element={<Insights />} />
-                <Route path="pricing" element={<PricingRules />} />
-                <Route path="settings" element={<SettingsPage />} />
-                <Route path="expenses" element={<Expenses />} />
-                <Route path="plans" element={<PricingPage />} />
+                <Route path="insights" element={<RoleGuard minRole="admin"><Insights /></RoleGuard>} />
+                <Route path="pricing" element={<RoleGuard minRole="admin"><PricingRules /></RoleGuard>} />
+                <Route path="settings" element={<RoleGuard minRole="admin"><SettingsPage /></RoleGuard>} />
+                <Route path="expenses" element={<RoleGuard minRole="admin"><Expenses /></RoleGuard>} />
+                <Route path="plans" element={<RoleGuard minRole="owner"><PricingPage /></RoleGuard>} />
               </Route>
             </Routes>
           </BrowserRouter>

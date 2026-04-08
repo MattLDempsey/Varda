@@ -126,7 +126,7 @@ export default function FeatureGate({ feature, children, fallback }: FeatureGate
           </div>
           <div style={s.heading}>Upgrade to {planLabel}</div>
           <div style={s.desc}>{description}</div>
-          <a href="/pricing" style={{ textDecoration: 'none' }}>
+          <a href="/plans" style={{ textDecoration: 'none' }}>
             <button style={s.btn}>View Plans</button>
           </a>
         </div>
@@ -169,7 +169,7 @@ export function LimitWarning({ current, max, label, plan }: {
       <Lock size={14} style={{ flexShrink: 0 }} />
       <span>
         You've used <strong>{current}</strong> of <strong>{max}</strong> {label} on the {planLabel} plan.{' '}
-        <a href="/pricing" style={{ color: C.gold, fontWeight: 600 }}>Upgrade for unlimited.</a>
+        <a href="/plans" style={{ color: C.gold, fontWeight: 600 }}>Upgrade for unlimited.</a>
       </span>
     </div>
   )

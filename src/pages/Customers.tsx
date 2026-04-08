@@ -5,6 +5,7 @@ import { useData } from '../data/DataContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { LimitWarning } from '../components/FeatureGate'
 import LoadingSpinner from '../components/LoadingSpinner'
+import { validateRequired, validateEmail } from '../lib/validation'
 import type { CSSProperties } from 'react'
 import type { Customer } from '../data/DataContext'
 
@@ -21,6 +22,7 @@ export default function Customers() {
   const [selected, setSelected] = useState<Customer | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   /* ── derived data helpers ── */
   const jobCountMap = useMemo(() => {
