@@ -121,11 +121,22 @@ export async function fetchQuotes(): Promise<Quote[]> {
   return (data ?? []).map((row) => toCamel<Quote>(row))
 }
 
+// Fields that exist in TypeScript but NOT in the database
+// Fields in TypeScript interfaces that don't exist as database columns
+const QUOTE_STRIP_FIELDS = ['customerName', 'customer_name']
+const JOB_STRIP_FIELDS = ['customerName', 'customer_name']
+
+function stripNonDbFields(row: Record<string, unknown>, fields: string[]): Record<string, unknown> {
+  const result = { ...row }
+  for (const f of fields) delete result[f]
+  return result
+}
+
 export async function insertQuote(
   orgId: string,
   quote: Omit<Quote, 'id' | 'createdAt'>
 ): Promise<Quote> {
-  const row = toSnake(quote as unknown as Record<string, unknown>)
+  const row = stripNonDbFields(toSnake(quote as unknown as Record<string, unknown>), QUOTE_STRIP_FIELDS)
   const { data, error } = await supabase
     .from('quotes')
     .insert({ org_id: orgId, ...row })
@@ -139,7 +150,7 @@ export async function updateQuote(
   id: string,
   updates: Partial<Quote>
 ): Promise<Quote> {
-  const row = toSnakePartial(updates as Record<string, unknown>)
+  const row = stripNonDbFields(toSnakePartial(updates as Record<string, unknown>), QUOTE_STRIP_FIELDS)
   const { data, error } = await supabase
     .from('quotes')
     .update(row)
@@ -167,7 +178,7 @@ export async function insertJob(
   orgId: string,
   job: Omit<Job, 'id' | 'createdAt'>
 ): Promise<Job> {
-  const row = toSnake(job as unknown as Record<string, unknown>)
+  const row = stripNonDbFields(toSnake(job as unknown as Record<string, unknown>), JOB_STRIP_FIELDS)
   const { data, error } = await supabase
     .from('jobs')
     .insert({ org_id: orgId, ...row })
@@ -181,7 +192,7 @@ export async function updateJob(
   id: string,
   updates: Partial<Job>
 ): Promise<Job> {
-  const row = toSnakePartial(updates as Record<string, unknown>)
+  const row = stripNonDbFields(toSnakePartial(updates as Record<string, unknown>), JOB_STRIP_FIELDS)
   const { data, error } = await supabase
     .from('jobs')
     .update(row)
