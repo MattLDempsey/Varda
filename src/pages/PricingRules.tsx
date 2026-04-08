@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, DEFAULT_PRICING_CONFIG, DEFAULT_JOB_TYPE_CONFIGS } from '../data/DataContext'
 import FeatureGate from '../components/FeatureGate'
+import SettingsNav from '../components/SettingsNav'
 import type { PricingConfig, JobTypeConfig } from '../data/DataContext'
 
 export default function PricingRules() {
@@ -112,6 +113,7 @@ export default function PricingRules() {
   return (
     <FeatureGate feature="pricingRules">
     <div style={s.page}>
+      <SettingsNav active="pricing" />
       {/* header */}
       <div style={s.header}>
         <h1 style={s.heading}>Pricing Rules</h1>

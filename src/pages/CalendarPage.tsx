@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Plus, Clock, X, Download, Calendar } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, Plus, Clock, X, Download, Calendar, Briefcase } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type ScheduleEvent, type EventSlot } from '../data/DataContext'
 import { exportWeekEvents, exportAllEvents, exportSingleEvent } from '../lib/calendar-export'
+import { useUndo } from '../hooks/useUndo'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const statusColor: Record<string, string> = {
@@ -71,7 +73,9 @@ function getMonthGridDates(year: number, month: number): Date[] {
 /* ── component ── */
 export default function CalendarPage() {
   const { C } = useTheme()
+  const navigate = useNavigate()
   const { events, customers, jobs, addEvent, updateEvent, deleteEvent, isDataLoading } = useData()
+  const { showUndo } = useUndo()
 
   /** Look up the job value for an event */
   const getEventValue = (ev: ScheduleEvent): number => {
@@ -592,7 +596,14 @@ export default function CalendarPage() {
                         }} style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}>
                           <Clock size={14} />
                         </button>
-                        <button onClick={() => { if (window.confirm('Remove this event from the calendar?')) deleteEvent(ev.id) }}
+                        <button onClick={() => {
+                          const evData = { ...ev }
+                          deleteEvent(ev.id)
+                          showUndo({
+                            message: `Event removed: ${ev.customerName}`,
+                            undo: () => addEvent({ jobId: evData.jobId, customerId: evData.customerId, customerName: evData.customerName, jobType: evData.jobType, date: evData.date, slot: evData.slot, status: evData.status, notes: evData.notes }),
+                          })
+                        }}
                           style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
                           onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
                           onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
@@ -642,6 +653,24 @@ export default function CalendarPage() {
                   + Add
                 </button>
               </div>
+
+              {/* View Job button */}
+              {selectedEvent.jobId && (
+                <button
+                  onClick={() => { setSelectedEvent(null); setIsEditing(false); navigate('/jobs') }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    width: '100%', padding: '10px 16px', borderRadius: 10, marginTop: 14,
+                    background: `${C.gold}15`, border: `1px solid ${C.gold}33`,
+                    color: C.gold, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                    transition: 'background .15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = `${C.gold}33` }}
+                  onMouseLeave={e => { e.currentTarget.style.background = `${C.gold}15` }}
+                >
+                  <Briefcase size={14} /> View Job
+                </button>
+              )}
 
               {/* Add to Calendar export */}
               <button

@@ -5,6 +5,7 @@ import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { exportInvoicesCSV, exportExpensesCSV, exportContactsCSV } from '../lib/xero-export'
 import { exportAllEvents } from '../lib/calendar-export'
+import SettingsNav from '../components/SettingsNav'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 export default function Integrations() {
@@ -92,6 +93,7 @@ export default function Integrations() {
 
   return (
     <div style={s.page}>
+      <SettingsNav active="integrations" />
       <div style={s.title}>Integrations</div>
       <div style={s.subtitle}>Connect your tools and export data for your accounting software.</div>
 

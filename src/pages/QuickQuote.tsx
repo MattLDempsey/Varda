@@ -160,6 +160,12 @@ export default function QuickQuote() {
   const [curManualMaterials, setCurManualMaterials] = useState(0)
   const [curManualHours, setCurManualHours] = useState(1)
 
+  // ── Auto-add timer ──
+  const autoAddTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [autoAddCountdown, setAutoAddCountdown] = useState<number | null>(null)
+  const [autoAddedMsg, setAutoAddedMsg] = useState(false)
+  const autoAddCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   // ── Load existing quote ──
   useEffect(() => {
     if (existingQuote && !loaded) {
@@ -223,6 +229,16 @@ export default function QuickQuote() {
     }
   }, [duplicateSource, loaded, editQuoteId])
 
+  // ── Pre-fill customer from URL param ──
+  const customerParam = searchParams.get('customer')
+  useEffect(() => {
+    if (customerParam && !loaded && !editQuoteId && !duplicateFromId) {
+      setCustomerName(customerParam)
+      const match = customers.find(c => c.name.toLowerCase() === customerParam.toLowerCase())
+      if (match) setSelectedCustomerId(match.id)
+    }
+  }, [customerParam, loaded, editQuoteId, duplicateFromId, customers])
+
   // ── Auto-set cert when job type changes ──
   const handleJobTypeSelect = useCallback((id: string) => {
     setCurJobTypeId(id)
@@ -230,8 +246,16 @@ export default function QuickQuote() {
     if (jt) setCurCert(jt.certRequired)
   }, [jobTypeConfigs])
 
+  // ── Auto-add helpers ──
+  const clearAutoAdd = useCallback(() => {
+    if (autoAddTimerRef.current) { clearTimeout(autoAddTimerRef.current); autoAddTimerRef.current = null }
+    if (autoAddCountdownRef.current) { clearInterval(autoAddCountdownRef.current); autoAddCountdownRef.current = null }
+    setAutoAddCountdown(null)
+  }, [])
+
   // ── Add current line to quote ──
   const addLine = useCallback(() => {
+    clearAutoAdd()
     const jt = jobTypeConfigs.find(j => j.id === curJobTypeId)
     if (!jt) return
 
@@ -259,7 +283,34 @@ export default function QuickQuote() {
     setCurCustMaterials(false)
     setCurManualMaterials(0)
     setCurManualHours(1)
-  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine, jobTypeConfigs])
+  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine, jobTypeConfigs, clearAutoAdd])
+
+  // ── Wire auto-add timer: start when job type selected, clear/restart on config changes ──
+  const addLineRef = useRef(addLine)
+  addLineRef.current = addLine
+
+  useEffect(() => {
+    if (curJobTypeId) {
+      // Start auto-add countdown
+      clearAutoAdd()
+      setAutoAddedMsg(false)
+      setAutoAddCountdown(3)
+      autoAddCountdownRef.current = setInterval(() => {
+        setAutoAddCountdown(prev => (prev !== null && prev > 1) ? prev - 1 : prev)
+      }, 1000)
+      autoAddTimerRef.current = setTimeout(() => {
+        if (autoAddCountdownRef.current) { clearInterval(autoAddCountdownRef.current); autoAddCountdownRef.current = null }
+        setAutoAddCountdown(null)
+        addLineRef.current()
+        setAutoAddedMsg(true)
+        setTimeout(() => setAutoAddedMsg(false), 1500)
+      }, 3000)
+    } else {
+      clearAutoAdd()
+    }
+    return () => clearAutoAdd()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, curCert, curCustMaterials, curManualMaterials, curManualHours])
 
   const removeLine = useCallback((id: number) => {
     setLines(prev => prev.filter(l => l.id !== id))
@@ -879,15 +930,28 @@ export default function QuickQuote() {
               </div>
 
               {/* Add Line Button */}
-              <button
-                className="qq-btn qq-btn--primary"
-                type="button"
-                onClick={addLine}
-                style={{ width: '100%', marginTop: 4 }}
-              >
-                <Plus size={18} style={{ marginRight: 6 }} />
-                Add {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name || 'Line'}
-              </button>
+              <div style={{ position: 'relative' }}>
+                <button
+                  className="qq-btn qq-btn--primary"
+                  type="button"
+                  onClick={() => { clearAutoAdd(); addLine() }}
+                  style={{ width: '100%', marginTop: 4 }}
+                >
+                  {autoAddedMsg ? (
+                    <><CheckCircle size={18} style={{ marginRight: 6 }} /> Added</>
+                  ) : (
+                    <><Plus size={18} style={{ marginRight: 6 }} /> Add {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name || 'Line'}</>
+                  )}
+                </button>
+                {autoAddCountdown !== null && (
+                  <div style={{
+                    textAlign: 'center', fontSize: 11, color: 'var(--color-steel-light)',
+                    marginTop: 4, opacity: 0.7, transition: 'opacity .3s',
+                  }}>
+                    Auto-adding in {autoAddCountdown}s...
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -1161,7 +1225,6 @@ export default function QuickQuote() {
 
           const methods = [sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link copied'].filter(Boolean)
           setSendMsg(`Sent via ${methods.join(' + ')}`)
-          setTimeout(() => { setSendMsg('') }, 5000)
         }
 
         return (
@@ -1182,25 +1245,72 @@ export default function QuickQuote() {
                 {activeQuote?.ref} · £{fmt(totals.grandTotal)} · {customerName}
               </div>
 
-              {sendMsg && (
-                <div style={{ padding: '10px 14px', borderRadius: 10, background: '#6ABF8A22', marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6ABF8A', fontSize: 13, fontWeight: 500 }}>
-                    <CheckCircle size={16} /> {sendMsg}
+              {sendMsg ? (
+                <>
+                  {/* ── Post-send confirmation ── */}
+                  <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>
+                      <CheckCircle size={40} color="#6ABF8A" />
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-white)', marginBottom: 4 }}>
+                      Quote {activeQuote?.ref} sent to {customerName}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--color-steel-light)', marginBottom: 2 }}>
+                      {sendMsg}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg(''); navigate('/jobs') }}
-                    style={{
-                      marginTop: 8, background: 'transparent', border: `1px solid var(--color-gold)`,
-                      color: 'var(--color-gold)', borderRadius: 8, padding: '8px 16px',
-                      fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 36,
-                    }}
-                  >
-                    View Job →
-                  </button>
-                </div>
-              )}
 
+                  <div style={{
+                    padding: '16px', borderRadius: 10, background: 'var(--color-black)',
+                    marginBottom: 20, border: '1px solid var(--color-steel)',
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-silver)', marginBottom: 10 }}>
+                      What happens next:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--color-steel-light)' }}>
+                        <span style={{ flexShrink: 0 }}>&#8226;</span>
+                        <span>We'll notify you when they view it</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--color-steel-light)' }}>
+                        <span style={{ flexShrink: 0 }}>&#8226;</span>
+                        <span>If they accept, the job moves to "Accepted"</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--color-steel-light)' }}>
+                        <span style={{ flexShrink: 0 }}>&#8226;</span>
+                        <span>You can track it in Jobs</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg(''); navigate('/jobs') }}
+                      className="qq-btn qq-btn--primary"
+                      style={{ flex: 1 }}
+                    >
+                      View in Jobs
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg('')
+                        // Reset for new quote
+                        setCustomerName(''); setDescription(''); setNotes(''); setLines([])
+                        setCurJobTypeId(''); setIsEmergency(false); setIsOutOfHours(false)
+                        setActiveQuoteId(null); setActiveJobId(null); setSelectedCustomerId(null)
+                        setJobPostcode(''); setLoaded(false)
+                      }}
+                      className="qq-btn qq-btn--secondary"
+                      style={{ flex: 1 }}
+                    >
+                      Create Another Quote
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
               <div style={{ fontSize: 12, color: 'var(--color-steel-light)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 600 }}>
                 Select send methods
               </div>
@@ -1288,6 +1398,8 @@ export default function QuickQuote() {
               >
                 Cancel
               </button>
+                </>
+              )}
             </div>
           </>
         )

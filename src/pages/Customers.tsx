@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
-import { Search, Plus, X, ChevronRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, Plus, X, ChevronRight, FileText } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
+import { useUndo } from '../hooks/useUndo'
 import { LimitWarning } from '../components/FeatureGate'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { validateRequired, validateEmail } from '../lib/validation'
@@ -15,8 +17,10 @@ const emptyForm = {
 
 export default function Customers() {
   const { C } = useTheme()
+  const navigate = useNavigate()
   const { customers, jobs, addCustomer, deleteCustomer, isDataLoading } = useData()
   const { features, plan } = useSubscription()
+  const { showUndo } = useUndo()
 
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Customer | null>(null)
@@ -411,6 +415,22 @@ export default function Customers() {
 
               return (
                 <div>
+                  {/* Create Quote button */}
+                  <button
+                    onClick={() => navigate(`/quote?customer=${encodeURIComponent(selected.name)}`)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      width: '100%', padding: '10px 16px', borderRadius: 10, marginBottom: 16,
+                      background: 'transparent', border: `1px solid ${C.gold}`,
+                      color: C.gold, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      transition: 'background .15s', minHeight: 40,
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${C.gold}15` }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <FileText size={15} /> Create Quote
+                  </button>
+
                   <div style={s.detailRow}>
                     <div>
                       <span style={s.fieldLabel}>Phone</span>
@@ -505,10 +525,17 @@ export default function Customers() {
                         ) : (
                           <button
                             onClick={() => {
-                              if (window.confirm(`Delete ${selected.name}? This will not delete their jobs or quotes.`)) {
-                                deleteCustomer(selected.id)
-                                closePanel()
-                              }
+                              const custData = { ...selected }
+                              deleteCustomer(selected.id)
+                              closePanel()
+                              showUndo({
+                                message: `Deleted: ${custData.name}`,
+                                undo: () => addCustomer({
+                                  name: custData.name, phone: custData.phone, email: custData.email,
+                                  address1: custData.address1, address2: custData.address2,
+                                  city: custData.city, postcode: custData.postcode, notes: custData.notes,
+                                }),
+                              })
                             }}
                             style={{
                               width: '100%', padding: '12px 16px', borderRadius: 10,

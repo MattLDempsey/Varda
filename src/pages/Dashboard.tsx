@@ -4,6 +4,7 @@ import {
   FileText, Briefcase, PoundSterling, Clock, TrendingUp,
   CalendarCheck, CheckCircle, AlertTriangle, ChevronRight,
   Calendar, Bell, X, Square, CheckSquare,
+  PenLine, UserPlus, ClipboardList,
 } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
@@ -289,6 +290,36 @@ export default function Dashboard() {
     <div style={s.page}>
       <h1 style={s.heading}>Dashboard</h1>
       <p style={s.subheading}>Your business at a glance.</p>
+
+      {/* ── Quick Actions (only when onboarding is not showing) ── */}
+      {!showOnboarding && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+          {([
+            { label: 'Quick Quote', icon: <PenLine size={15} />, route: '/quote' },
+            { label: 'Add Customer', icon: <UserPlus size={15} />, route: '/customers' },
+            { label: 'View Jobs', icon: <ClipboardList size={15} />, route: '/jobs' },
+            { label: 'Calendar', icon: <Calendar size={15} />, route: '/calendar' },
+          ] as const).map(action => (
+            <button
+              key={action.label}
+              onClick={() => navigate(action.route)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '8px 16px', borderRadius: 10,
+                background: 'transparent',
+                border: `1px solid ${C.steel}66`,
+                color: C.silver, fontSize: 13, fontWeight: 500,
+                cursor: 'pointer', transition: 'all .15s',
+                minHeight: 38,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = C.gold; e.currentTarget.style.color = C.gold }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.steel + '66'; e.currentTarget.style.color = C.silver }}
+            >
+              {action.icon} {action.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Onboarding Checklist ── */}
       {showOnboarding && (

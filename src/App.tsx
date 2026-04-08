@@ -27,6 +27,7 @@ import InvoiceView from './pages/InvoiceView'
 import BookingPage from './pages/BookingPage'
 import CertificateForm from './pages/CertificateForm'
 import Integrations from './pages/Integrations'
+import { UndoProvider } from './hooks/useUndo'
 import { useTheme } from './theme/ThemeContext'
 import type { ReactNode, CSSProperties } from 'react'
 
@@ -87,7 +88,9 @@ function AuthenticatedApp() {
   return (
     <DataProvider orgId={user.orgId}>
       <SubscriptionProvider orgId={user.orgId}>
-        <AppShell />
+        <UndoProvider>
+          <AppShell />
+        </UndoProvider>
       </SubscriptionProvider>
     </DataProvider>
   )

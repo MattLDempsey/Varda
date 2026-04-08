@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type ExpenseCategory } from '../data/DataContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
+import { useUndo } from '../hooks/useUndo'
 import FeatureGate from '../components/FeatureGate'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -244,6 +245,7 @@ function saveExpenses(expenses: Expense[]) {
 export default function Expenses() {
   const { C } = useTheme()
   const { jobs, expenses, addExpense, updateExpense, deleteExpense, isDataLoading } = useData()
+  const { showUndo } = useUndo()
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year' | 'overall'>('year')
   const [selectedYear, setSelectedYear] = useState('')
   const [sortField, setSortField] = useState<'date' | 'total'>('date')
@@ -418,9 +420,17 @@ export default function Expenses() {
 
   function handleDelete() {
     if (!editingExpense) return
-    if (!window.confirm('Delete this expense? This cannot be undone.')) return
+    const expData = { ...editingExpense }
     deleteExpense(editingExpense.id)
     setPanelOpen(false)
+    showUndo({
+      message: `Deleted expense: ${expData.description || expData.supplier}`,
+      undo: () => addExpense({
+        date: expData.date, supplier: expData.supplier, description: expData.description,
+        category: expData.category, amount: expData.amount, vat: expData.vat,
+        total: expData.total, jobId: expData.jobId, receipt: expData.receipt,
+      }),
+    })
   }
 
   function toggleSort(field: 'date' | 'total') {

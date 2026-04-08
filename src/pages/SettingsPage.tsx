@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useAuth } from '../auth/AuthContext'
 import { useData } from '../data/DataContext'
+import SettingsNav from '../components/SettingsNav'
 import type { AppSettings } from '../data/DataContext'
 
 /* ── types ── */
@@ -137,6 +138,7 @@ export default function SettingsPage() {
 
   return (
     <div style={s.page}>
+      <SettingsNav active="settings" />
       {/* header */}
       <div style={s.header}>
         <h1 style={s.heading}>Settings</h1>
