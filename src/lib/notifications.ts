@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import type { AppSettings } from '../data/DataContext'
+import type { AppSettings, ScheduleEvent, Customer } from '../data/DataContext'
 
 /* ────────────────────────────────────────────────── */
 /*  Permission                                       */
@@ -178,6 +178,72 @@ export function runNotificationCheck(deps: CheckerDeps): void {
       }
     }
   }
+}
+
+/* ────────────────────────────────────────────────── */
+/*  Appointment Reminders                            */
+/* ────────────────────────────────────────────────── */
+
+export interface Reminder {
+  eventId: string
+  customerId: string
+  customerName: string
+  customerEmail: string
+  jobType: string
+  date: string
+  slot: string
+}
+
+const REMINDER_SENT_KEY = 'gh-reminders-sent'
+
+function getSentReminderIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(REMINDER_SENT_KEY)
+    if (!raw) return new Set()
+    return new Set(JSON.parse(raw) as string[])
+  } catch {
+    return new Set()
+  }
+}
+
+export function markReminderSent(eventId: string): void {
+  const sent = getSentReminderIds()
+  sent.add(eventId)
+  const arr = [...sent].slice(-200)
+  localStorage.setItem(REMINDER_SENT_KEY, JSON.stringify(arr))
+}
+
+export function wasReminderSent(eventId: string): boolean {
+  return getSentReminderIds().has(eventId)
+}
+
+/**
+ * Returns events happening tomorrow that haven't had a reminder sent.
+ * Only includes events where the customer has an email address.
+ */
+export function getUpcomingReminders(events: ScheduleEvent[], customers: Customer[]): Reminder[] {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
+
+  const sentIds = getSentReminderIds()
+  const customerMap = new Map(customers.map(c => [c.id, c]))
+
+  return events
+    .filter(e => e.date === tomorrowStr && !sentIds.has(e.id))
+    .map(e => {
+      const customer = e.customerId ? customerMap.get(e.customerId) : undefined
+      return {
+        eventId: e.id,
+        customerId: e.customerId || '',
+        customerName: e.customerName,
+        customerEmail: customer?.email || '',
+        jobType: e.jobType,
+        date: e.date,
+        slot: e.slot,
+      }
+    })
+    .filter(r => r.customerEmail) // only include those with an email
 }
 
 /* ────────────────────────────────────────────────── */

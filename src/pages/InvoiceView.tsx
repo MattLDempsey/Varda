@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useData } from '../data/DataContext'
 import { CheckCircle, Clock, FileText, Phone, Mail, Globe, AlertTriangle, Banknote, CreditCard } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -16,6 +16,8 @@ function fmtDate(iso: string): string {
 
 export default function InvoiceView() {
   const { invoiceId } = useParams<{ invoiceId: string }>()
+  const [searchParams] = useSearchParams()
+  const justPaid = searchParams.get('paid') === 'true'
   const { invoices, quotes, customers, settings } = useData()
   const [payLoading, setPayLoading] = useState(false)
   const [payError, setPayError] = useState('')
@@ -69,6 +71,11 @@ export default function InvoiceView() {
     pendingBanner: {
       width: '100%', padding: '14px 40px', background: `${gold}12`,
       borderBottom: `2px solid ${gold}33`, fontSize: 15, fontWeight: 700, color: gold,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+    },
+    successBanner: {
+      width: '100%', padding: '14px 40px', background: `${green}18`,
+      borderBottom: `2px solid ${green}44`, fontSize: 15, fontWeight: 700, color: green,
       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
     },
     // header band
@@ -133,6 +140,13 @@ export default function InvoiceView() {
   return (
     <div style={s.page}>
       <div style={s.card}>
+        {/* ── Payment Success Banner (from Stripe redirect) ── */}
+        {justPaid && !isPaid && (
+          <div style={s.successBanner}>
+            <CheckCircle size={18} /> Payment successful — thank you! Your invoice will be updated shortly.
+          </div>
+        )}
+
         {/* ── Status Banner ── */}
         {isPaid && (
           <div style={s.paidBanner}>
@@ -229,20 +243,17 @@ export default function InvoiceView() {
           </div>
 
           {/* Pay Now button for unpaid invoices */}
-          {!isPaid && (
+          {!isPaid && !justPaid && (
             <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <button
                 onClick={async () => {
                   setPayLoading(true)
                   setPayError('')
                   try {
-                    const { data, error } = await supabase.functions.invoke('create-checkout', {
+                    const { data, error } = await supabase.functions.invoke('create-invoice-payment', {
                       body: {
                         invoiceId: invoice.id,
-                        invoiceRef: invoice.ref,
-                        amount: Math.round(invoice.grandTotal * 100),
-                        customerName: invoice.customerName,
-                        description: invoice.jobTypeName,
+                        orgId: invoice.customerId, // org_id resolved server-side from invoice lookup
                       },
                     })
                     if (error) throw error

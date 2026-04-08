@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react'
-import type { Quote, Job, Invoice, AppSettings } from '../data/DataContext'
+import type { Quote, Job, Invoice, AppSettings, ScheduleEvent, Customer } from '../data/DataContext'
+import { getUpcomingReminders, type Reminder, markReminderSent } from '../lib/notifications'
 
 /* ── Types ── */
 
@@ -55,6 +56,8 @@ export function computeFollowUps(
   jobs: Job[],
   invoices: Invoice[],
   settings: AppSettings,
+  events?: ScheduleEvent[],
+  customers?: Customer[],
 ): FollowUp[] {
   const today = todayStr()
   const paymentTerms = settings.quoteConfig.paymentTerms || 14
@@ -149,9 +152,48 @@ export function computeFollowUps(
       })
     })
 
+  // 6. Recurring jobs due within 14 days
+  jobs
+    .filter(j => j.isRecurring && j.nextRecurrenceDate && (j.status === 'Complete' || j.status === 'Paid'))
+    .forEach(j => {
+      const daysUntil = daysBetween(today, j.nextRecurrenceDate!)
+      if (daysUntil <= 14 && daysUntil >= -7) {
+        items.push({
+          id: `followup-recurring-${j.id}`,
+          priority: daysUntil <= 0 ? 'high' : 'medium',
+          message: `Recurring job for ${j.customerName}: ${j.jobType} due on ${j.nextRecurrenceDate}`,
+          route: '/jobs',
+          urgency: daysUntil <= 0 ? 1.5 : 3.5,
+        })
+      }
+    })
+
+  // 7. Appointment reminders — events tomorrow that haven't been reminded
+  if (events && customers) {
+    const reminders = getUpcomingReminders(events, customers)
+    const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day' }
+    reminders.forEach(r => {
+      items.push({
+        id: `followup-reminder-${r.eventId}`,
+        priority: 'medium',
+        message: `Send appointment reminder to ${r.customerName} — ${r.jobType} tomorrow at ${slotLabels[r.slot] || r.slot}`,
+        route: '/calendar',
+        urgency: 2.5,
+      })
+    })
+  }
+
   items.sort((a, b) => a.urgency - b.urgency)
   return items
 }
+
+/** Get pending appointment reminders for batch sending */
+export function getPendingReminders(events: ScheduleEvent[], customers: Customer[]): Reminder[] {
+  return getUpcomingReminders(events, customers)
+}
+
+/** Mark a reminder as sent */
+export { markReminderSent }
 
 /* ── Hook ── */
 
@@ -160,10 +202,12 @@ export function useFollowUps(
   jobs: Job[],
   invoices: Invoice[],
   settings: AppSettings,
+  events?: ScheduleEvent[],
+  customers?: Customer[],
 ) {
   const allFollowUps = useMemo(
-    () => computeFollowUps(quotes, jobs, invoices, settings),
-    [quotes, jobs, invoices, settings],
+    () => computeFollowUps(quotes, jobs, invoices, settings, events, customers),
+    [quotes, jobs, invoices, settings, events, customers],
   )
 
   const dismissed = useMemo(() => getDismissedIds(), [allFollowUps]) // re-read on data change

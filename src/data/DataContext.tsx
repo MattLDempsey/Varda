@@ -84,7 +84,7 @@ export type JobStatus = 'Lead' | 'Quoted' | 'Accepted' | 'Scheduled' | 'In Progr
 export type QuoteStatus = 'Draft' | 'Sent' | 'Viewed' | 'Accepted' | 'Expired' | 'Declined'
 export type InvoiceStatus = 'Draft' | 'Sent' | 'Viewed' | 'Paid' | 'Overdue'
 export type InvoiceType = 'Deposit' | 'Progress' | 'Final' | 'Custom'
-export type CommChannel = 'email' | 'whatsapp'
+export type CommChannel = 'email' | 'whatsapp' | 'sms'
 export type CommStatus = 'Sent' | 'Delivered' | 'Read' | 'Failed'
 export type EventSlot = 'morning' | 'afternoon' | 'full'
 export type EventStatus = 'Scheduled' | 'In Progress' | 'Complete'
@@ -168,6 +168,11 @@ export interface Job {
   date: string
   notes: string
   createdAt: string
+  isRecurring?: boolean
+  recurrenceRule?: string
+  recurrenceIntervalMonths?: number
+  nextRecurrenceDate?: string
+  parentJobId?: string
 }
 
 export interface ScheduleEvent {

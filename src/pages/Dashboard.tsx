@@ -7,7 +7,10 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
-import { useFollowUps, priorityColor } from '../components/FollowUpManager'
+import { useFollowUps, priorityColor, getPendingReminders, markReminderSent } from '../components/FollowUpManager'
+import { buildBookingConfirmationEmail } from '../lib/email-templates'
+import { sendEmail } from '../lib/send-email'
+import { useAuth } from '../auth/AuthContext'
 import { SkeletonDashboard } from '../components/Skeleton'
 import type { CSSProperties } from 'react'
 
@@ -61,11 +64,12 @@ const statusColor: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate()
   const { C } = useTheme()
-  const { quotes, jobs, events, invoices, settings, customers, isDataLoading } = useData()
+  const { quotes, jobs, events, invoices, settings, customers, addComm, isDataLoading } = useData()
+  const { user } = useAuth()
   const today = todayStr()
 
   // Follow-up system
-  const { activeFollowUps, dismiss: dismissFollowUp } = useFollowUps(quotes, jobs, invoices, settings)
+  const { activeFollowUps, dismiss: dismissFollowUp } = useFollowUps(quotes, jobs, invoices, settings, events, customers)
   const [localDismissed, setLocalDismissed] = useState<string[]>([])
   const handleDismiss = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -73,6 +77,56 @@ export default function Dashboard() {
     setLocalDismissed(prev => [...prev, id])
   }, [dismissFollowUp])
   const visibleFollowUps = activeFollowUps.filter(f => !localDismissed.includes(f.id))
+
+  // Appointment reminder helpers
+  const pendingReminders = useMemo(() => getPendingReminders(events, customers), [events, customers])
+  const [sendingReminders, setSendingReminders] = useState(false)
+
+  const sendOneReminder = useCallback(async (eventId: string) => {
+    const reminder = pendingReminders.find(r => r.eventId === eventId)
+    if (!reminder) return
+    const biz = settings.business
+    const slotLabels: Record<string, string> = { morning: 'Morning (AM)', afternoon: 'Afternoon (PM)', full: 'Full Day' }
+    const emailData = buildBookingConfirmationEmail({
+      customerName: reminder.customerName,
+      businessName: biz.businessName,
+      jobTitle: reminder.jobType,
+      date: reminder.date,
+      time: slotLabels[reminder.slot] || reminder.slot,
+      businessPhone: biz.phone,
+      businessEmail: biz.email,
+    })
+    await sendEmail({
+      to: reminder.customerEmail,
+      subject: `Reminder: ${emailData.subject}`,
+      htmlBody: emailData.html,
+      textBody: emailData.text,
+      replyTo: biz.email,
+      orgId: user?.orgId || '',
+      customerId: reminder.customerId,
+      templateName: 'Appointment Reminder',
+    })
+    markReminderSent(eventId)
+    addComm({
+      customerId: reminder.customerId,
+      customerName: reminder.customerName,
+      templateName: 'Appointment Reminder',
+      channel: 'email',
+      status: 'Sent',
+      date: new Date().toISOString(),
+      body: `Reminder for ${reminder.jobType} on ${reminder.date}`,
+    })
+    dismissFollowUp(`followup-reminder-${eventId}`)
+    setLocalDismissed(prev => [...prev, `followup-reminder-${eventId}`])
+  }, [pendingReminders, settings, user, addComm, dismissFollowUp])
+
+  const handleRemindAll = useCallback(async () => {
+    setSendingReminders(true)
+    for (const r of pendingReminders) {
+      await sendOneReminder(r.eventId)
+    }
+    setSendingReminders(false)
+  }, [pendingReminders, sendOneReminder])
 
   /* ── KPI stats (6 cards) ── */
   const stats = useMemo(() => {
@@ -391,6 +445,20 @@ export default function Dashboard() {
                 }}>{visibleFollowUps.length}</span>
               )}
             </h2>
+            {pendingReminders.length > 0 && (
+              <button
+                onClick={handleRemindAll}
+                disabled={sendingReminders}
+                style={{
+                  padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                  cursor: sendingReminders ? 'not-allowed' : 'pointer',
+                  background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                  opacity: sendingReminders ? 0.5 : 1,
+                }}
+              >
+                {sendingReminders ? 'Sending...' : `Remind All (${pendingReminders.length})`}
+              </button>
+            )}
           </div>
           {visibleFollowUps.length === 0 && (
             <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>

@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck } from 'lucide-react'
+import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
 import { useAuth } from '../auth/AuthContext'
 import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
+import { uploadJobFile, deleteJobFile, getJobAttachments, formatFileSize, type Attachment } from '../lib/file-upload'
 import { sendEmail } from '../lib/send-email'
 import { buildQuoteEmail, buildInvoiceEmail } from '../lib/email-templates'
 import { useSubscription } from '../subscription/SubscriptionContext'
@@ -107,6 +108,13 @@ export default function Jobs() {
   const [materialLines, setMaterialLines] = useState<Array<{ description: string; quantity: number; unitPrice: number }>>([])
   const [materialsInitialised, setMaterialsInitialised] = useState<string | null>(null)
 
+  // Attachments state
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false)
+  const [uploadCategory, setUploadCategory] = useState('general')
+  const [uploadError, setUploadError] = useState('')
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null)
+
   /* ── select job handler (resets panel tab) ── */
   function selectJob(job: Job) {
     setSelectedJob(job)
@@ -115,6 +123,46 @@ export default function Jobs() {
     setMaterialsInitialised(null)
     setShowAddInvoice(false)
     setRequoteSuccess(false)
+    setUploadError('')
+    setPreviewAttachment(null)
+    // Load attachments for this job
+    setAttachmentsLoading(true)
+    getJobAttachments(job.id)
+      .then(a => setAttachments(a))
+      .catch(() => setAttachments([]))
+      .finally(() => setAttachmentsLoading(false))
+  }
+
+  /* ── attachment helpers ── */
+  async function handleFileUpload(files: FileList | null) {
+    if (!files || !selectedJob || !user) return
+    setUploadError('')
+    const file = files[0]
+    if (!file) return
+    try {
+      setAttachmentsLoading(true)
+      const attachment = await uploadJobFile(user.orgId, selectedJob.id, file, uploadCategory)
+      setAttachments(prev => [...prev, attachment])
+      setUploadCategory('general')
+    } catch (err: any) {
+      setUploadError(err.message || 'Upload failed')
+    } finally {
+      setAttachmentsLoading(false)
+    }
+  }
+
+  async function handleDeleteAttachment(att: Attachment) {
+    if (!window.confirm(`Delete "${att.fileName}"?`)) return
+    try {
+      await deleteJobFile(att.id, att.filePath)
+      setAttachments(prev => prev.filter(a => a.id !== att.id))
+    } catch (err: any) {
+      setUploadError(err.message || 'Delete failed')
+    }
+  }
+
+  function isImageFile(fileType: string): boolean {
+    return fileType.startsWith('image/')
   }
 
   /* ── missing info check ── */
@@ -980,6 +1028,198 @@ export default function Jobs() {
                       </div>
                     )
                   })()}
+
+                  {/* ── Photos & Files ── */}
+                  <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Paperclip size={16} color={C.gold} />
+                        <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Photos & Files</span>
+                        {attachments.length > 0 && (
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, color: C.charcoal,
+                            background: C.silver, borderRadius: 10, padding: '1px 7px',
+                          }}>{attachments.length}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Upload area */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                      <div style={{ position: 'relative', flex: 1 }}>
+                        <select
+                          value={uploadCategory}
+                          onChange={e => setUploadCategory(e.target.value)}
+                          style={{
+                            width: '100%', padding: '8px 28px 8px 10px', borderRadius: 8,
+                            background: C.black, border: `1px solid ${C.steel}33`,
+                            color: C.white, fontSize: 12, outline: 'none',
+                            appearance: 'none', WebkitAppearance: 'none' as any,
+                          }}
+                        >
+                          <option value="before">Before</option>
+                          <option value="after">After</option>
+                          <option value="certificate">Certificate</option>
+                          <option value="receipt">Receipt</option>
+                          <option value="general">General</option>
+                        </select>
+                        <div style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </div>
+                      </div>
+                      <label
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                          borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                          background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                          minHeight: 36, whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <Upload size={13} />
+                        Add File
+                        <input
+                          type="file"
+                          accept="image/*,.pdf,.doc,.docx"
+                          style={{ display: 'none' }}
+                          onChange={e => { handleFileUpload(e.target.files); e.target.value = '' }}
+                        />
+                      </label>
+                    </div>
+
+                    {uploadError && (
+                      <div style={{ fontSize: 12, color: '#D46A6A', marginBottom: 8 }}>{uploadError}</div>
+                    )}
+
+                    {/* Attachments grid */}
+                    {attachmentsLoading && attachments.length === 0 && (
+                      <div style={{ fontSize: 12, color: C.steel, textAlign: 'center', padding: '12px 0' }}>Loading...</div>
+                    )}
+
+                    {attachments.length > 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                        {attachments.map(att => {
+                          const categoryColors: Record<string, string> = {
+                            before: '#5B9BD5', after: '#6ABF8A', certificate: '#9B7ED8',
+                            receipt: '#C6A86A', general: C.steel,
+                          }
+                          const catColor = categoryColors[att.category] || C.steel
+                          const catLabel = att.category.charAt(0).toUpperCase() + att.category.slice(1)
+
+                          return (
+                            <div key={att.id} style={{
+                              position: 'relative', background: C.black, borderRadius: 8,
+                              overflow: 'hidden', border: `1px solid ${C.steel}22`,
+                            }}>
+                              {/* Thumbnail or file icon */}
+                              {isImageFile(att.fileType) ? (
+                                <div
+                                  style={{
+                                    width: '100%', paddingTop: '100%', position: 'relative',
+                                    cursor: 'pointer', backgroundImage: `url(${att.url})`,
+                                    backgroundSize: 'cover', backgroundPosition: 'center',
+                                  }}
+                                  onClick={() => setPreviewAttachment(att)}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    width: '100%', paddingTop: '100%', position: 'relative',
+                                    cursor: 'pointer', display: 'flex',
+                                  }}
+                                  onClick={() => window.open(att.url, '_blank')}
+                                >
+                                  <div style={{
+                                    position: 'absolute', inset: 0, display: 'flex',
+                                    flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                    gap: 4,
+                                  }}>
+                                    <FileText size={24} color={C.steel} />
+                                    <span style={{ fontSize: 10, color: C.steel, maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                                      {att.fileName}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Category badge */}
+                              <div style={{
+                                position: 'absolute', top: 4, left: 4,
+                                fontSize: 9, fontWeight: 700, padding: '2px 6px',
+                                borderRadius: 4, background: catColor + '33', color: catColor,
+                                textTransform: 'uppercase', letterSpacing: 0.3,
+                              }}>
+                                {catLabel}
+                              </div>
+
+                              {/* Delete button */}
+                              <button
+                                onClick={e => { e.stopPropagation(); handleDeleteAttachment(att) }}
+                                style={{
+                                  position: 'absolute', top: 4, right: 4,
+                                  background: 'rgba(0,0,0,.6)', border: 'none',
+                                  borderRadius: 4, padding: 2, cursor: 'pointer',
+                                  display: 'flex', color: C.steel,
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
+                                onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
+                              >
+                                <X size={12} />
+                              </button>
+
+                              {/* File size */}
+                              <div style={{
+                                position: 'absolute', bottom: 4, right: 4,
+                                fontSize: 9, color: C.steel, background: 'rgba(0,0,0,.5)',
+                                padding: '1px 4px', borderRadius: 3,
+                              }}>
+                                {formatFileSize(att.fileSize)}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {attachments.length === 0 && !attachmentsLoading && (
+                      <div style={{ fontSize: 12, color: C.steel, textAlign: 'center', padding: '8px 0' }}>
+                        No files attached
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Image Preview Modal ── */}
+                  {previewAttachment && (
+                    <>
+                      <div
+                        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 200, cursor: 'pointer' }}
+                        onClick={() => setPreviewAttachment(null)}
+                      />
+                      <div style={{
+                        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                        zIndex: 210, maxWidth: '90vw', maxHeight: '90vh', display: 'flex',
+                        flexDirection: 'column', alignItems: 'center', gap: 12,
+                      }}>
+                        <img
+                          src={previewAttachment.url}
+                          alt={previewAttachment.fileName}
+                          style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 8, objectFit: 'contain' }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <span style={{ fontSize: 13, color: C.white }}>{previewAttachment.fileName}</span>
+                          <button
+                            onClick={() => setPreviewAttachment(null)}
+                            style={{
+                              background: C.charcoalLight, border: `1px solid ${C.steel}44`,
+                              color: C.white, borderRadius: 8, padding: '6px 14px',
+                              fontSize: 12, cursor: 'pointer',
+                            }}
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   {/* ── Certificates ── */}
                   {(() => {

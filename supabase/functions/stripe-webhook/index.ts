@@ -32,6 +32,46 @@ serve(async (req) => {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
         const orgId = session.metadata?.org_id
+
+        // ── One-time invoice payment ──
+        if (session.mode === 'payment' && session.metadata?.invoice_id) {
+          const invoiceId = session.metadata.invoice_id
+          const now = new Date().toISOString()
+
+          // Mark the invoice as Paid
+          await supabase
+            .from('invoices')
+            .update({ status: 'Paid', paid_at: now })
+            .eq('id', invoiceId)
+
+          // Check if the linked job should also move to Paid
+          const { data: invoice } = await supabase
+            .from('invoices')
+            .select('job_id')
+            .eq('id', invoiceId)
+            .single()
+
+          if (invoice?.job_id) {
+            // Get all invoices for this job
+            const { data: jobInvoices } = await supabase
+              .from('invoices')
+              .select('id, status')
+              .eq('job_id', invoice.job_id)
+
+            const allPaid = jobInvoices?.every(i => i.status === 'Paid')
+            if (allPaid) {
+              await supabase
+                .from('jobs')
+                .update({ status: 'Paid' })
+                .eq('id', invoice.job_id)
+            }
+          }
+
+          console.log(`✓ Invoice paid via Stripe: invoice=${invoiceId} org=${orgId}`)
+          break
+        }
+
+        // ── Subscription checkout ──
         const plan = session.metadata?.plan
         if (!orgId || !plan) break
 

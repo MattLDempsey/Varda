@@ -1,15 +1,16 @@
 import React, { useState, useMemo, useCallback } from 'react'
-import { Mail, MessageCircle, Send, Clock, CheckCircle2, Copy, ChevronRight, X, Search, Filter } from 'lucide-react'
+import { Mail, MessageCircle, Send, Clock, CheckCircle2, Copy, ChevronRight, X, Search, Filter, Smartphone } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
+import { buildSMSLink, isMobileDevice } from '../lib/sms-templates'
 
 import FeatureGate from '../components/FeatureGate'
 import type { Customer, Quote, CommLog } from '../data/DataContext'
 
 /* ── types ── */
-type Channel = 'email' | 'whatsapp'
-type TemplateId = 'quote' | 'followup' | 'confirmation' | 'running-late' | 'payment-reminder' | 'invoice'
+type Channel = 'email' | 'whatsapp' | 'sms'
+type TemplateId = 'quote' | 'followup' | 'confirmation' | 'running-late' | 'payment-reminder' | 'invoice' | 'sms-reminder' | 'sms-quote' | 'sms-invoice'
 type TabId = 'templates' | 'compose' | 'history'
 
 interface Template {
@@ -123,6 +124,24 @@ Thank you for choosing Grey Havens Electrical.
 Kind regards,
 Matt`,
   },
+  {
+    id: 'sms-reminder',
+    name: 'Appointment Reminder',
+    channel: 'sms',
+    body: `Hi {{customer}}, reminder: your electrician from Grey Havens is visiting tomorrow morning (8am-12pm). Questions? Call 07XXX XXX XXX`,
+  },
+  {
+    id: 'sms-quote',
+    name: 'Quote Sent',
+    channel: 'sms',
+    body: `Hi {{customer}}, your quote {{quoteRef}} ({{total}} inc VAT) from Grey Havens Electrical has been emailed to you. Any questions, just reply to this text.`,
+  },
+  {
+    id: 'sms-invoice',
+    name: 'Invoice Sent',
+    channel: 'sms',
+    body: `Hi {{customer}}, invoice {{invoiceRef}} ({{total}}) from Grey Havens Electrical has been emailed to you. Any questions, just reply.`,
+  },
 ]
 
 /* ── date formatter ── */
@@ -188,6 +207,7 @@ export default function Comms() {
   const template = templates.find(t => t.id === selectedTemplate)!
   const emailTemplates = templates.filter(t => t.channel === 'email')
   const waTemplates = templates.filter(t => t.channel === 'whatsapp')
+  const smsTemplates = templates.filter(t => t.channel === 'sms')
 
   const composeCustomer = useMemo(() => customers.find(c => c.id === composeCustomerId), [customers, composeCustomerId])
   const composeLatestQuote = useMemo(() => {
