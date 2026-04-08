@@ -94,10 +94,24 @@ export default function Jobs() {
   const [newInvAmount, setNewInvAmount] = useState('')
   const [newInvDesc, setNewInvDesc] = useState('')
 
+  // Panel tab state
+  const [panelTab, setPanelTab] = useState<'details' | 'quote' | 'payments'>('details')
+  const [requoteSuccess, setRequoteSuccess] = useState(false)
+
   // Materials breakdown editor state
   const [materialsEditMode, setMaterialsEditMode] = useState(false)
   const [materialLines, setMaterialLines] = useState<Array<{ description: string; quantity: number; unitPrice: number }>>([])
   const [materialsInitialised, setMaterialsInitialised] = useState<string | null>(null)
+
+  /* ── select job handler (resets panel tab) ── */
+  function selectJob(job: Job) {
+    setSelectedJob(job)
+    setPanelTab('details')
+    setMaterialsEditMode(false)
+    setMaterialsInitialised(null)
+    setShowAddInvoice(false)
+    setRequoteSuccess(false)
+  }
 
   /* ── missing info check ── */
   function getJobWarning(job: Job): string | null {
@@ -469,7 +483,7 @@ export default function Jobs() {
                     draggable={true}
                     onDragStart={(e) => handleDragStart(e, job.id)}
                     style={{ ...s.card, borderLeftColor: statusColor[job.status] }}
-                    onClick={() => setSelectedJob(job)}
+                    onClick={() => selectJob(job)}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = 'translateY(-2px)'
                       e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,.3)'
@@ -520,7 +534,7 @@ export default function Jobs() {
                 <tr
                   key={job.id}
                   style={s.tableRow}
-                  onClick={() => setSelectedJob(job)}
+                  onClick={() => selectJob(job)}
                   onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '22')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
@@ -625,7 +639,7 @@ export default function Jobs() {
                     <tr
                       key={job.id}
                       style={s.tableRow}
-                      onClick={() => setSelectedJob(job)}
+                      onClick={() => selectJob(job)}
                       onMouseEnter={e => { e.currentTarget.style.background = C.steel + '22' }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                     >
@@ -656,6 +670,32 @@ export default function Jobs() {
         const totalPaid = jobInvoices.filter(i => i.status === 'Paid').reduce((sum, i) => sum + i.grandTotal, 0)
         const remaining = Math.max(0, quotedTotal - totalInvoiced)
 
+        const tabBtnStyle = (active: boolean): CSSProperties => ({
+          padding: '7px 14px',
+          borderRadius: 20,
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: 12,
+          fontWeight: 600,
+          background: active ? C.gold : 'transparent',
+          color: active ? C.black : C.steel,
+          transition: 'background .15s, color .15s',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          minHeight: 32,
+        })
+
+        const tabBadge = (text: string): CSSProperties => ({
+          fontSize: 10,
+          fontWeight: 700,
+          padding: '1px 6px',
+          borderRadius: 8,
+          background: `${C.steel}33`,
+          color: C.silver,
+          marginLeft: 2,
+        })
+
         return (
           <>
             <div style={s.overlay} onClick={() => setSelectedJob(null)} />
@@ -667,870 +707,946 @@ export default function Jobs() {
                 </button>
               </div>
 
-              <span style={s.fieldLabel}>Customer</span>
-              <div style={s.fieldValue}>{selectedJob.customerName}</div>
-
-              <div style={s.detailRow}>
-                <div>
-                  <span style={s.fieldLabel}>Job Type</span>
-                  <div style={s.fieldValue}>{selectedJob.jobType}</div>
-                </div>
-                <div>
-                  <span style={s.fieldLabel}>Value</span>
-                  <div style={{ ...s.fieldValue, color: C.gold, fontSize: 20, fontWeight: 700 }}>{fmtCurrency(selectedJob.value)}</div>
-                </div>
+              {/* ── Tab Bar ── */}
+              <div style={{ display: 'flex', gap: 4, background: C.black, borderRadius: 24, padding: 4, marginBottom: 20 }}>
+                <button style={tabBtnStyle(panelTab === 'details')} onClick={() => setPanelTab('details')}>
+                  Details
+                </button>
+                <button style={tabBtnStyle(panelTab === 'quote')} onClick={() => setPanelTab('quote')}>
+                  Quote
+                  {linkedQuote && <span style={tabBadge(linkedQuote.ref)}>{linkedQuote.ref}</span>}
+                </button>
+                <button style={tabBtnStyle(panelTab === 'payments')} onClick={() => setPanelTab('payments')}>
+                  Payments
+                  {jobInvoices.length > 0 && <span style={tabBadge(String(jobInvoices.length))}>{jobInvoices.length}</span>}
+                </button>
               </div>
 
-              <div style={s.detailRow}>
+              {/* ════════════════════════════════════════════════ */}
+              {/* ── DETAILS TAB ── */}
+              {/* ════════════════════════════════════════════════ */}
+              {panelTab === 'details' && (
                 <div>
-                  <span style={s.fieldLabel}>Date</span>
-                  <div style={s.fieldValue}>{fmtDate(selectedJob.date)}</div>
-                </div>
-                <div>
-                  <span style={s.fieldLabel}>Status</span>
-                  <div style={{ marginBottom: 16 }}>
-                    <span
-                      style={{
-                        ...s.badge,
-                        color: statusColor[selectedJob.status],
-                        background: statusColor[selectedJob.status] + '1A',
-                      }}
-                    >
-                      {selectedJob.status}
-                    </span>
+                  <span style={s.fieldLabel}>Customer</span>
+                  <div style={s.fieldValue}>{selectedJob.customerName}</div>
+
+                  <div style={s.detailRow}>
+                    <div>
+                      <span style={s.fieldLabel}>Job Type</span>
+                      <div style={s.fieldValue}>{selectedJob.jobType}</div>
+                    </div>
+                    <div>
+                      <span style={s.fieldLabel}>Value</span>
+                      <div style={{ ...s.fieldValue, color: C.gold, fontSize: 20, fontWeight: 700 }}>{fmtCurrency(selectedJob.value)}</div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div style={s.detailRow}>
-                <div>
-                  <span style={s.fieldLabel}>Est. Hours</span>
-                  <div style={s.fieldValue}>{selectedJob.estimatedHours}h</div>
-                </div>
-                {linkedQuote && (
-                  <div>
-                    <span style={s.fieldLabel}>Quote Ref</span>
-                    <div style={{ ...s.fieldValue, color: C.gold }}>{linkedQuote.ref}</div>
-                  </div>
-                )}
-              </div>
-
-              {/* ── Actual Hours Tracking ── */}
-              {(['In Progress', 'Complete', 'Invoiced', 'Paid'] as JobStatus[]).includes(selectedJob.status) && (() => {
-                const variance = selectedJob.actualHours != null
-                  ? selectedJob.actualHours - selectedJob.estimatedHours
-                  : null
-                const varianceColor = variance != null
-                  ? (variance <= 0 ? '#6ABF8A' : '#D46A6A')
-                  : C.steel
-
-                return (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={s.detailRow}>
-                      <div>
-                        <span style={s.fieldLabel}>Actual Hours</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.5}
-                          value={selectedJob.actualHours ?? ''}
-                          placeholder="0"
-                          onChange={e => {
-                            const val = e.target.value === '' ? undefined : Number(e.target.value)
-                            updateJob(selectedJob.id, { actualHours: val })
-                            setSelectedJob({ ...selectedJob, actualHours: val })
-                          }}
-                          style={{
-                            width: '100%', padding: '10px 12px', borderRadius: 10,
-                            background: C.black, border: `1px solid ${C.steel}33`,
-                            color: C.white, fontSize: 14, outline: 'none',
-                            boxSizing: 'border-box' as const,
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <span style={s.fieldLabel}>Variance</span>
-                        <div style={{
-                          fontSize: 14, fontWeight: 600, color: varianceColor,
-                          padding: '10px 0',
-                        }}>
-                          {variance != null
-                            ? `${variance > 0 ? '+' : ''}${variance.toFixed(1)}h ${variance <= 0 ? 'under' : 'over'}`
-                            : '-- not set --'}
+                  <div style={s.detailRow}>
+                    <div>
+                      <span style={s.fieldLabel}>Date</span>
+                      <div style={s.fieldValue}>{fmtDate(selectedJob.date)}</div>
+                    </div>
+                    <div>
+                      <span style={s.fieldLabel}>Status</span>
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ position: 'relative' }}>
+                          <select
+                            value={selectedJob.status}
+                            onChange={e => {
+                              const newStatus = e.target.value as typeof selectedJob.status
+                              moveJob(selectedJob.id, newStatus)
+                              setSelectedJob({ ...selectedJob, status: newStatus })
+                            }}
+                            style={{
+                              width: '100%', padding: '6px 28px 6px 10px', borderRadius: 8,
+                              background: C.black, border: `1px solid ${statusColor[selectedJob.status]}44`,
+                              color: statusColor[selectedJob.status], fontSize: 13, fontWeight: 600,
+                              cursor: 'pointer', outline: 'none',
+                              appearance: 'none', WebkitAppearance: 'none' as any,
+                            }}
+                          >
+                            {[...columns, 'Paid' as JobStatus].map(col => (
+                              <option key={col} value={col} style={{ color: '#fff', background: '#1A1C20' }}>{col}</option>
+                            ))}
+                          </select>
+                          <div style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                )
-              })()}
 
-              {selectedJob.notes && (
-                <>
-                  <span style={s.fieldLabel}>Notes</span>
-                  <div style={{ ...s.fieldValue, fontStyle: 'italic', color: C.silver }}>{selectedJob.notes}</div>
-                </>
-              )}
-
-              {/* ── Schedule Job ── */}
-              {(selectedJob.status === 'Accepted' || selectedJob.status === 'Scheduled' || selectedJob.status === 'In Progress') && (() => {
-                const jobEvents = events.filter(e => e.jobId === selectedJob.id).sort((a, b) => a.date.localeCompare(b.date))
-                const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day' }
-                const inputStyle: CSSProperties = {
-                  width: '100%', padding: '10px 12px', borderRadius: 10,
-                  background: C.black, border: `1px solid ${C.steel}33`,
-                  color: C.white, fontSize: 14, outline: 'none',
-                }
-
-                return (
-                  <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                      <CalendarDays size={16} color={C.gold} />
-                      <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Schedule</span>
+                  <div style={s.detailRow}>
+                    <div>
+                      <span style={s.fieldLabel}>Est. Hours</span>
+                      <div style={s.fieldValue}>{selectedJob.estimatedHours}h</div>
                     </div>
+                    <div style={{ minHeight: 1 }} />
+                  </div>
 
-                    {/* Existing scheduled days */}
-                    {jobEvents.length > 0 && (
-                      <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {jobEvents.map(ev => (
-                          <div key={ev.id} style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '8px 12px', background: C.black, borderRadius: 8,
-                            borderLeft: `3px solid ${C.blue}`,
-                          }}>
-                            <div>
-                              <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{fmtDate(ev.date)}</span>
-                              <span style={{ fontSize: 12, color: C.steel, marginLeft: 8 }}>{slotLabels[ev.slot]}</span>
+                  {/* ── Actual Hours Tracking ── */}
+                  {(['In Progress', 'Complete', 'Invoiced', 'Paid'] as JobStatus[]).includes(selectedJob.status) && (() => {
+                    const variance = selectedJob.actualHours != null
+                      ? selectedJob.actualHours - selectedJob.estimatedHours
+                      : null
+                    const varianceColor = variance != null
+                      ? (variance <= 0 ? '#6ABF8A' : '#D46A6A')
+                      : C.steel
+
+                    return (
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={s.detailRow}>
+                          <div>
+                            <span style={s.fieldLabel}>Actual Hours</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.5}
+                              value={selectedJob.actualHours ?? ''}
+                              placeholder="0"
+                              onChange={e => {
+                                const val = e.target.value === '' ? undefined : Number(e.target.value)
+                                updateJob(selectedJob.id, { actualHours: val })
+                                setSelectedJob({ ...selectedJob, actualHours: val })
+                              }}
+                              style={{
+                                width: '100%', padding: '10px 12px', borderRadius: 10,
+                                background: C.black, border: `1px solid ${C.steel}33`,
+                                color: C.white, fontSize: 14, outline: 'none',
+                                boxSizing: 'border-box' as const,
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <span style={s.fieldLabel}>Variance</span>
+                            <div style={{
+                              fontSize: 14, fontWeight: 600, color: varianceColor,
+                              padding: '10px 0',
+                            }}>
+                              {variance != null
+                                ? `${variance > 0 ? '+' : ''}${variance.toFixed(1)}h ${variance <= 0 ? 'under' : 'over'}`
+                                : '-- not set --'}
                             </div>
-                            <button
-                              onClick={() => { if (window.confirm('Remove this event from the calendar?')) deleteEvent(ev.id) }}
-                              style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
-                              onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
-                              onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
-                            >
-                              <X size={14} />
-                            </button>
                           </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Add another day */}
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                      <input
-                        type="date"
-                        value={scheduleDate}
-                        onChange={e => setScheduleDate(e.target.value)}
-                        style={{ ...inputStyle, flex: 1, colorScheme: 'dark' }}
-                      />
-                      <div style={{ position: 'relative', flex: 1 }}>
-                        <select
-                          value={scheduleSlot}
-                          onChange={e => setScheduleSlot(e.target.value as 'morning' | 'afternoon' | 'full')}
-                          style={{ ...inputStyle, appearance: 'none', WebkitAppearance: 'none' as any }}
-                        >
-                          <option value="morning">Morning</option>
-                          <option value="afternoon">Afternoon</option>
-                          <option value="full">Full Day</option>
-                        </select>
-                        <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                         </div>
                       </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (!scheduleDate) return
-                        addEvent({
-                          jobId: selectedJob.id,
-                          customerId: selectedJob.customerId,
-                          customerName: selectedJob.customerName,
-                          jobType: selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId)?.jobTypeName || '' : ''),
-                          date: scheduleDate,
-                          slot: scheduleSlot,
-                          status: 'Scheduled',
-                          notes: '',
-                        })
-                        // Update job date to the earliest scheduled date
-                        const allDates = [...jobEvents.map(e => e.date), scheduleDate].sort()
-                        updateJob(selectedJob.id, { date: allDates[0] })
-                        if (selectedJob.status === 'Accepted') {
-                          moveJob(selectedJob.id, 'Scheduled')
-                          setSelectedJob({ ...selectedJob, status: 'Scheduled', date: allDates[0] })
-                        }
-                        setScheduleDate('')
-                      }}
-                      disabled={!scheduleDate}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
-                        cursor: scheduleDate ? 'pointer' : 'not-allowed', minHeight: 42,
-                        background: scheduleDate ? `${C.gold}15` : C.black,
-                        border: `1px solid ${scheduleDate ? C.gold + '44' : C.steel + '33'}`,
-                        color: scheduleDate ? C.gold : C.steel,
-                        opacity: scheduleDate ? 1 : 0.5,
-                      }}
-                    >
-                      <CalendarDays size={14} />
-                      {jobEvents.length > 0 ? 'Add Day' : 'Schedule'}
-                    </button>
-                  </div>
-                )
-              })()}
+                    )
+                  })()}
 
-              {/* ── Quote Breakdown ── */}
-              {linkedQuote && (
-                <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                  <div style={{ marginBottom: 12 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Quote {linkedQuote.ref}</span>
-                  </div>
+                  {selectedJob.notes && (
+                    <>
+                      <span style={s.fieldLabel}>Notes</span>
+                      <div style={{ ...s.fieldValue, fontStyle: 'italic', color: C.silver }}>{selectedJob.notes}</div>
+                    </>
+                  )}
 
-                  <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
-                    {linkedQuote.description && (
-                      <div style={{ color: C.silver, marginBottom: 10, fontStyle: 'italic' }}>{linkedQuote.description}</div>
-                    )}
-                    {[
-                      { label: 'Materials', value: linkedQuote.materials },
-                      { label: `Labour (${linkedQuote.estHours}h)`, value: linkedQuote.labour },
-                      ...(linkedQuote.certificates > 0 ? [{ label: 'Certificates', value: linkedQuote.certificates }] : []),
-                      ...(linkedQuote.waste > 0 ? [{ label: 'Waste', value: linkedQuote.waste }] : []),
-                      ...(linkedQuote.adjustments > 0 ? [{ label: 'Adjustments', value: linkedQuote.adjustments }] : []),
-                    ].map(row => (
-                      <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
-                        <span>{row.label}</span>
-                        <span style={{ color: C.white, fontWeight: 500 }}>£{row.value.toFixed(2)}</span>
-                      </div>
-                    ))}
-                    <div style={{ borderTop: `1px solid ${C.steel}33`, marginTop: 8, paddingTop: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
-                        <span>Net Total</span><span style={{ color: C.white, fontWeight: 600 }}>£{linkedQuote.netTotal.toFixed(2)}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
-                        <span>VAT (20%)</span><span style={{ color: C.white }}>£{linkedQuote.vat.toFixed(2)}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 16, fontWeight: 700, color: C.gold, borderTop: `2px solid ${C.gold}44`, marginTop: 4 }}>
-                        <span>Total</span><span>£{linkedQuote.grandTotal.toFixed(2)}</span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 0', color: C.steel, fontSize: 12 }}>
-                      <span>Margin: {Math.round(linkedQuote.margin)}%</span>
-                      <span>Status: {linkedQuote.status}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+                  {/* ── Schedule Job ── */}
+                  {(selectedJob.status === 'Accepted' || selectedJob.status === 'Scheduled' || selectedJob.status === 'In Progress') && (() => {
+                    const jobEvents = events.filter(e => e.jobId === selectedJob.id).sort((a, b) => a.date.localeCompare(b.date))
+                    const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day' }
+                    const inputStyle: CSSProperties = {
+                      width: '100%', padding: '10px 12px', borderRadius: 10,
+                      background: C.black, border: `1px solid ${C.steel}33`,
+                      color: C.white, fontSize: 14, outline: 'none',
+                    }
 
-              {/* ── Materials Breakdown ── */}
-              {linkedQuote && (() => {
-                const breakdown = linkedQuote.materialsBreakdown ?? []
-                const materialsTotal = breakdown.reduce((s, m) => s + m.quantity * m.unitPrice, 0)
+                    return (
+                      <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                          <CalendarDays size={16} color={C.gold} />
+                          <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Schedule</span>
+                        </div>
 
-                // Initialise materialLines from quote data when entering edit mode
-                if (materialsEditMode && materialsInitialised !== linkedQuote.id) {
-                  setMaterialLines(breakdown.length > 0 ? breakdown.map(m => ({ ...m })) : [{ description: '', quantity: 1, unitPrice: 0 }])
-                  setMaterialsInitialised(linkedQuote.id)
-                }
-
-                const editTotal = materialLines.reduce((s, m) => s + m.quantity * m.unitPrice, 0)
-
-                return (
-                  <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Package size={16} color={C.gold} />
-                        <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Materials</span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (materialsEditMode) {
-                            // Cancel edit
-                            setMaterialsEditMode(false)
-                            setMaterialsInitialised(null)
-                          } else {
-                            setMaterialsEditMode(true)
-                          }
-                        }}
-                        style={{
-                          background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 8,
-                          color: materialsEditMode ? C.red : C.gold, cursor: 'pointer', padding: '4px 10px',
-                          fontSize: 12, fontWeight: 500, minHeight: 30,
-                        }}
-                      >
-                        {materialsEditMode ? 'Cancel' : (breakdown.length > 0 ? 'Edit' : 'Add Breakdown')}
-                      </button>
-                    </div>
-
-                    {!materialsEditMode ? (
-                      <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
-                        {breakdown.length === 0 ? (
-                          <div style={{ color: C.steel, fontStyle: 'italic' }}>
-                            Estimated total: {'\u00A3'}{linkedQuote.materials.toFixed(2)} (from quote)
-                          </div>
-                        ) : (
-                          <>
-                            {breakdown.map((m, i) => (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
-                                <span>{m.description || 'Item'} {m.quantity > 1 ? `x${m.quantity}` : ''}</span>
-                                <span style={{ color: C.white, fontWeight: 500 }}>{'\u00A3'}{(m.quantity * m.unitPrice).toFixed(2)}</span>
+                        {/* Existing scheduled days */}
+                        {jobEvents.length > 0 && (
+                          <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {jobEvents.map(ev => (
+                              <div key={ev.id} style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '8px 12px', background: C.black, borderRadius: 8,
+                                borderLeft: `3px solid ${C.blue}`,
+                              }}>
+                                <div>
+                                  <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{fmtDate(ev.date)}</span>
+                                  <span style={{ fontSize: 12, color: C.steel, marginLeft: 8 }}>{slotLabels[ev.slot]}</span>
+                                </div>
+                                <button
+                                  onClick={() => { if (window.confirm('Remove this event from the calendar?')) deleteEvent(ev.id) }}
+                                  style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
+                                  onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
+                                  onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
+                                >
+                                  <X size={14} />
+                                </button>
                               </div>
                             ))}
-                            <div style={{ borderTop: `1px solid ${C.steel}33`, marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                              <span style={{ color: C.silver }}>Total</span>
-                              <span style={{ color: C.gold }}>{'\u00A3'}{materialsTotal.toFixed(2)}</span>
-                            </div>
-                            {Math.abs(materialsTotal - linkedQuote.materials) > 0.01 && (
-                              <div style={{ fontSize: 11, color: materialsTotal > linkedQuote.materials ? C.red : C.green, marginTop: 4 }}>
-                                {materialsTotal > linkedQuote.materials ? '+' : ''}{'\u00A3'}{(materialsTotal - linkedQuote.materials).toFixed(2)} vs quote estimate
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    ) : (
-                      <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
-                        {materialLines.map((line, i) => (
-                          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                            <input
-                              type="text"
-                              placeholder="Description"
-                              value={line.description}
-                              onChange={e => {
-                                const updated = [...materialLines]
-                                updated[i] = { ...updated[i], description: e.target.value }
-                                setMaterialLines(updated)
-                              }}
-                              style={{
-                                flex: 3, padding: '8px 10px', borderRadius: 8,
-                                background: C.charcoal, border: `1px solid ${C.steel}33`,
-                                color: C.white, fontSize: 13, outline: 'none',
-                              }}
-                            />
-                            <input
-                              type="number"
-                              placeholder="Qty"
-                              min={1}
-                              value={line.quantity}
-                              onChange={e => {
-                                const updated = [...materialLines]
-                                updated[i] = { ...updated[i], quantity: Math.max(1, Number(e.target.value) || 1) }
-                                setMaterialLines(updated)
-                              }}
-                              style={{
-                                flex: 1, padding: '8px 6px', borderRadius: 8, textAlign: 'center',
-                                background: C.charcoal, border: `1px solid ${C.steel}33`,
-                                color: C.white, fontSize: 13, outline: 'none', minWidth: 40,
-                              }}
-                            />
-                            <input
-                              type="number"
-                              placeholder="Price"
-                              min={0}
-                              step={0.01}
-                              value={line.unitPrice || ''}
-                              onChange={e => {
-                                const updated = [...materialLines]
-                                updated[i] = { ...updated[i], unitPrice: Number(e.target.value) || 0 }
-                                setMaterialLines(updated)
-                              }}
-                              style={{
-                                flex: 1.5, padding: '8px 6px', borderRadius: 8,
-                                background: C.charcoal, border: `1px solid ${C.steel}33`,
-                                color: C.white, fontSize: 13, outline: 'none', minWidth: 60,
-                              }}
-                            />
-                            <span style={{ flex: 1, textAlign: 'right', color: C.silver, fontWeight: 500, fontSize: 12, minWidth: 50 }}>
-                              {'\u00A3'}{(line.quantity * line.unitPrice).toFixed(2)}
-                            </span>
-                            <button
-                              onClick={() => setMaterialLines(materialLines.filter((_, j) => j !== i))}
-                              style={{
-                                background: 'transparent', border: 'none', color: C.steel,
-                                cursor: 'pointer', padding: 4, display: 'flex',
-                              }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
                           </div>
-                        ))}
+                        )}
 
-                        <button
-                          onClick={() => setMaterialLines([...materialLines, { description: '', quantity: 1, unitPrice: 0 }])}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                            padding: '8px', borderRadius: 8, fontSize: 12, fontWeight: 500,
-                            cursor: 'pointer', background: 'transparent',
-                            border: `1px dashed ${C.steel}44`, color: C.steel,
-                            marginBottom: 10,
-                          }}
-                        >
-                          <Plus size={14} /> Add Item
-                        </button>
-
-                        <div style={{ borderTop: `1px solid ${C.steel}33`, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                          <span style={{ color: C.silver, fontWeight: 600 }}>Total</span>
-                          <span style={{ color: C.gold, fontWeight: 700, fontSize: 15 }}>{'\u00A3'}{editTotal.toFixed(2)}</span>
+                        {/* Add another day */}
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                          <input
+                            type="date"
+                            value={scheduleDate}
+                            onChange={e => setScheduleDate(e.target.value)}
+                            style={{ ...inputStyle, flex: 1, colorScheme: 'dark' }}
+                          />
+                          <div style={{ position: 'relative', flex: 1 }}>
+                            <select
+                              value={scheduleSlot}
+                              onChange={e => setScheduleSlot(e.target.value as 'morning' | 'afternoon' | 'full')}
+                              style={{ ...inputStyle, appearance: 'none', WebkitAppearance: 'none' as any }}
+                            >
+                              <option value="morning">Morning</option>
+                              <option value="afternoon">Afternoon</option>
+                              <option value="full">Full Day</option>
+                            </select>
+                            <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </div>
+                          </div>
                         </div>
-
                         <button
                           onClick={() => {
-                            const validLines = materialLines.filter(m => m.description.trim() || m.unitPrice > 0)
-                            updateQuote(linkedQuote.id, {
-                              materialsBreakdown: validLines,
-                              materials: editTotal,
+                            if (!scheduleDate) return
+                            addEvent({
+                              jobId: selectedJob.id,
+                              customerId: selectedJob.customerId,
+                              customerName: selectedJob.customerName,
+                              jobType: selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId)?.jobTypeName || '' : ''),
+                              date: scheduleDate,
+                              slot: scheduleSlot,
+                              status: 'Scheduled',
+                              notes: '',
                             })
-                            setMaterialsEditMode(false)
-                            setMaterialsInitialised(null)
+                            // Update job date to the earliest scheduled date
+                            const allDates = [...jobEvents.map(e => e.date), scheduleDate].sort()
+                            updateJob(selectedJob.id, { date: allDates[0] })
+                            if (selectedJob.status === 'Accepted') {
+                              moveJob(selectedJob.id, 'Scheduled')
+                              setSelectedJob({ ...selectedJob, status: 'Scheduled', date: allDates[0] })
+                            }
+                            setScheduleDate('')
                           }}
+                          disabled={!scheduleDate}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
+                            cursor: scheduleDate ? 'pointer' : 'not-allowed', minHeight: 42,
+                            background: scheduleDate ? `${C.gold}15` : C.black,
+                            border: `1px solid ${scheduleDate ? C.gold + '44' : C.steel + '33'}`,
+                            color: scheduleDate ? C.gold : C.steel,
+                            opacity: scheduleDate ? 1 : 0.5,
+                          }}
+                        >
+                          <CalendarDays size={14} />
+                          {jobEvents.length > 0 ? 'Add Day' : 'Schedule'}
+                        </button>
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── Certificates ── */}
+                  {(() => {
+                    const certTypes = ['consumer unit', 'ev charger', 'rewire', 'eicr', 'consumer', 'condition report']
+                    const jt = selectedJob.jobType.toLowerCase()
+                    const showCerts = certTypes.some(t => jt.includes(t))
+                    if (!showCerts) return null
+                    return (
+                      <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                        <button
+                          onClick={() => { setSelectedJob(null); navigate(`/certificates/${selectedJob.id}`) }}
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                             padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
                             cursor: 'pointer', minHeight: 42,
-                            background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                            background: '#9B7ED815', border: '1px solid #9B7ED844', color: '#9B7ED8',
                           }}
                         >
-                          Save Materials
+                          <FileCheck size={14} /> Certificates
                         </button>
                       </div>
-                    )}
-                  </div>
-                )
-              })()}
-
-              {/* ── Payment Summary (multi-invoice) ── */}
-              <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <Receipt size={16} color={C.gold} />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Payments</span>
+                    )
+                  })()}
                 </div>
+              )}
 
-                {/* Quoted total */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, color: C.silver }}>
-                  <span>Quoted Total</span>
-                  <span style={{ color: C.white, fontWeight: 600 }}>{fmtCurrencyDecimals(quotedTotal)}</span>
-                </div>
-
-                {/* Progress bar */}
-                {jobInvoices.length > 0 && (() => {
-                  const barTotal = Math.max(quotedTotal, totalInvoiced)
-                  if (barTotal === 0) return null
-                  const paidPct = Math.min((totalPaid / barTotal) * 100, 100)
-                  const unpaidInvoicedPct = Math.min(((totalInvoiced - totalPaid) / barTotal) * 100, 100 - paidPct)
-                  return (
-                    <div style={{ margin: '8px 0 12px', height: 8, borderRadius: 4, background: `${C.steel}33`, overflow: 'hidden', display: 'flex' }}>
-                      {paidPct > 0 && <div style={{ width: `${paidPct}%`, background: '#4CAF50', height: '100%', transition: 'width .3s' }} />}
-                      {unpaidInvoicedPct > 0 && <div style={{ width: `${unpaidInvoicedPct}%`, background: C.gold, height: '100%', transition: 'width .3s' }} />}
+              {/* ════════════════════════════════════════════════ */}
+              {/* ── QUOTE TAB ── */}
+              {/* ════════════════════════════════════════════════ */}
+              {panelTab === 'quote' && (
+                <div>
+                  {!linkedQuote ? (
+                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                      <div style={{ fontSize: 14, color: C.steel, marginBottom: 16 }}>No quote linked -- create one from Quick Quote</div>
+                      <button
+                        onClick={() => { setSelectedJob(null); navigate(`/quote?jobId=${selectedJob.id}`) }}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 8,
+                          padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                          cursor: 'pointer', minHeight: 42,
+                          background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                        }}
+                      >
+                        <Plus size={14} /> Create Quote
+                      </button>
                     </div>
-                  )
-                })()}
+                  ) : (
+                    <>
+                      {/* Quote Breakdown */}
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ marginBottom: 12 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Quote {linkedQuote.ref}</span>
+                        </div>
 
-                {/* Invoice list */}
-                {jobInvoices.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-                    {jobInvoices.map(inv => {
-                      const invTypeColor = inv.type ? invoiceTypeColors[inv.type] : C.steel
-                      const invStatusColor = invoiceStatusColors[inv.status] ?? C.steel
-                      return (
-                        <div key={inv.id} style={{
-                          background: C.black, borderRadius: 10, padding: '10px 14px',
-                          borderLeft: `3px solid ${invTypeColor}`,
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              {inv.type && (
-                                <span style={{
-                                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                                  color: invTypeColor, background: invTypeColor + '1A',
-                                  textTransform: 'uppercase', letterSpacing: 0.5,
-                                }}>
-                                  {inv.type}
-                                </span>
-                              )}
-                              <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{inv.ref}</span>
+                        <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
+                          {linkedQuote.description && (
+                            <div style={{ color: C.silver, marginBottom: 10, fontStyle: 'italic' }}>{linkedQuote.description}</div>
+                          )}
+                          {[
+                            { label: 'Materials', value: linkedQuote.materials },
+                            { label: `Labour (${linkedQuote.estHours}h)`, value: linkedQuote.labour },
+                            ...(linkedQuote.certificates > 0 ? [{ label: 'Certificates', value: linkedQuote.certificates }] : []),
+                            ...(linkedQuote.waste > 0 ? [{ label: 'Waste', value: linkedQuote.waste }] : []),
+                            ...(linkedQuote.adjustments > 0 ? [{ label: 'Adjustments', value: linkedQuote.adjustments }] : []),
+                          ].map(row => (
+                            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
+                              <span>{row.label}</span>
+                              <span style={{ color: C.white, fontWeight: 500 }}>{'\u00A3'}{row.value.toFixed(2)}</span>
                             </div>
-                            <span style={{
-                              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                              color: invStatusColor, background: invStatusColor + '1A',
-                              textTransform: 'uppercase', letterSpacing: 0.5,
-                            }}>
-                              {inv.status}
-                            </span>
+                          ))}
+                          <div style={{ borderTop: `1px solid ${C.steel}33`, marginTop: 8, paddingTop: 8 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
+                              <span>Net Total</span><span style={{ color: C.white, fontWeight: 600 }}>{'\u00A3'}{linkedQuote.netTotal.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
+                              <span>VAT (20%)</span><span style={{ color: C.white }}>{'\u00A3'}{linkedQuote.vat.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 16, fontWeight: 700, color: C.gold, borderTop: `2px solid ${C.gold}44`, marginTop: 4 }}>
+                              <span>Total</span><span>{'\u00A3'}{linkedQuote.grandTotal.toFixed(2)}</span>
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 15, fontWeight: 700, color: C.gold }}>{fmtCurrencyDecimals(inv.grandTotal)}</span>
-                            <div style={{ display: 'flex', gap: 4 }}>
-                              <button
-                                onClick={() => {
-                                  if (linkedQuote) generateInvoicePDF(linkedQuote, inv.ref, settingsToBusinessInfo(settings))
-                                }}
-                                style={{
-                                  background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 6,
-                                  color: C.silver, cursor: 'pointer', padding: '4px 8px', fontSize: 11,
-                                  display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
-                                }}
-                              >
-                                <FileDown size={12} /> PDF
-                              </button>
-                              {inv.status !== 'Paid' && (
-                                <button
-                                  onClick={() => {
-                                    updateInvoice(inv.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
-                                    const url = `${window.location.origin}/inv/${inv.id}`
-                                    navigator.clipboard.writeText(url)
-                                    addComm({
-                                      customerId: selectedJob.customerId, customerName: selectedJob.customerName,
-                                      templateName: 'Send Invoice', channel: 'email', status: 'Sent',
-                                      date: new Date().toISOString(), body: url,
-                                    })
-                                    alert(`Invoice link copied — send to ${selectedJob.customerName}:\n\n${url}`)
-                                  }}
-                                  style={{
-                                    background: 'transparent', border: `1px solid ${C.gold}33`, borderRadius: 6,
-                                    color: C.gold, cursor: 'pointer', padding: '4px 8px', fontSize: 11,
-                                    display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
-                                  }}
-                                >
-                                  <Send size={12} /> Send
-                                </button>
-                              )}
-                              {inv.status !== 'Paid' && (
-                                <button
-                                  onClick={() => {
-                                    updateInvoice(inv.id, { status: 'Paid', paidAt: new Date().toISOString().split('T')[0] })
-                                    // Check if ALL invoices are now paid and total paid >= quoted
-                                    const updatedPaid = totalPaid + inv.grandTotal
-                                    const allPaidAfter = jobInvoices.every(i => i.id === inv.id || i.status === 'Paid')
-                                    if (allPaidAfter && updatedPaid >= quotedTotal) {
-                                      moveJob(selectedJob.id, 'Paid')
-                                      setSelectedJob({ ...selectedJob, status: 'Paid' })
-                                    }
-                                  }}
-                                  style={{
-                                    background: '#4CAF5010', border: '1px solid #4CAF5033', borderRadius: 6,
-                                    color: '#4CAF50', cursor: 'pointer', padding: '4px 8px', fontSize: 11,
-                                    display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
-                                  }}
-                                >
-                                  <Receipt size={12} /> Paid
-                                </button>
-                              )}
-                            </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 0', color: C.steel, fontSize: 12 }}>
+                            <span>Margin: {Math.round(linkedQuote.margin)}%</span>
+                            <span>Status: {linkedQuote.status}</span>
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Totals */}
-                {jobInvoices.length > 0 && (
-                  <div style={{ background: C.black, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: C.silver }}>
-                      <span>Total Invoiced</span>
-                      <span style={{ color: C.white, fontWeight: 600 }}>{fmtCurrencyDecimals(totalInvoiced)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#4CAF50' }}>
-                      <span>Total Paid</span>
-                      <span style={{ fontWeight: 600 }}>{fmtCurrencyDecimals(totalPaid)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: remaining > 0 ? C.gold : C.steel }}>
-                      <span>Remaining</span>
-                      <span style={{ fontWeight: 600 }}>{fmtCurrencyDecimals(remaining)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Add Invoice button / form */}
-                {selectedJob.status !== 'Paid' && !showAddInvoice && (
-                  <button
-                    onClick={() => {
-                      setShowAddInvoice(true)
-                      // Set defaults
-                      const existingTypes = jobInvoices.map(i => i.type)
-                      let defaultType: InvoiceType = 'Deposit'
-                      if (existingTypes.includes('Deposit') && !existingTypes.includes('Final')) {
-                        defaultType = jobInvoices.length === 0 ? 'Deposit' : 'Progress'
-                      }
-                      if (existingTypes.includes('Progress') || (existingTypes.includes('Deposit') && jobInvoices.length >= 2)) {
-                        defaultType = 'Final'
-                      }
-                      if (jobInvoices.length === 0) defaultType = 'Deposit'
-                      setNewInvType(defaultType)
-                      setNewInvAmount(remaining > 0 ? remaining.toFixed(2) : '')
-                      const jobTypeName = selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (linkedQuote?.jobTypeName || 'Works')
-                      const descMap: Record<InvoiceType, string> = {
-                        Deposit: `Deposit — ${jobTypeName}`,
-                        Progress: `Progress payment — ${jobTypeName}`,
-                        Final: `Final payment — ${jobTypeName}`,
-                        Custom: `${jobTypeName}`,
-                      }
-                      setNewInvDesc(descMap[defaultType])
-                    }}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
-                      cursor: 'pointer', minHeight: 42,
-                      background: `${C.gold}10`, border: `1px solid ${C.gold}33`, color: C.gold,
-                    }}
-                  >
-                    <Plus size={14} /> Add Invoice
-                  </button>
-                )}
-
-                {showAddInvoice && selectedJob.status !== 'Paid' && (() => {
-                  const inputStyle: CSSProperties = {
-                    width: '100%', padding: '10px 12px', borderRadius: 10,
-                    background: C.black, border: `1px solid ${C.steel}33`,
-                    color: C.white, fontSize: 14, outline: 'none',
-                    boxSizing: 'border-box' as const,
-                  }
-                  const jobTypeName = selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (linkedQuote?.jobTypeName || 'Works')
-
-                  return (
-                    <div style={{ background: C.black, borderRadius: 12, padding: 16, marginTop: 4 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>New Invoice</span>
-                        <button onClick={() => setShowAddInvoice(false)} style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}>
-                          <X size={16} />
-                        </button>
                       </div>
 
-                      {/* Type selector */}
-                      <span style={{ ...s.fieldLabel, fontSize: 11 }}>Type</span>
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                        {(['Deposit', 'Progress', 'Final', 'Custom'] as InvoiceType[]).map(t => (
-                          <button
-                            key={t}
-                            onClick={() => {
-                              setNewInvType(t)
-                              const descMap: Record<InvoiceType, string> = {
-                                Deposit: `Deposit — ${jobTypeName}`,
-                                Progress: `Progress payment — ${jobTypeName}`,
-                                Final: `Final payment — ${jobTypeName}`,
-                                Custom: `${jobTypeName}`,
-                              }
-                              setNewInvDesc(descMap[t])
-                              if (t === 'Final') setNewInvAmount(remaining.toFixed(2))
-                            }}
-                            style={{
-                              flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                              cursor: 'pointer', border: `1px solid ${newInvType === t ? invoiceTypeColors[t] + '66' : C.steel + '33'}`,
-                              background: newInvType === t ? invoiceTypeColors[t] + '15' : 'transparent',
-                              color: newInvType === t ? invoiceTypeColors[t] : C.steel,
-                            }}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
+                      {/* ── Materials Breakdown ── */}
+                      {(() => {
+                        const breakdown = linkedQuote.materialsBreakdown ?? []
+                        const materialsTotal = breakdown.reduce((sum, m) => sum + m.quantity * m.unitPrice, 0)
 
-                      {/* Amount */}
-                      <span style={{ ...s.fieldLabel, fontSize: 11 }}>Amount (inc. VAT)</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={newInvAmount}
-                        onChange={e => setNewInvAmount(e.target.value)}
-                        placeholder="0.00"
-                        style={{ ...inputStyle, marginBottom: 8 }}
-                      />
+                        // Initialise materialLines from quote data when entering edit mode
+                        if (materialsEditMode && materialsInitialised !== linkedQuote.id) {
+                          setMaterialLines(breakdown.length > 0 ? breakdown.map(m => ({ ...m })) : [{ description: '', quantity: 1, unitPrice: 0 }])
+                          setMaterialsInitialised(linkedQuote.id)
+                        }
 
-                      {/* Percentage shortcuts */}
-                      {quotedTotal > 0 && (
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                          {[25, 33, 50, 100].map(pct => (
+                        const editTotal = materialLines.reduce((sum, m) => sum + m.quantity * m.unitPrice, 0)
+                        // Check if materials have changed vs the quote's current materials value
+                        const materialsChanged = !materialsEditMode && breakdown.length > 0 && Math.abs(materialsTotal - linkedQuote.materials) > 0.01
+                        const materialsDiff = materialsTotal - linkedQuote.materials
+                        // Compute what the new quote totals would be if we update
+                        const newNetTotal = materialsTotal + linkedQuote.labour + linkedQuote.certificates + linkedQuote.waste + linkedQuote.adjustments
+                        const newVat = newNetTotal * 0.2
+                        const newGrandTotal = newNetTotal + newVat
+
+                        return (
+                          <div style={{ marginBottom: 16, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Package size={16} color={C.gold} />
+                                <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Materials</span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (materialsEditMode) {
+                                    setMaterialsEditMode(false)
+                                    setMaterialsInitialised(null)
+                                  } else {
+                                    setMaterialsEditMode(true)
+                                  }
+                                }}
+                                style={{
+                                  background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 8,
+                                  color: materialsEditMode ? C.red : C.gold, cursor: 'pointer', padding: '4px 10px',
+                                  fontSize: 12, fontWeight: 500, minHeight: 30,
+                                }}
+                              >
+                                {materialsEditMode ? 'Cancel' : (breakdown.length > 0 ? 'Edit' : 'Add Breakdown')}
+                              </button>
+                            </div>
+
+                            {!materialsEditMode ? (
+                              <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
+                                {breakdown.length === 0 ? (
+                                  <div style={{ color: C.steel, fontStyle: 'italic' }}>
+                                    Estimated total: {'\u00A3'}{linkedQuote.materials.toFixed(2)} (from quote)
+                                  </div>
+                                ) : (
+                                  <>
+                                    {breakdown.map((m, i) => (
+                                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
+                                        <span>{m.description || 'Item'} {m.quantity > 1 ? `x${m.quantity}` : ''}</span>
+                                        <span style={{ color: C.white, fontWeight: 500 }}>{'\u00A3'}{(m.quantity * m.unitPrice).toFixed(2)}</span>
+                                      </div>
+                                    ))}
+                                    <div style={{ borderTop: `1px solid ${C.steel}33`, marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                                      <span style={{ color: C.silver }}>Total</span>
+                                      <span style={{ color: C.gold }}>{'\u00A3'}{materialsTotal.toFixed(2)}</span>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
+                                {materialLines.map((line, i) => (
+                                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                                    <input
+                                      type="text"
+                                      placeholder="Description"
+                                      value={line.description}
+                                      onChange={e => {
+                                        const updated = [...materialLines]
+                                        updated[i] = { ...updated[i], description: e.target.value }
+                                        setMaterialLines(updated)
+                                      }}
+                                      style={{
+                                        flex: 3, padding: '8px 10px', borderRadius: 8,
+                                        background: C.charcoal, border: `1px solid ${C.steel}33`,
+                                        color: C.white, fontSize: 13, outline: 'none',
+                                      }}
+                                    />
+                                    <input
+                                      type="number"
+                                      placeholder="Qty"
+                                      min={1}
+                                      value={line.quantity}
+                                      onChange={e => {
+                                        const updated = [...materialLines]
+                                        updated[i] = { ...updated[i], quantity: Math.max(1, Number(e.target.value) || 1) }
+                                        setMaterialLines(updated)
+                                      }}
+                                      style={{
+                                        flex: 1, padding: '8px 6px', borderRadius: 8, textAlign: 'center',
+                                        background: C.charcoal, border: `1px solid ${C.steel}33`,
+                                        color: C.white, fontSize: 13, outline: 'none', minWidth: 40,
+                                      }}
+                                    />
+                                    <input
+                                      type="number"
+                                      placeholder="Price"
+                                      min={0}
+                                      step={0.01}
+                                      value={line.unitPrice || ''}
+                                      onChange={e => {
+                                        const updated = [...materialLines]
+                                        updated[i] = { ...updated[i], unitPrice: Number(e.target.value) || 0 }
+                                        setMaterialLines(updated)
+                                      }}
+                                      style={{
+                                        flex: 1.5, padding: '8px 6px', borderRadius: 8,
+                                        background: C.charcoal, border: `1px solid ${C.steel}33`,
+                                        color: C.white, fontSize: 13, outline: 'none', minWidth: 60,
+                                      }}
+                                    />
+                                    <span style={{ flex: 1, textAlign: 'right', color: C.silver, fontWeight: 500, fontSize: 12, minWidth: 50 }}>
+                                      {'\u00A3'}{(line.quantity * line.unitPrice).toFixed(2)}
+                                    </span>
+                                    <button
+                                      onClick={() => setMaterialLines(materialLines.filter((_, j) => j !== i))}
+                                      style={{
+                                        background: 'transparent', border: 'none', color: C.steel,
+                                        cursor: 'pointer', padding: 4, display: 'flex',
+                                      }}
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+
+                                <button
+                                  onClick={() => setMaterialLines([...materialLines, { description: '', quantity: 1, unitPrice: 0 }])}
+                                  style={{
+                                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                    padding: '8px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                                    cursor: 'pointer', background: 'transparent',
+                                    border: `1px dashed ${C.steel}44`, color: C.steel,
+                                    marginBottom: 10,
+                                  }}
+                                >
+                                  <Plus size={14} /> Add Item
+                                </button>
+
+                                <div style={{ borderTop: `1px solid ${C.steel}33`, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                  <span style={{ color: C.silver, fontWeight: 600 }}>Total</span>
+                                  <span style={{ color: C.gold, fontWeight: 700, fontSize: 15 }}>{'\u00A3'}{editTotal.toFixed(2)}</span>
+                                </div>
+
+                                <button
+                                  onClick={() => {
+                                    const validLines = materialLines.filter(m => m.description.trim() || m.unitPrice > 0)
+                                    updateQuote(linkedQuote.id, {
+                                      materialsBreakdown: validLines,
+                                      materials: editTotal,
+                                    })
+                                    setMaterialsEditMode(false)
+                                    setMaterialsInitialised(null)
+                                  }}
+                                  style={{
+                                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                    padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                                    cursor: 'pointer', minHeight: 42,
+                                    background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                                  }}
+                                >
+                                  Save Materials
+                                </button>
+                              </div>
+                            )}
+
+                            {/* ── Requote Flow ── */}
+                            {materialsChanged && (
+                              <div style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}33`, borderRadius: 10, padding: '14px 16px', marginTop: 12 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: C.silver, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+                                  Materials Updated
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 13, color: C.silver }}>Old Total</span>
+                                  <span style={{ fontSize: 14, color: C.steel, textDecoration: 'line-through' }}>{'\u00A3'}{linkedQuote.grandTotal.toFixed(2)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 13, color: C.silver }}>New Total</span>
+                                  <span style={{ fontSize: 16, fontWeight: 700, color: C.gold }}>{'\u00A3'}{newGrandTotal.toFixed(2)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                                  <span style={{
+                                    fontSize: 13, fontWeight: 700,
+                                    color: materialsDiff > 0 ? C.red : C.green,
+                                  }}>
+                                    {materialsDiff > 0 ? '+' : ''}{'\u00A3'}{materialsDiff.toFixed(2)}
+                                  </span>
+                                </div>
+
+                                {requoteSuccess ? (
+                                  <div style={{
+                                    width: '100%', textAlign: 'center', padding: '10px 16px',
+                                    borderRadius: 10, fontSize: 13, fontWeight: 600,
+                                    background: '#4CAF5015', border: '1px solid #4CAF5044', color: '#4CAF50',
+                                  }}>
+                                    Quote updated successfully
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      updateQuote(linkedQuote.id, {
+                                        materials: materialsTotal,
+                                        netTotal: newNetTotal,
+                                        vat: newVat,
+                                        grandTotal: newGrandTotal,
+                                      })
+                                      updateJob(selectedJob.id, { value: newGrandTotal })
+                                      setSelectedJob({ ...selectedJob, value: newGrandTotal })
+                                      setRequoteSuccess(true)
+                                      setTimeout(() => setRequoteSuccess(false), 2500)
+                                    }}
+                                    style={{
+                                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                      padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                                      cursor: 'pointer', minHeight: 42,
+                                      background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                                    }}
+                                  >
+                                    Update Quote
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+
+                      {/* ── Quote Actions ── */}
+                      {(() => {
+                        const btnStyle: CSSProperties = {
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
+                          cursor: 'pointer', minHeight: 42, transition: 'opacity .15s',
+                          background: C.black, border: `1px solid ${C.steel}33`, color: C.silver,
+                          flex: 1,
+                        }
+
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button style={btnStyle} onClick={() => { setSelectedJob(null); navigate(`/quote?quoteId=${linkedQuote.id}&jobId=${selectedJob.id}`) }}>
+                                <Pencil size={14} /> Edit
+                              </button>
+                              <button style={btnStyle} onClick={() => { setSelectedJob(null); navigate(`/quote?duplicateFrom=${linkedQuote.id}`) }}>
+                                <Copy size={14} /> Duplicate
+                              </button>
+                              <button style={btnStyle} onClick={() => generateQuotePDF(linkedQuote, settingsToBusinessInfo(settings))}>
+                                <FileDown size={14} /> PDF
+                              </button>
+                              <button style={btnStyle} onClick={() => {
+                                const url = `${window.location.origin}/q/${linkedQuote.id}`
+                                navigator.clipboard.writeText(url)
+                                alert(`Quote link copied:\n${url}`)
+                              }}>
+                                <Link2 size={14} /> Link
+                              </button>
+                            </div>
                             <button
-                              key={pct}
+                              style={{ ...btnStyle, color: C.gold, borderColor: `${C.gold}33` }}
                               onClick={() => {
-                                const amt = (quotedTotal * pct) / 100
-                                const adjusted = Math.min(amt, remaining > 0 ? remaining : amt)
-                                setNewInvAmount(adjusted.toFixed(2))
-                              }}
-                              style={{
-                                flex: 1, padding: '6px 4px', borderRadius: 8, fontSize: 12, fontWeight: 500,
-                                cursor: 'pointer', border: `1px solid ${C.steel}33`,
-                                background: 'transparent', color: C.silver,
+                                const url = `${window.location.origin}/q/${linkedQuote.id}`
+                                navigator.clipboard.writeText(url)
+                                if (linkedQuote.status === 'Draft') {
+                                  updateQuote(linkedQuote.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
+                                  if (selectedJob.status === 'Lead') {
+                                    moveJob(selectedJob.id, 'Quoted')
+                                    setSelectedJob({ ...selectedJob, status: 'Quoted' })
+                                  }
+                                  addComm({
+                                    customerId: selectedJob.customerId, customerName: selectedJob.customerName,
+                                    templateName: 'Send Quote', channel: 'email', status: 'Sent',
+                                    date: new Date().toISOString(), body: url,
+                                  })
+                                }
+                                alert(`Quote link copied — send to ${selectedJob.customerName}:\n\n${url}`)
                               }}
                             >
-                              {pct}%
+                              <Send size={14} /> {linkedQuote.status === 'Draft' ? 'Send Quote' : 'Resend Quote'}
+                            </button>
+                          </div>
+                        )
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ════════════════════════════════════════════════ */}
+              {/* ── PAYMENTS TAB ── */}
+              {/* ════════════════════════════════════════════════ */}
+              {panelTab === 'payments' && (
+                <div>
+                  {/* Quoted total */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, color: C.silver }}>
+                    <span>Quoted Total</span>
+                    <span style={{ color: C.white, fontWeight: 600 }}>{fmtCurrencyDecimals(quotedTotal)}</span>
+                  </div>
+
+                  {/* Progress bar */}
+                  {jobInvoices.length > 0 && (() => {
+                    const barTotal = Math.max(quotedTotal, totalInvoiced)
+                    if (barTotal === 0) return null
+                    const paidPct = Math.min((totalPaid / barTotal) * 100, 100)
+                    const unpaidInvoicedPct = Math.min(((totalInvoiced - totalPaid) / barTotal) * 100, 100 - paidPct)
+                    return (
+                      <div style={{ margin: '8px 0 12px', height: 8, borderRadius: 4, background: `${C.steel}33`, overflow: 'hidden', display: 'flex' }}>
+                        {paidPct > 0 && <div style={{ width: `${paidPct}%`, background: '#4CAF50', height: '100%', transition: 'width .3s' }} />}
+                        {unpaidInvoicedPct > 0 && <div style={{ width: `${unpaidInvoicedPct}%`, background: C.gold, height: '100%', transition: 'width .3s' }} />}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Invoice list */}
+                  {jobInvoices.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                      {jobInvoices.map(inv => {
+                        const invTypeColor = inv.type ? invoiceTypeColors[inv.type] : C.steel
+                        const invStatusColor = invoiceStatusColors[inv.status] ?? C.steel
+                        return (
+                          <div key={inv.id} style={{
+                            background: C.black, borderRadius: 10, padding: '10px 14px',
+                            borderLeft: `3px solid ${invTypeColor}`,
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {inv.type && (
+                                  <span style={{
+                                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                                    color: invTypeColor, background: invTypeColor + '1A',
+                                    textTransform: 'uppercase', letterSpacing: 0.5,
+                                  }}>
+                                    {inv.type}
+                                  </span>
+                                )}
+                                <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{inv.ref}</span>
+                              </div>
+                              <span style={{
+                                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                                color: invStatusColor, background: invStatusColor + '1A',
+                                textTransform: 'uppercase', letterSpacing: 0.5,
+                              }}>
+                                {inv.status}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 15, fontWeight: 700, color: C.gold }}>{fmtCurrencyDecimals(inv.grandTotal)}</span>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button
+                                  onClick={() => {
+                                    if (linkedQuote) generateInvoicePDF(linkedQuote, inv.ref, settingsToBusinessInfo(settings))
+                                  }}
+                                  style={{
+                                    background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 6,
+                                    color: C.silver, cursor: 'pointer', padding: '4px 8px', fontSize: 11,
+                                    display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
+                                  }}
+                                >
+                                  <FileDown size={12} /> PDF
+                                </button>
+                                {inv.status !== 'Paid' && (
+                                  <button
+                                    onClick={() => {
+                                      updateInvoice(inv.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
+                                      const url = `${window.location.origin}/inv/${inv.id}`
+                                      navigator.clipboard.writeText(url)
+                                      addComm({
+                                        customerId: selectedJob.customerId, customerName: selectedJob.customerName,
+                                        templateName: 'Send Invoice', channel: 'email', status: 'Sent',
+                                        date: new Date().toISOString(), body: url,
+                                      })
+                                      alert(`Invoice link copied — send to ${selectedJob.customerName}:\n\n${url}`)
+                                    }}
+                                    style={{
+                                      background: 'transparent', border: `1px solid ${C.gold}33`, borderRadius: 6,
+                                      color: C.gold, cursor: 'pointer', padding: '4px 8px', fontSize: 11,
+                                      display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
+                                    }}
+                                  >
+                                    <Send size={12} /> Send
+                                  </button>
+                                )}
+                                {inv.status !== 'Paid' && (
+                                  <button
+                                    onClick={() => {
+                                      updateInvoice(inv.id, { status: 'Paid', paidAt: new Date().toISOString().split('T')[0] })
+                                      const updatedPaid = totalPaid + inv.grandTotal
+                                      const allPaidAfter = jobInvoices.every(i => i.id === inv.id || i.status === 'Paid')
+                                      if (allPaidAfter && updatedPaid >= quotedTotal) {
+                                        moveJob(selectedJob.id, 'Paid')
+                                        setSelectedJob({ ...selectedJob, status: 'Paid' })
+                                      }
+                                    }}
+                                    style={{
+                                      background: '#4CAF5010', border: '1px solid #4CAF5033', borderRadius: 6,
+                                      color: '#4CAF50', cursor: 'pointer', padding: '4px 8px', fontSize: 11,
+                                      display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
+                                    }}
+                                  >
+                                    <Receipt size={12} /> Paid
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Totals */}
+                  {jobInvoices.length > 0 && (
+                    <div style={{ background: C.black, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: C.silver }}>
+                        <span>Total Invoiced</span>
+                        <span style={{ color: C.white, fontWeight: 600 }}>{fmtCurrencyDecimals(totalInvoiced)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#4CAF50' }}>
+                        <span>Total Paid</span>
+                        <span style={{ fontWeight: 600 }}>{fmtCurrencyDecimals(totalPaid)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: remaining > 0 ? C.gold : C.steel }}>
+                        <span>Remaining</span>
+                        <span style={{ fontWeight: 600 }}>{fmtCurrencyDecimals(remaining)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add Invoice button / form */}
+                  {selectedJob.status !== 'Paid' && !showAddInvoice && (
+                    <button
+                      onClick={() => {
+                        setShowAddInvoice(true)
+                        const existingTypes = jobInvoices.map(i => i.type)
+                        let defaultType: InvoiceType = 'Deposit'
+                        if (existingTypes.includes('Deposit') && !existingTypes.includes('Final')) {
+                          defaultType = jobInvoices.length === 0 ? 'Deposit' : 'Progress'
+                        }
+                        if (existingTypes.includes('Progress') || (existingTypes.includes('Deposit') && jobInvoices.length >= 2)) {
+                          defaultType = 'Final'
+                        }
+                        if (jobInvoices.length === 0) defaultType = 'Deposit'
+                        setNewInvType(defaultType)
+                        setNewInvAmount(remaining > 0 ? remaining.toFixed(2) : '')
+                        const jobTypeName = selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (linkedQuote?.jobTypeName || 'Works')
+                        const descMap: Record<InvoiceType, string> = {
+                          Deposit: `Deposit — ${jobTypeName}`,
+                          Progress: `Progress payment — ${jobTypeName}`,
+                          Final: `Final payment — ${jobTypeName}`,
+                          Custom: `${jobTypeName}`,
+                        }
+                        setNewInvDesc(descMap[defaultType])
+                      }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
+                        cursor: 'pointer', minHeight: 42,
+                        background: `${C.gold}10`, border: `1px solid ${C.gold}33`, color: C.gold,
+                      }}
+                    >
+                      <Plus size={14} /> Add Invoice
+                    </button>
+                  )}
+
+                  {showAddInvoice && selectedJob.status !== 'Paid' && (() => {
+                    const inputStyle: CSSProperties = {
+                      width: '100%', padding: '10px 12px', borderRadius: 10,
+                      background: C.black, border: `1px solid ${C.steel}33`,
+                      color: C.white, fontSize: 14, outline: 'none',
+                      boxSizing: 'border-box' as const,
+                    }
+                    const jobTypeName = selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (linkedQuote?.jobTypeName || 'Works')
+
+                    return (
+                      <div style={{ background: C.black, borderRadius: 12, padding: 16, marginTop: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>New Invoice</span>
+                          <button onClick={() => setShowAddInvoice(false)} style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}>
+                            <X size={16} />
+                          </button>
+                        </div>
+
+                        {/* Type selector */}
+                        <span style={{ ...s.fieldLabel, fontSize: 11 }}>Type</span>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                          {(['Deposit', 'Progress', 'Final', 'Custom'] as InvoiceType[]).map(t => (
+                            <button
+                              key={t}
+                              onClick={() => {
+                                setNewInvType(t)
+                                const descMap: Record<InvoiceType, string> = {
+                                  Deposit: `Deposit — ${jobTypeName}`,
+                                  Progress: `Progress payment — ${jobTypeName}`,
+                                  Final: `Final payment — ${jobTypeName}`,
+                                  Custom: `${jobTypeName}`,
+                                }
+                                setNewInvDesc(descMap[t])
+                                if (t === 'Final') setNewInvAmount(remaining.toFixed(2))
+                              }}
+                              style={{
+                                flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                                cursor: 'pointer', border: `1px solid ${newInvType === t ? invoiceTypeColors[t] + '66' : C.steel + '33'}`,
+                                background: newInvType === t ? invoiceTypeColors[t] + '15' : 'transparent',
+                                color: newInvType === t ? invoiceTypeColors[t] : C.steel,
+                              }}
+                            >
+                              {t}
                             </button>
                           ))}
                         </div>
-                      )}
 
-                      {/* Description */}
-                      <span style={{ ...s.fieldLabel, fontSize: 11 }}>Description</span>
-                      <input
-                        type="text"
-                        value={newInvDesc}
-                        onChange={e => setNewInvDesc(e.target.value)}
-                        style={{ ...inputStyle, marginBottom: 14 }}
-                      />
+                        {/* Amount */}
+                        <span style={{ ...s.fieldLabel, fontSize: 11 }}>Amount (inc. VAT)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={newInvAmount}
+                          onChange={e => setNewInvAmount(e.target.value)}
+                          placeholder="0.00"
+                          style={{ ...inputStyle, marginBottom: 8 }}
+                        />
 
-                      {/* Create */}
-                      <button
-                        disabled={!newInvAmount || Number(newInvAmount) <= 0}
-                        onClick={() => {
-                          const amount = Number(newInvAmount)
-                          if (!amount || amount <= 0) return
-                          const vatRate = 0.20
-                          const net = amount / (1 + vatRate)
-                          const vat = amount - net
-                          const dueDate = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
+                        {/* Percentage shortcuts */}
+                        {quotedTotal > 0 && (
+                          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                            {[25, 33, 50, 100].map(pct => (
+                              <button
+                                key={pct}
+                                onClick={() => {
+                                  const amt = (quotedTotal * pct) / 100
+                                  const adjusted = Math.min(amt, remaining > 0 ? remaining : amt)
+                                  setNewInvAmount(adjusted.toFixed(2))
+                                }}
+                                style={{
+                                  flex: 1, padding: '6px 4px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                                  cursor: 'pointer', border: `1px solid ${C.steel}33`,
+                                  background: 'transparent', color: C.silver,
+                                }}
+                              >
+                                {pct}%
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
-                          addInvoice({
-                            jobId: selectedJob.id,
-                            quoteId: linkedQuote?.id,
-                            customerId: selectedJob.customerId,
-                            customerName: selectedJob.customerName,
-                            jobTypeName: selectedJob.jobType,
-                            description: newInvDesc,
-                            type: newInvType,
-                            netTotal: Math.round(net * 100) / 100,
-                            vat: Math.round(vat * 100) / 100,
-                            grandTotal: Math.round(amount * 100) / 100,
-                            status: 'Draft',
-                            dueDate,
-                          })
+                        {/* Description */}
+                        <span style={{ ...s.fieldLabel, fontSize: 11 }}>Description</span>
+                        <input
+                          type="text"
+                          value={newInvDesc}
+                          onChange={e => setNewInvDesc(e.target.value)}
+                          style={{ ...inputStyle, marginBottom: 14 }}
+                        />
 
-                          // Auto-move to Invoiced if total invoiced >= quoted AND job is Complete
-                          const newTotalInvoiced = totalInvoiced + amount
-                          if (selectedJob.status === 'Complete' && newTotalInvoiced >= quotedTotal) {
-                            moveJob(selectedJob.id, 'Invoiced')
-                            setSelectedJob({ ...selectedJob, status: 'Invoiced' })
-                          }
-
-                          setShowAddInvoice(false)
-                          setNewInvAmount('')
-                          setNewInvDesc('')
-                        }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                          padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                          cursor: newInvAmount && Number(newInvAmount) > 0 ? 'pointer' : 'not-allowed',
-                          minHeight: 42, background: '#4CAF5015', border: '1px solid #4CAF5044', color: '#4CAF50',
-                          opacity: newInvAmount && Number(newInvAmount) > 0 ? 1 : 0.5,
-                        }}
-                      >
-                        <Receipt size={14} /> Create Invoice
-                      </button>
-                    </div>
-                  )
-                })()}
-              </div>
-
-              {/* ── Certificates ── */}
-              {(() => {
-                const certTypes = ['consumer unit', 'ev charger', 'rewire', 'eicr', 'consumer', 'condition report']
-                const jt = selectedJob.jobType.toLowerCase()
-                const showCerts = certTypes.some(t => jt.includes(t))
-                if (!showCerts) return null
-                return (
-                  <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                    <button
-                      onClick={() => { setSelectedJob(null); navigate(`/certificates/${selectedJob.id}`) }}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                        cursor: 'pointer', minHeight: 42,
-                        background: '#9B7ED815', border: '1px solid #9B7ED844', color: '#9B7ED8',
-                      }}
-                    >
-                      <FileCheck size={14} /> Certificates
-                    </button>
-                  </div>
-                )
-              })()}
-
-              {/* ── Status + Actions ── */}
-              <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                <span style={s.fieldLabel}>Status</span>
-                <div style={{ position: 'relative', marginBottom: 16 }}>
-                  <select
-                    value={selectedJob.status}
-                    onChange={e => {
-                      const newStatus = e.target.value as typeof selectedJob.status
-                      moveJob(selectedJob.id, newStatus)
-                      setSelectedJob({ ...selectedJob, status: newStatus })
-                    }}
-                    style={{
-                      width: '100%', padding: '12px 40px 12px 16px', borderRadius: 12,
-                      background: C.black, border: `1px solid ${statusColor[selectedJob.status]}44`,
-                      color: statusColor[selectedJob.status], fontSize: 14, fontWeight: 600,
-                      cursor: 'pointer', outline: 'none',
-                      appearance: 'none', WebkitAppearance: 'none',
-                    }}
-                  >
-                    {[...columns, 'Paid' as JobStatus].map(col => (
-                      <option key={col} value={col} style={{ color: '#fff', background: '#1A1C20' }}>{col}</option>
-                    ))}
-                  </select>
-                  <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Quote Actions ── */}
-              {(() => {
-                const btnStyle: CSSProperties = {
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
-                  cursor: 'pointer', minHeight: 42, transition: 'opacity .15s',
-                  background: C.black, border: `1px solid ${C.steel}33`, color: C.silver,
-                  flex: 1,
-                }
-
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {/* Quote actions */}
-                    {linkedQuote && (
-                      <>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Quote</div>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button style={btnStyle} onClick={() => { setSelectedJob(null); navigate(`/quote?quoteId=${linkedQuote.id}&jobId=${selectedJob.id}`) }}>
-                            <Pencil size={14} /> Edit
-                          </button>
-                          <button style={btnStyle} onClick={() => { setSelectedJob(null); navigate(`/quote?duplicateFrom=${linkedQuote.id}`) }}>
-                            <Copy size={14} /> Duplicate
-                          </button>
-                          <button style={btnStyle} onClick={() => generateQuotePDF(linkedQuote, settingsToBusinessInfo(settings))}>
-                            <FileDown size={14} /> PDF
-                          </button>
-                          <button style={btnStyle} onClick={() => {
-                            const url = `${window.location.origin}/q/${linkedQuote.id}`
-                            navigator.clipboard.writeText(url)
-                            alert(`Quote link copied:\n${url}`)
-                          }}>
-                            <Link2 size={14} /> Link
-                          </button>
-                        </div>
+                        {/* Create */}
                         <button
-                          style={{ ...btnStyle, color: C.gold, borderColor: `${C.gold}33` }}
+                          disabled={!newInvAmount || Number(newInvAmount) <= 0}
                           onClick={() => {
-                            const url = `${window.location.origin}/q/${linkedQuote.id}`
-                            navigator.clipboard.writeText(url)
-                            if (linkedQuote.status === 'Draft') {
-                              updateQuote(linkedQuote.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
-                              if (selectedJob.status === 'Lead') {
-                                moveJob(selectedJob.id, 'Quoted')
-                                setSelectedJob({ ...selectedJob, status: 'Quoted' })
-                              }
-                              addComm({
-                                customerId: selectedJob.customerId, customerName: selectedJob.customerName,
-                                templateName: 'Send Quote', channel: 'email', status: 'Sent',
-                                date: new Date().toISOString(), body: url,
-                              })
+                            const amount = Number(newInvAmount)
+                            if (!amount || amount <= 0) return
+                            const vatRate = 0.20
+                            const net = amount / (1 + vatRate)
+                            const vat = amount - net
+                            const dueDate = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
+
+                            addInvoice({
+                              jobId: selectedJob.id,
+                              quoteId: linkedQuote?.id,
+                              customerId: selectedJob.customerId,
+                              customerName: selectedJob.customerName,
+                              jobTypeName: selectedJob.jobType,
+                              description: newInvDesc,
+                              type: newInvType,
+                              netTotal: Math.round(net * 100) / 100,
+                              vat: Math.round(vat * 100) / 100,
+                              grandTotal: Math.round(amount * 100) / 100,
+                              status: 'Draft',
+                              dueDate,
+                            })
+
+                            const newTotalInvoiced = totalInvoiced + amount
+                            if (selectedJob.status === 'Complete' && newTotalInvoiced >= quotedTotal) {
+                              moveJob(selectedJob.id, 'Invoiced')
+                              setSelectedJob({ ...selectedJob, status: 'Invoiced' })
                             }
-                            alert(`Quote link copied — send to ${selectedJob.customerName}:\n\n${url}`)
+
+                            setShowAddInvoice(false)
+                            setNewInvAmount('')
+                            setNewInvDesc('')
+                          }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                            cursor: newInvAmount && Number(newInvAmount) > 0 ? 'pointer' : 'not-allowed',
+                            minHeight: 42, background: '#4CAF5015', border: '1px solid #4CAF5044', color: '#4CAF50',
+                            opacity: newInvAmount && Number(newInvAmount) > 0 ? 1 : 0.5,
                           }}
                         >
-                          <Send size={14} /> {linkedQuote.status === 'Draft' ? 'Send Quote' : 'Resend Quote'}
+                          <Receipt size={14} /> Create Invoice
                         </button>
-                      </>
-                    )}
-                  </div>
-                )
-              })()}
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
             </div>
           </>
         )

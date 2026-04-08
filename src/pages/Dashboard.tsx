@@ -221,7 +221,7 @@ export default function Dashboard() {
         <div style={s.panel}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
-            <span style={s.panelLink} onClick={() => navigate('/schedule')}>
+            <span style={s.panelLink} onClick={() => navigate('/calendar')}>
               View Calendar <ChevronRight size={14} />
             </span>
           </div>
@@ -232,7 +232,7 @@ export default function Dashboard() {
             <div
               key={ev.id}
               style={s.listItem}
-              onClick={() => navigate('/schedule')}
+              onClick={() => navigate('/calendar')}
               onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
