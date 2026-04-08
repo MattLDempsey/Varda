@@ -1,0 +1,464 @@
+import { supabase } from '../lib/supabase'
+import type {
+  Customer,
+  Quote,
+  QuoteStatus,
+  Job,
+  JobStatus,
+  Invoice,
+  ScheduleEvent,
+  CommLog,
+  Expense,
+  AppSettings,
+  PricingConfig,
+  JobTypeConfig,
+} from './DataContext'
+
+/* ══════════════════════════════════════════════════════
+   Case-conversion helpers
+   ══════════════════════════════════════════════════════ */
+
+/** Convert a camelCase string to snake_case */
+function camelToSnake(str: string): string {
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+}
+
+/** Convert a snake_case string to camelCase */
+function snakeToCamel(str: string): string {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+}
+
+/** Recursively convert all keys of an object from camelCase to snake_case */
+export function toSnake<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+  if (obj === null || obj === undefined) return obj
+  if (Array.isArray(obj)) return obj.map((item) => (typeof item === 'object' && item !== null ? toSnake(item as Record<string, unknown>) : item)) as any
+
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    const snakeKey = camelToSnake(key)
+    // Don't recurse into nested objects that are stored as JSONB — they keep camelCase internally
+    result[snakeKey] = value
+  }
+  return result
+}
+
+/** Recursively convert all keys of an object from snake_case to camelCase */
+export function toCamel<T>(obj: Record<string, unknown>): T {
+  if (obj === null || obj === undefined) return obj as any
+  if (Array.isArray(obj)) return obj.map((item) => (typeof item === 'object' && item !== null ? toCamel(item as Record<string, unknown>) : item)) as any
+
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = snakeToCamel(key)
+    // Don't recurse into nested objects — top-level columns only
+    result[camelKey] = value
+  }
+  return result as T
+}
+
+/** Convert a partial camelCase update object to snake_case for Supabase */
+function toSnakePartial(obj: Record<string, unknown>): Record<string, unknown> {
+  return toSnake(obj)
+}
+
+/* ══════════════════════════════════════════════════════
+   Customers
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchCustomers(): Promise<Customer[]> {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<Customer>(row))
+}
+
+export async function insertCustomer(
+  orgId: string,
+  customer: Omit<Customer, 'id' | 'createdAt'>
+): Promise<Customer> {
+  const row = toSnake(customer as unknown as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('customers')
+    .insert({ org_id: orgId, ...row })
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Customer>(data)
+}
+
+export async function updateCustomer(
+  id: string,
+  updates: Partial<Customer>
+): Promise<Customer> {
+  const row = toSnakePartial(updates as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('customers')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Customer>(data)
+}
+
+export async function deleteCustomer(id: string): Promise<void> {
+  const { error } = await supabase.from('customers').delete().eq('id', id)
+  if (error) throw error
+}
+
+/* ══════════════════════════════════════════════════════
+   Quotes
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchQuotes(): Promise<Quote[]> {
+  const { data, error } = await supabase
+    .from('quotes')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<Quote>(row))
+}
+
+export async function insertQuote(
+  orgId: string,
+  quote: Omit<Quote, 'id' | 'createdAt'>
+): Promise<Quote> {
+  const row = toSnake(quote as unknown as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('quotes')
+    .insert({ org_id: orgId, ...row })
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Quote>(data)
+}
+
+export async function updateQuote(
+  id: string,
+  updates: Partial<Quote>
+): Promise<Quote> {
+  const row = toSnakePartial(updates as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('quotes')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Quote>(data)
+}
+
+/* ══════════════════════════════════════════════════════
+   Jobs
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchJobs(): Promise<Job[]> {
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<Job>(row))
+}
+
+export async function insertJob(
+  orgId: string,
+  job: Omit<Job, 'id' | 'createdAt'>
+): Promise<Job> {
+  const row = toSnake(job as unknown as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('jobs')
+    .insert({ org_id: orgId, ...row })
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Job>(data)
+}
+
+export async function updateJob(
+  id: string,
+  updates: Partial<Job>
+): Promise<Job> {
+  const row = toSnakePartial(updates as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('jobs')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Job>(data)
+}
+
+/** Convenience: move a job to a new status */
+export async function moveJob(
+  id: string,
+  status: JobStatus
+): Promise<Job> {
+  return updateJob(id, { status } as Partial<Job>)
+}
+
+/* ══════════════════════════════════════════════════════
+   Invoices
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchInvoices(): Promise<Invoice[]> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<Invoice>(row))
+}
+
+export async function insertInvoice(
+  orgId: string,
+  invoice: Omit<Invoice, 'id' | 'createdAt'>
+): Promise<Invoice> {
+  const row = toSnake(invoice as unknown as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('invoices')
+    .insert({ org_id: orgId, ...row })
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Invoice>(data)
+}
+
+export async function updateInvoice(
+  id: string,
+  updates: Partial<Invoice>
+): Promise<Invoice> {
+  const row = toSnakePartial(updates as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('invoices')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Invoice>(data)
+}
+
+/* ══════════════════════════════════════════════════════
+   Schedule Events
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchEvents(): Promise<ScheduleEvent[]> {
+  const { data, error } = await supabase
+    .from('schedule_events')
+    .select('*')
+    .order('date', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<ScheduleEvent>(row))
+}
+
+export async function insertEvent(
+  orgId: string,
+  event: Omit<ScheduleEvent, 'id'>
+): Promise<ScheduleEvent> {
+  const row = toSnake(event as unknown as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('schedule_events')
+    .insert({ org_id: orgId, ...row })
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<ScheduleEvent>(data)
+}
+
+export async function updateEvent(
+  id: string,
+  updates: Partial<ScheduleEvent>
+): Promise<ScheduleEvent> {
+  const row = toSnakePartial(updates as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('schedule_events')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<ScheduleEvent>(data)
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  const { error } = await supabase.from('schedule_events').delete().eq('id', id)
+  if (error) throw error
+}
+
+/* ══════════════════════════════════════════════════════
+   Communications
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchComms(): Promise<CommLog[]> {
+  const { data, error } = await supabase
+    .from('communications')
+    .select('*')
+    .order('date', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<CommLog>(row))
+}
+
+export async function insertComm(
+  orgId: string,
+  comm: Omit<CommLog, 'id'>
+): Promise<CommLog> {
+  const row = toSnake(comm as unknown as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('communications')
+    .insert({ org_id: orgId, ...row })
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<CommLog>(data)
+}
+
+/* ══════════════════════════════════════════════════════
+   Expenses
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchExpenses(): Promise<Expense[]> {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*')
+    .order('date', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<Expense>(row))
+}
+
+export async function insertExpense(
+  orgId: string,
+  expense: Omit<Expense, 'id'>
+): Promise<Expense> {
+  const row = toSnake(expense as unknown as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('expenses')
+    .insert({ org_id: orgId, ...row })
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Expense>(data)
+}
+
+export async function updateExpense(
+  id: string,
+  updates: Partial<Expense>
+): Promise<Expense> {
+  const row = toSnakePartial(updates as Record<string, unknown>)
+  const { data, error } = await supabase
+    .from('expenses')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return toCamel<Expense>(data)
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+  const { error } = await supabase.from('expenses').delete().eq('id', id)
+  if (error) throw error
+}
+
+/* ══════════════════════════════════════════════════════
+   Settings (single JSONB row per org)
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchSettings(): Promise<AppSettings | null> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('settings_json')
+    .single()
+  if (error) {
+    // PGRST116 = no rows — org has no settings yet
+    if (error.code === 'PGRST116') return null
+    throw error
+  }
+  return data.settings_json as AppSettings
+}
+
+export async function upsertSettings(
+  orgId: string,
+  settings: AppSettings
+): Promise<AppSettings> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .upsert({ org_id: orgId, settings_json: settings }, { onConflict: 'org_id' })
+    .select('settings_json')
+    .single()
+  if (error) throw error
+  return data.settings_json as AppSettings
+}
+
+/* ══════════════════════════════════════════════════════
+   Pricing Config (single JSONB row per org)
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchPricingConfig(): Promise<PricingConfig | null> {
+  const { data, error } = await supabase
+    .from('pricing_config')
+    .select('config_json')
+    .single()
+  if (error) {
+    if (error.code === 'PGRST116') return null
+    throw error
+  }
+  return data.config_json as PricingConfig
+}
+
+export async function upsertPricingConfig(
+  orgId: string,
+  config: PricingConfig
+): Promise<PricingConfig> {
+  const { data, error } = await supabase
+    .from('pricing_config')
+    .upsert({ org_id: orgId, config_json: config }, { onConflict: 'org_id' })
+    .select('config_json')
+    .single()
+  if (error) throw error
+  return data.config_json as PricingConfig
+}
+
+/* ══════════════════════════════════════════════════════
+   Job Type Configs (individual rows per job type per org)
+   ══════════════════════════════════════════════════════ */
+
+export async function fetchJobTypeConfigs(): Promise<JobTypeConfig[]> {
+  const { data, error } = await supabase
+    .from('job_type_configs')
+    .select('*')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<JobTypeConfig>(row))
+}
+
+/**
+ * Batch upsert: delete all existing rows for the org, then insert the full set.
+ * This keeps the logic simple — the caller always sends the complete list.
+ */
+export async function upsertJobTypeConfigs(
+  orgId: string,
+  configs: JobTypeConfig[]
+): Promise<JobTypeConfig[]> {
+  // Delete existing rows (RLS scopes this to the user's org)
+  const { error: deleteError } = await supabase
+    .from('job_type_configs')
+    .delete()
+    .neq('id', '___never_matches___') // delete all rows visible via RLS
+  if (deleteError) throw deleteError
+
+  // Insert the new set
+  const rows = configs.map((cfg) => ({
+    ...toSnake(cfg as unknown as Record<string, unknown>),
+    org_id: orgId,
+  }))
+  const { data, error } = await supabase
+    .from('job_type_configs')
+    .insert(rows)
+    .select()
+  if (error) throw error
+  return (data ?? []).map((row) => toCamel<JobTypeConfig>(row))
+}

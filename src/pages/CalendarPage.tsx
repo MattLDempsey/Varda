@@ -1,0 +1,606 @@
+import { useState, useMemo } from 'react'
+import { ChevronLeft, ChevronRight, Plus, Clock, X } from 'lucide-react'
+import type { CSSProperties } from 'react'
+import { useTheme } from '../theme/ThemeContext'
+import { useData, type ScheduleEvent, type EventSlot } from '../data/DataContext'
+import LoadingSpinner from '../components/LoadingSpinner'
+
+const statusColor: Record<string, string> = {
+  Scheduled: '#5B9BD5',
+  'In Progress': '#C6A86A',
+  Complete: '#6ABF8A',
+}
+
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/* ── helpers ── */
+function getMonday(d: Date): Date {
+  const date = new Date(d)
+  const day = date.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  date.setDate(date.getDate() + diff)
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+function formatDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d)
+  r.setDate(r.getDate() + n)
+  return r
+}
+
+function slotLabel(slot: 'morning' | 'afternoon' | 'full'): string {
+  if (slot === 'morning') return 'Morning'
+  if (slot === 'afternoon') return 'Afternoon'
+  return 'Full Day'
+}
+
+/** Build an array of dates for the month grid (always starts on Monday, 5-6 rows). */
+function getMonthGridDates(year: number, month: number): Date[] {
+  const firstOfMonth = new Date(year, month, 1)
+  const lastOfMonth = new Date(year, month + 1, 0)
+
+  // Find the Monday on or before the 1st
+  const startDay = firstOfMonth.getDay() // 0=Sun
+  const mondayOffset = startDay === 0 ? -6 : 1 - startDay
+  const gridStart = new Date(year, month, 1 + mondayOffset)
+
+  // We need enough rows to cover the whole month (5 or 6 weeks)
+  const endDay = lastOfMonth.getDate()
+  const totalDaysShown = (() => {
+    // Calculate how many days from gridStart to end-of-month Sunday
+    const diffToEnd = Math.ceil((lastOfMonth.getTime() - gridStart.getTime()) / 86400000) + 1
+    const rows = Math.ceil(diffToEnd / 7)
+    return rows * 7
+  })()
+
+  const dates: Date[] = []
+  for (let i = 0; i < totalDaysShown; i++) {
+    dates.push(addDays(gridStart, i))
+  }
+  return dates
+}
+
+/* ── component ── */
+export default function CalendarPage() {
+  const { C } = useTheme()
+  const { events, addEvent, updateEvent, deleteEvent, isDataLoading } = useData()
+
+  const [view, setView] = useState<'month' | 'week' | 'day'>('week')
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null)
+  const [editDate, setEditDate] = useState('')
+  const [editSlot, setEditSlot] = useState<EventSlot>('morning')
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
+  const monday = getMonday(currentDate)
+
+  const weekDates = useMemo(() =>
+    Array.from({ length: 7 }, (_, i) => addDays(monday, i)),
+    [monday.getTime()]
+  )
+
+  const monthGridDates = useMemo(() =>
+    getMonthGridDates(currentDate.getFullYear(), currentDate.getMonth()),
+    [currentDate.getFullYear(), currentDate.getMonth()]
+  )
+
+  const today = formatDate(new Date())
+
+  const prevWeek = () => setCurrentDate(addDays(currentDate, -7))
+  const nextWeek = () => setCurrentDate(addDays(currentDate, 7))
+  const prevDay = () => setCurrentDate(addDays(currentDate, -1))
+  const nextDay = () => setCurrentDate(addDays(currentDate, 1))
+  const prevMonth = () => {
+    const d = new Date(currentDate)
+    d.setMonth(d.getMonth() - 1)
+    setCurrentDate(d)
+  }
+  const nextMonth = () => {
+    const d = new Date(currentDate)
+    d.setMonth(d.getMonth() + 1)
+    setCurrentDate(d)
+  }
+  const goToday = () => setCurrentDate(new Date())
+
+  const weekRange = `${weekDates[0].getDate()} ${MONTHS[weekDates[0].getMonth()]} – ${weekDates[6].getDate()} ${MONTHS[weekDates[6].getMonth()]} ${weekDates[6].getFullYear()}`
+
+  const monthLabel = `${MONTHS_FULL[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+
+  const dayHours = Array.from({ length: 12 }, (_, i) => i + 7) // 7am-6pm
+
+  const dayEvents = events.filter(e => e.date === formatDate(currentDate))
+
+  /* Navigation handlers based on view */
+  const handlePrev = () => {
+    if (view === 'month') prevMonth()
+    else if (view === 'week') prevWeek()
+    else prevDay()
+  }
+  const handleNext = () => {
+    if (view === 'month') nextMonth()
+    else if (view === 'week') nextWeek()
+    else nextDay()
+  }
+
+  const headerLabel = (() => {
+    if (view === 'month') return monthLabel
+    if (view === 'week') return weekRange
+    return `${DAYS[currentDate.getDay() === 0 ? 6 : currentDate.getDay() - 1]} ${currentDate.getDate()} ${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+  })()
+
+  /* ── styles (inside component to access theme C) ── */
+  const s: Record<string, CSSProperties> = {
+    page: { padding: 32, maxWidth: 1400, margin: '0 auto' },
+    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 },
+    heading: { fontSize: 28, fontWeight: 600, color: C.white },
+    navRow: { display: 'flex', alignItems: 'center', gap: 8 },
+    navBtn: {
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      width: 40, height: 40, borderRadius: 10, background: C.charcoalLight,
+      border: 'none', color: C.silver, cursor: 'pointer', transition: 'background .15s',
+    },
+    weekLabel: { fontSize: 15, fontWeight: 500, color: C.silver, minWidth: 180, textAlign: 'center' },
+    todayBtn: {
+      padding: '8px 16px', borderRadius: 8, background: 'transparent',
+      border: `1px solid ${C.steel}`, color: C.silver, fontSize: 13, fontWeight: 500,
+      cursor: 'pointer', minHeight: 40, transition: 'all .15s',
+    },
+    viewToggle: { display: 'flex', background: C.black, borderRadius: 8, overflow: 'hidden' },
+    viewBtn: {
+      padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13,
+      fontWeight: 500, minHeight: 40, transition: 'background .15s, color .15s',
+    },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: `${C.steel}22`, borderRadius: 12, overflow: 'hidden' },
+    dayHeader: {
+      padding: '12px 8px', textAlign: 'center', fontSize: 12, fontWeight: 600,
+      color: C.silver, textTransform: 'uppercase', letterSpacing: 0.8, background: C.charcoalLight,
+    },
+    dayCell: {
+      background: C.charcoal, padding: 8, minHeight: 160, display: 'flex', flexDirection: 'column', gap: 6,
+    },
+    dayCellToday: { background: C.charcoal, borderTop: `2px solid ${C.gold}` },
+    dateNum: { fontSize: 13, fontWeight: 600, color: C.silver, marginBottom: 4, padding: '0 4px' },
+    dateNumToday: { color: C.gold },
+    eventCard: {
+      borderRadius: 8, padding: '8px 10px', fontSize: 12, cursor: 'pointer',
+      borderLeft: '3px solid', transition: 'transform .1s',
+    },
+    eventCustomer: { fontWeight: 600, color: C.white, marginBottom: 2 },
+    eventJob: { color: C.silver, fontSize: 11 },
+    eventSlot: { fontSize: 10, color: C.steel, marginTop: 3, display: 'flex', alignItems: 'center', gap: 3 },
+    // day view
+    dayGrid: { display: 'grid', gridTemplateColumns: '80px 1fr', borderRadius: 12, overflow: 'hidden', background: `${C.steel}22`, gap: 1 },
+    timeLabel: {
+      padding: '16px 12px', fontSize: 12, fontWeight: 500, color: C.steel,
+      textAlign: 'right', background: C.charcoalLight,
+    },
+    timeSlot: {
+      background: C.charcoal, padding: 8, minHeight: 64, display: 'flex', alignItems: 'center', gap: 8,
+    },
+    emptyState: {
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: 60, color: C.steel, fontSize: 14, gap: 12,
+    },
+    quickBook: {
+      display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap',
+    },
+    quickBtn: {
+      padding: '10px 20px', borderRadius: 10, border: `1px solid ${C.steel}44`,
+      background: C.charcoalLight, color: C.silver, fontSize: 13, fontWeight: 500,
+      cursor: 'pointer', minHeight: 44, transition: 'all .15s', display: 'flex',
+      alignItems: 'center', gap: 6,
+    },
+    fab: {
+      position: 'fixed', bottom: 32, right: 32, width: 56, height: 56,
+      borderRadius: 16, background: C.gold, color: C.black, border: 'none',
+      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 4px 20px rgba(0,0,0,.4)', transition: 'transform .15s', zIndex: 50,
+    },
+    // month view
+    monthGrid: {
+      display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1,
+      background: `${C.steel}22`, borderRadius: 12, overflow: 'hidden',
+    },
+    monthCell: {
+      background: C.charcoal, padding: 6, minHeight: 100, display: 'flex',
+      flexDirection: 'column', gap: 3, cursor: 'pointer', transition: 'background .12s',
+    },
+    monthDateNum: {
+      fontSize: 13, fontWeight: 600, color: C.silver, padding: '2px 4px',
+    },
+    monthEvent: {
+      borderRadius: 4, padding: '2px 6px', fontSize: 11, fontWeight: 500,
+      color: C.white, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      cursor: 'pointer', borderLeft: '2px solid', lineHeight: '18px',
+    },
+    // modal styles
+    overlay: {
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 100,
+    },
+    modal: {
+      background: C.charcoalLight, borderRadius: 16, padding: 28, minWidth: 340, maxWidth: 440,
+      width: '90%', boxShadow: '0 12px 40px rgba(0,0,0,.5)', position: 'relative',
+    },
+    modalClose: {
+      position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 8,
+      background: 'transparent', border: 'none', color: C.silver, cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s',
+    },
+    modalTitle: { fontSize: 20, fontWeight: 600, color: C.white, marginBottom: 20 },
+    modalRow: { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.steel}33` },
+    modalLabel: { fontSize: 13, fontWeight: 500, color: C.steel },
+    modalValue: { fontSize: 13, fontWeight: 600, color: C.white, textAlign: 'right' },
+    statusBadge: {
+      display: 'inline-block', padding: '3px 10px', borderRadius: 6, fontSize: 12,
+      fontWeight: 600, color: '#fff',
+    },
+  }
+
+  if (isDataLoading) {
+    return (
+      <div style={s.page}>
+        <h1 style={s.heading}>Calendar</h1>
+        <LoadingSpinner message="Loading calendar..." />
+      </div>
+    )
+  }
+
+  return (
+    <div style={s.page}>
+      {/* header */}
+      <div style={s.header}>
+        <h1 style={s.heading}>Calendar</h1>
+
+        <div style={s.navRow}>
+          <button style={s.navBtn} onClick={handlePrev}>
+            <ChevronLeft size={20} />
+          </button>
+          <span style={s.weekLabel as CSSProperties}>
+            {headerLabel}
+          </span>
+          <button style={s.navBtn} onClick={handleNext}>
+            <ChevronRight size={20} />
+          </button>
+          <button style={s.todayBtn} onClick={goToday}>Today</button>
+        </div>
+
+        <div style={s.viewToggle}>
+          <button
+            style={{ ...s.viewBtn, background: view === 'month' ? C.charcoalLight : 'transparent', color: view === 'month' ? C.gold : C.steel }}
+            onClick={() => setView('month')}
+          >
+            Month
+          </button>
+          <button
+            style={{ ...s.viewBtn, background: view === 'week' ? C.charcoalLight : 'transparent', color: view === 'week' ? C.gold : C.steel }}
+            onClick={() => setView('week')}
+          >
+            Week
+          </button>
+          <button
+            style={{ ...s.viewBtn, background: view === 'day' ? C.charcoalLight : 'transparent', color: view === 'day' ? C.gold : C.steel }}
+            onClick={() => setView('day')}
+          >
+            Day
+          </button>
+        </div>
+      </div>
+
+      {/* empty state */}
+      {events.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '64px 24px', color: C.steel, fontSize: 15 }}>
+          No events scheduled. Book jobs from the Jobs page.
+        </div>
+      )}
+
+      {/* month view */}
+      {view === 'month' && (
+        <div style={s.monthGrid}>
+          {/* day-of-week headers */}
+          {DAYS.map(day => (
+            <div key={`mh-${day}`} style={s.dayHeader}>{day}</div>
+          ))}
+
+          {/* day cells */}
+          {monthGridDates.map((d, i) => {
+            const dateStr = formatDate(d)
+            const cellEvents = events.filter(e => e.date === dateStr)
+            const isToday = dateStr === today
+            const isCurrentMonth = d.getMonth() === currentDate.getMonth()
+
+            return (
+              <div
+                key={`mc-${i}`}
+                style={{
+                  ...s.monthCell,
+                  ...(isToday ? { borderTop: `2px solid ${C.gold}` } : {}),
+                  ...(!isCurrentMonth ? { opacity: 0.35 } : {}),
+                }}
+                onClick={() => { setCurrentDate(new Date(d)); setView('day') }}
+              >
+                <div style={{
+                  ...s.monthDateNum,
+                  ...(isToday ? { color: C.gold } : {}),
+                }}>
+                  {d.getDate()}
+                </div>
+                {cellEvents.slice(0, 3).map(ev => (
+                  <div
+                    key={ev.id}
+                    style={{
+                      ...s.monthEvent,
+                      borderLeftColor: statusColor[ev.status],
+                      background: statusColor[ev.status] + '20',
+                    }}
+                    onClick={(e) => { e.stopPropagation(); setSelectedEvent(ev) }}
+                  >
+                    {ev.customerName}
+                  </div>
+                ))}
+                {cellEvents.length > 3 && (
+                  <div style={{ fontSize: 10, color: C.steel, padding: '0 4px' }}>
+                    +{cellEvents.length - 3} more
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* week view */}
+      {view === 'week' && (
+        <div style={s.grid}>
+          {/* day headers */}
+          {weekDates.map((d, i) => (
+            <div
+              key={`h-${i}`}
+              style={{
+                ...s.dayHeader,
+                ...(formatDate(d) === today ? { color: C.gold } : {}),
+                cursor: 'pointer',
+              }}
+              onClick={() => { setCurrentDate(d); setView('day') }}
+            >
+              {DAYS[i]} {d.getDate()}
+            </div>
+          ))}
+
+          {/* day cells */}
+          {weekDates.map((d, i) => {
+            const dateStr = formatDate(d)
+            const dayEvts = events.filter(e => e.date === dateStr)
+            const isToday = dateStr === today
+
+            return (
+              <div key={`c-${i}`} style={{ ...s.dayCell, ...(isToday ? s.dayCellToday : {}) }}>
+                {dayEvts.length === 0 && (
+                  <div style={{ color: C.steel, fontSize: 11, textAlign: 'center', padding: '20px 0' }}>—</div>
+                )}
+                {dayEvts.map(ev => (
+                  <div
+                    key={ev.id}
+                    style={{
+                      ...s.eventCard,
+                      borderLeftColor: statusColor[ev.status],
+                      background: statusColor[ev.status] + '15',
+                    }}
+                    onClick={() => setSelectedEvent(ev)}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none' }}
+                  >
+                    <div style={s.eventCustomer}>{ev.customerName}</div>
+                    <div style={s.eventJob}>{ev.jobType}</div>
+                    <div style={s.eventSlot as CSSProperties}>
+                      <Clock size={10} />
+                      {ev.slot === 'full' ? 'Full day' : ev.slot === 'morning' ? 'AM' : 'PM'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* day view */}
+      {view === 'day' && (
+        <>
+          <div style={s.dayGrid}>
+            {dayHours.map(hour => {
+              const slotEvents = dayEvents.filter(e => {
+                if (e.slot === 'full') return true
+                if (e.slot === 'morning' && hour >= 7 && hour < 12) return true
+                if (e.slot === 'afternoon' && hour >= 12 && hour <= 18) return true
+                return false
+              })
+              const isFirstSlot = hour === 7 || hour === 12
+              const showEvents = slotEvents.length > 0 && isFirstSlot
+
+              return [
+                <div key={`t-${hour}`} style={s.timeLabel}>
+                  {hour <= 12 ? `${hour}:00` : `${hour}:00`}
+                </div>,
+                <div key={`s-${hour}`} style={s.timeSlot}>
+                  {showEvents && slotEvents.map(ev => (
+                    <div
+                      key={ev.id}
+                      style={{
+                        ...s.eventCard,
+                        borderLeftColor: statusColor[ev.status],
+                        background: statusColor[ev.status] + '15',
+                        flex: 1,
+                      }}
+                      onClick={() => setSelectedEvent(ev)}
+                    >
+                      <div style={s.eventCustomer}>{ev.customerName}</div>
+                      <div style={s.eventJob}>{ev.jobType}</div>
+                      <div style={s.eventSlot as CSSProperties}>
+                        <Clock size={10} />
+                        {ev.slot === 'full' ? 'Full day' : ev.slot === 'morning' ? '7:00–12:00' : '12:00–18:00'}
+                      </div>
+                    </div>
+                  ))}
+                </div>,
+              ]
+            })}
+          </div>
+
+          {/* quick book */}
+          <div style={s.quickBook}>
+            <button style={s.quickBtn} onClick={() => alert('Book Morning — coming soon with Supabase integration')}><Clock size={16} /> Book Morning</button>
+            <button style={s.quickBtn} onClick={() => alert('Book Afternoon — coming soon with Supabase integration')}><Clock size={16} /> Book Afternoon</button>
+            <button style={s.quickBtn} onClick={() => alert('Book Full Day — coming soon with Supabase integration')}><Clock size={16} /> Book Full Day</button>
+          </div>
+        </>
+      )}
+
+      {/* FAB */}
+      <button
+        style={s.fab}
+        title="New Event"
+        onClick={() => alert('New Event — coming soon with Supabase integration')}
+        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.08)' }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
+      >
+        <Plus size={26} strokeWidth={2.5} />
+      </button>
+
+      {/* Event detail modal — shows all bookings for this job */}
+      {selectedEvent && (() => {
+        // Find all events for the same job (or same customer if no jobId)
+        const relatedEvents = selectedEvent.jobId
+          ? events.filter(e => e.jobId === selectedEvent.jobId).sort((a, b) => a.date.localeCompare(b.date))
+          : [selectedEvent]
+
+        const inputStyle: CSSProperties = {
+          width: '100%', padding: '8px 10px', borderRadius: 8,
+          background: C.black, border: `1px solid ${C.steel}33`,
+          color: C.white, fontSize: 13, outline: 'none',
+        }
+
+        return (
+          <div style={s.overlay} onClick={() => { setSelectedEvent(null); setIsEditing(false) }}>
+            <div style={s.modal} onClick={e => e.stopPropagation()}>
+              <button
+                style={s.modalClose}
+                onClick={() => { setSelectedEvent(null); setIsEditing(false) }}
+                onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}33` }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              >
+                <X size={18} />
+              </button>
+
+              <div style={s.modalTitle}>{selectedEvent.customerName}</div>
+              <div style={{ fontSize: 13, color: C.silver, marginBottom: 16 }}>{selectedEvent.jobType}</div>
+
+              {/* All bookings for this job */}
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                Bookings ({relatedEvents.length})
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+                {relatedEvents.map(ev => (
+                  <div key={ev.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 12px', background: C.black, borderRadius: 8,
+                    borderLeft: `3px solid ${statusColor[ev.status]}`,
+                  }}>
+                    {isEditing && editingEventId === ev.id ? (
+                      <>
+                        <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                          style={{ ...inputStyle, flex: 1, colorScheme: 'dark' }} />
+                        <select value={editSlot} onChange={e => setEditSlot(e.target.value as EventSlot)}
+                          style={{ ...inputStyle, flex: 1, appearance: 'none', WebkitAppearance: 'none' as any }}>
+                          <option value="morning">AM</option>
+                          <option value="afternoon">PM</option>
+                          <option value="full">Full</option>
+                        </select>
+                        <button onClick={() => {
+                          updateEvent(ev.id, { date: editDate, slot: editSlot })
+                          setIsEditing(false)
+                        }} style={{ background: 'transparent', border: 'none', color: C.gold, cursor: 'pointer', padding: 4, fontSize: 12, fontWeight: 600 }}>
+                          Save
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>
+                            {new Date(ev.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                          </span>
+                          <span style={{ fontSize: 12, color: C.steel, marginLeft: 8 }}>{slotLabel(ev.slot)}</span>
+                        </div>
+                        <button onClick={() => {
+                          setEditDate(ev.date)
+                          setEditSlot(ev.slot)
+                          setEditingEventId(ev.id)
+                          setIsEditing(true)
+                        }} style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}>
+                          <Clock size={14} />
+                        </button>
+                        <button onClick={() => deleteEvent(ev.id)}
+                          style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
+                          onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add another booking */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                  style={{ ...inputStyle, flex: 1, colorScheme: 'dark' }} />
+                <select value={editSlot} onChange={e => setEditSlot(e.target.value as EventSlot)}
+                  style={{ ...inputStyle, flex: 1, appearance: 'none', WebkitAppearance: 'none' as any }}>
+                  <option value="morning">Morning</option>
+                  <option value="afternoon">Afternoon</option>
+                  <option value="full">Full Day</option>
+                </select>
+                <button
+                  disabled={!editDate}
+                  onClick={() => {
+                    if (!editDate) return
+                    addEvent({
+                      jobId: selectedEvent.jobId,
+                      customerId: selectedEvent.customerId,
+                      customerName: selectedEvent.customerName,
+                      jobType: selectedEvent.jobType,
+                      date: editDate,
+                      slot: editSlot,
+                      status: 'Scheduled',
+                      notes: '',
+                    })
+                    setEditDate('')
+                  }}
+                  style={{
+                    padding: '8px 14px', borderRadius: 8,
+                    background: editDate ? `${C.gold}15` : C.black,
+                    border: `1px solid ${editDate ? C.gold + '44' : C.steel + '33'}`,
+                    color: editDate ? C.gold : C.steel, cursor: editDate ? 'pointer' : 'not-allowed',
+                    fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
+                  }}
+                >
+                  + Add
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+    </div>
+  )
+}
