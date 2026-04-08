@@ -1,12 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FileText, Briefcase, PoundSterling, Clock, TrendingUp,
   CalendarCheck, CheckCircle, AlertTriangle, ChevronRight,
-  Calendar, Bell,
+  Calendar, Bell, X,
 } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
+import { useFollowUps, priorityColor } from '../components/FollowUpManager'
 import LoadingSpinner from '../components/LoadingSpinner'
 import type { CSSProperties } from 'react'
 
@@ -56,22 +57,22 @@ const statusColor: Record<string, string> = {
   Overdue: '#D46A6A',
 }
 
-/* ── action item types ── */
-
-interface ActionItem {
-  id: string
-  icon: React.ReactNode
-  text: string
-  borderColor: string
-  urgency: number // lower = more urgent
-  route: string
-}
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const { C } = useTheme()
-  const { quotes, jobs, events, invoices, isDataLoading } = useData()
+  const { quotes, jobs, events, invoices, settings, isDataLoading } = useData()
   const today = todayStr()
+
+  // Follow-up system
+  const { activeFollowUps, dismiss: dismissFollowUp } = useFollowUps(quotes, jobs, invoices, settings)
+  const [localDismissed, setLocalDismissed] = useState<string[]>([])
+  const handleDismiss = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    dismissFollowUp(id)
+    setLocalDismissed(prev => [...prev, id])
+  }, [dismissFollowUp])
+  const visibleFollowUps = activeFollowUps.filter(f => !localDismissed.includes(f.id))
 
   /* ── KPI stats (6 cards) ── */
   const stats = useMemo(() => {
@@ -125,70 +126,7 @@ export default function Dashboard() {
     [events, today],
   )
 
-  /* ── Action items (smart alerts) ── */
-  const actionItems = useMemo(() => {
-    const items: ActionItem[] = []
-
-    // Overdue invoices (most urgent)
-    invoices
-      .filter(i => i.status === 'Sent' && i.dueDate < today)
-      .forEach(i => {
-        items.push({
-          id: `inv-${i.id}`,
-          icon: <AlertTriangle size={16} />,
-          text: `Invoice ${i.ref} overdue \u2014 chase payment`,
-          borderColor: '#D46A6A',
-          urgency: 0,
-          route: '/invoices',
-        })
-      })
-
-    // Quotes awaiting response (sent > 3 days ago)
-    quotes
-      .filter(q => q.status === 'Sent' && q.sentAt && daysBetween(q.sentAt, today) > 3)
-      .forEach(q => {
-        const days = daysBetween(q.sentAt!, today)
-        items.push({
-          id: `quote-${q.id}`,
-          icon: <FileText size={16} />,
-          text: `Follow up with ${q.customerName} \u2014 quote sent ${days} days ago`,
-          borderColor: '#C6A86A',
-          urgency: 1,
-          route: `/quote?quoteId=${q.id}`,
-        })
-      })
-
-    // Jobs complete, need invoicing
-    jobs
-      .filter(j => j.status === 'Complete' && !j.invoiceId)
-      .forEach(j => {
-        items.push({
-          id: `inv-job-${j.id}`,
-          icon: <PoundSterling size={16} />,
-          text: `${j.customerName} job complete \u2014 create invoice`,
-          borderColor: '#C6A86A',
-          urgency: 2,
-          route: '/invoices',
-        })
-      })
-
-    // Jobs accepted, need scheduling
-    jobs
-      .filter(j => j.status === 'Accepted')
-      .forEach(j => {
-        items.push({
-          id: `sched-${j.id}`,
-          icon: <Calendar size={16} />,
-          text: `${j.customerName} accepted \u2014 schedule the job`,
-          borderColor: '#5B9BD5',
-          urgency: 3,
-          route: '/schedule',
-        })
-      })
-
-    items.sort((a, b) => a.urgency - b.urgency)
-    return items.slice(0, 5)
-  }, [quotes, jobs, invoices, today])
+  /* ── Action items now powered by FollowUpManager ── */
 
   /* ── Recent quotes (most recent 5) ── */
   const recentQuotes = useMemo(() =>
@@ -309,38 +247,67 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Action Items */}
+        {/* Action Items — powered by FollowUpManager */}
         <div style={s.panel}>
           <div style={s.panelHeader}>
             <h2 style={{ ...s.panelTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Bell size={18} /> Action Items
+              {visibleFollowUps.length > 0 && (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, background: '#D46A6A', color: '#fff',
+                  borderRadius: 10, padding: '2px 8px', minWidth: 20, textAlign: 'center',
+                }}>{visibleFollowUps.length}</span>
+              )}
             </h2>
           </div>
-          {actionItems.length === 0 && (
+          {visibleFollowUps.length === 0 && (
             <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
               <CheckCircle size={32} color={C.green} />
               <span>All clear — nothing needs attention</span>
             </div>
           )}
-          {actionItems.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                ...s.listItem,
-                borderLeft: `3px solid ${item.borderColor}`,
-                marginBottom: 4,
-              }}
-              onClick={() => navigate(item.route)}
-              onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-                <span style={{ color: item.borderColor, flexShrink: 0 }}>{item.icon}</span>
-                <span style={{ fontSize: 13, color: C.white }}>{item.text}</span>
+          {visibleFollowUps.slice(0, 8).map((item) => {
+            const color = priorityColor(item.priority)
+            const icon = item.priority === 'high'
+              ? <AlertTriangle size={16} />
+              : item.priority === 'medium'
+                ? <Clock size={16} />
+                : <FileText size={16} />
+            return (
+              <div
+                key={item.id}
+                style={{
+                  ...s.listItem,
+                  borderLeft: `3px solid ${color}`,
+                  marginBottom: 4,
+                }}
+                onClick={() => navigate(item.route)}
+                onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <span style={{ color, flexShrink: 0 }}>{icon}</span>
+                  <span style={{ fontSize: 13, color: C.white }}>{item.message}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button
+                    onClick={(e) => handleDismiss(item.id, e)}
+                    title="Dismiss"
+                    style={{
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: C.steel, padding: 4, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', borderRadius: 4, minWidth: 28, minHeight: 28,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = C.silver)}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = C.steel)}
+                  >
+                    <X size={14} />
+                  </button>
+                  <ChevronRight size={16} color={C.steel} />
+                </div>
               </div>
-              <ChevronRight size={16} color={C.steel} />
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy } from 'lucide-react'
+import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
-import { useData, type JobStatus, type Job } from '../data/DataContext'
+import { useData, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
 import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { LimitWarning } from '../components/FeatureGate'
@@ -18,6 +18,10 @@ function fmtDate(iso: string): string {
 
 function fmtCurrency(n: number): string {
   return '£' + n.toLocaleString('en-GB', { maximumFractionDigits: 0 })
+}
+
+function fmtCurrencyDecimals(n: number): string {
+  return '£' + n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 /* ── constants ── */
@@ -35,9 +39,24 @@ const statusColor: Record<JobStatus, string> = {
   Paid: '#4CAF50',
 }
 
+const invoiceTypeColors: Record<InvoiceType, string> = {
+  Deposit: '#9B7ED8',
+  Progress: '#5B9BD5',
+  Final: '#6ABF8A',
+  Custom: '#C6A86A',
+}
+
+const invoiceStatusColors: Record<string, string> = {
+  Draft: '#8A8F96',
+  Sent: '#C6A86A',
+  Viewed: '#5B9BD5',
+  Paid: '#4CAF50',
+  Overdue: '#D46A6A',
+}
+
 export default function Jobs() {
   const { C } = useTheme()
-  const { jobs, quotes, customers, events, settings, moveJob, updateQuote, updateJob, addInvoice, updateInvoice, getInvoiceForJob, addEvent, deleteEvent, addComm, isDataLoading } = useData()
+  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, isDataLoading } = useData()
   const { features, plan } = useSubscription()
   const activeJobCount = useMemo(() => jobs.filter(j => j.status !== 'Paid').length, [jobs])
 
@@ -68,10 +87,23 @@ export default function Jobs() {
   const [dragOverCol, setDragOverCol] = useState<JobStatus | null>(null)
   const [scheduleDate, setScheduleDate] = useState('')
   const [scheduleSlot, setScheduleSlot] = useState<'morning' | 'afternoon' | 'full'>('morning')
+
+  // Add-invoice form state
+  const [showAddInvoice, setShowAddInvoice] = useState(false)
+  const [newInvType, setNewInvType] = useState<InvoiceType>('Deposit')
+  const [newInvAmount, setNewInvAmount] = useState('')
+  const [newInvDesc, setNewInvDesc] = useState('')
+
+  // Materials breakdown editor state
+  const [materialsEditMode, setMaterialsEditMode] = useState(false)
+  const [materialLines, setMaterialLines] = useState<Array<{ description: string; quantity: number; unitPrice: number }>>([])
+  const [materialsInitialised, setMaterialsInitialised] = useState<string | null>(null)
+
   /* ── missing info check ── */
   function getJobWarning(job: Job): string | null {
     const hasQuote = !!job.quoteId
-    const hasInvoice = !!getInvoiceForJob(job.id)
+    const jobInvoices = getInvoicesForJob(job.id)
+    const hasInvoice = jobInvoices.length > 0
     switch (job.status) {
       case 'Quoted':
       case 'Accepted':
@@ -339,6 +371,25 @@ export default function Jobs() {
     if (jobId) moveJob(jobId, col)
   }
 
+  /* ── helper: payment progress bar for kanban cards ── */
+  function renderCardPaymentBar(jobId: string, jobValue: number) {
+    const jobInvoices = invoices.filter(i => i.jobId === jobId)
+    if (jobInvoices.length === 0) return null
+    const totalPaid = jobInvoices.filter(i => i.status === 'Paid').reduce((sum, i) => sum + i.grandTotal, 0)
+    const totalInvoiced = jobInvoices.reduce((sum, i) => sum + i.grandTotal, 0)
+    const total = Math.max(jobValue, totalInvoiced)
+    if (total === 0) return null
+    const paidPct = Math.min((totalPaid / total) * 100, 100)
+    const invoicedPct = Math.min(((totalInvoiced - totalPaid) / total) * 100, 100 - paidPct)
+
+    return (
+      <div style={{ marginTop: 6, height: 3, borderRadius: 2, background: `${C.steel}33`, overflow: 'hidden', display: 'flex' }}>
+        {paidPct > 0 && <div style={{ width: `${paidPct}%`, background: '#4CAF50', height: '100%' }} />}
+        {invoicedPct > 0 && <div style={{ width: `${invoicedPct}%`, background: C.gold, height: '100%' }} />}
+      </div>
+    )
+  }
+
   if (isDataLoading) {
     return (
       <div style={s.page}>
@@ -446,6 +497,7 @@ export default function Jobs() {
                       <span style={s.cardValue}>{fmtCurrency(job.value > 0 ? job.value : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.netTotal || 0 })())}</span>
                       <span style={s.cardDate}>{fmtDate(job.date)}</span>
                     </div>
+                    {renderCardPaymentBar(job.id, job.value > 0 ? job.value : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.grandTotal || 0 })())}
                   </div>
                 ))}
               </div>
@@ -603,6 +655,11 @@ export default function Jobs() {
       {/* slide-in detail panel */}
       {selectedJob && (() => {
         const linkedQuote = selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId) : undefined
+        const jobInvoices = invoices.filter(i => i.jobId === selectedJob.id)
+        const quotedTotal = linkedQuote?.grandTotal ?? selectedJob.value
+        const totalInvoiced = jobInvoices.reduce((sum, i) => sum + i.grandTotal, 0)
+        const totalPaid = jobInvoices.filter(i => i.status === 'Paid').reduce((sum, i) => sum + i.grandTotal, 0)
+        const remaining = Math.max(0, quotedTotal - totalInvoiced)
 
         return (
           <>
@@ -867,6 +924,528 @@ export default function Jobs() {
                 </div>
               )}
 
+              {/* ── Materials Breakdown ── */}
+              {linkedQuote && (() => {
+                const breakdown = linkedQuote.materialsBreakdown ?? []
+                const materialsTotal = breakdown.reduce((s, m) => s + m.quantity * m.unitPrice, 0)
+
+                // Initialise materialLines from quote data when entering edit mode
+                if (materialsEditMode && materialsInitialised !== linkedQuote.id) {
+                  setMaterialLines(breakdown.length > 0 ? breakdown.map(m => ({ ...m })) : [{ description: '', quantity: 1, unitPrice: 0 }])
+                  setMaterialsInitialised(linkedQuote.id)
+                }
+
+                const editTotal = materialLines.reduce((s, m) => s + m.quantity * m.unitPrice, 0)
+
+                return (
+                  <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Package size={16} color={C.gold} />
+                        <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Materials</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (materialsEditMode) {
+                            // Cancel edit
+                            setMaterialsEditMode(false)
+                            setMaterialsInitialised(null)
+                          } else {
+                            setMaterialsEditMode(true)
+                          }
+                        }}
+                        style={{
+                          background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 8,
+                          color: materialsEditMode ? C.red : C.gold, cursor: 'pointer', padding: '4px 10px',
+                          fontSize: 12, fontWeight: 500, minHeight: 30,
+                        }}
+                      >
+                        {materialsEditMode ? 'Cancel' : (breakdown.length > 0 ? 'Edit' : 'Add Breakdown')}
+                      </button>
+                    </div>
+
+                    {!materialsEditMode ? (
+                      <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
+                        {breakdown.length === 0 ? (
+                          <div style={{ color: C.steel, fontStyle: 'italic' }}>
+                            Estimated total: {'\u00A3'}{linkedQuote.materials.toFixed(2)} (from quote)
+                          </div>
+                        ) : (
+                          <>
+                            {breakdown.map((m, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
+                                <span>{m.description || 'Item'} {m.quantity > 1 ? `x${m.quantity}` : ''}</span>
+                                <span style={{ color: C.white, fontWeight: 500 }}>{'\u00A3'}{(m.quantity * m.unitPrice).toFixed(2)}</span>
+                              </div>
+                            ))}
+                            <div style={{ borderTop: `1px solid ${C.steel}33`, marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                              <span style={{ color: C.silver }}>Total</span>
+                              <span style={{ color: C.gold }}>{'\u00A3'}{materialsTotal.toFixed(2)}</span>
+                            </div>
+                            {Math.abs(materialsTotal - linkedQuote.materials) > 0.01 && (
+                              <div style={{ fontSize: 11, color: materialsTotal > linkedQuote.materials ? C.red : C.green, marginTop: 4 }}>
+                                {materialsTotal > linkedQuote.materials ? '+' : ''}{'\u00A3'}{(materialsTotal - linkedQuote.materials).toFixed(2)} vs quote estimate
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
+                        {materialLines.map((line, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                            <input
+                              type="text"
+                              placeholder="Description"
+                              value={line.description}
+                              onChange={e => {
+                                const updated = [...materialLines]
+                                updated[i] = { ...updated[i], description: e.target.value }
+                                setMaterialLines(updated)
+                              }}
+                              style={{
+                                flex: 3, padding: '8px 10px', borderRadius: 8,
+                                background: C.charcoal, border: `1px solid ${C.steel}33`,
+                                color: C.white, fontSize: 13, outline: 'none',
+                              }}
+                            />
+                            <input
+                              type="number"
+                              placeholder="Qty"
+                              min={1}
+                              value={line.quantity}
+                              onChange={e => {
+                                const updated = [...materialLines]
+                                updated[i] = { ...updated[i], quantity: Math.max(1, Number(e.target.value) || 1) }
+                                setMaterialLines(updated)
+                              }}
+                              style={{
+                                flex: 1, padding: '8px 6px', borderRadius: 8, textAlign: 'center',
+                                background: C.charcoal, border: `1px solid ${C.steel}33`,
+                                color: C.white, fontSize: 13, outline: 'none', minWidth: 40,
+                              }}
+                            />
+                            <input
+                              type="number"
+                              placeholder="Price"
+                              min={0}
+                              step={0.01}
+                              value={line.unitPrice || ''}
+                              onChange={e => {
+                                const updated = [...materialLines]
+                                updated[i] = { ...updated[i], unitPrice: Number(e.target.value) || 0 }
+                                setMaterialLines(updated)
+                              }}
+                              style={{
+                                flex: 1.5, padding: '8px 6px', borderRadius: 8,
+                                background: C.charcoal, border: `1px solid ${C.steel}33`,
+                                color: C.white, fontSize: 13, outline: 'none', minWidth: 60,
+                              }}
+                            />
+                            <span style={{ flex: 1, textAlign: 'right', color: C.silver, fontWeight: 500, fontSize: 12, minWidth: 50 }}>
+                              {'\u00A3'}{(line.quantity * line.unitPrice).toFixed(2)}
+                            </span>
+                            <button
+                              onClick={() => setMaterialLines(materialLines.filter((_, j) => j !== i))}
+                              style={{
+                                background: 'transparent', border: 'none', color: C.steel,
+                                cursor: 'pointer', padding: 4, display: 'flex',
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+
+                        <button
+                          onClick={() => setMaterialLines([...materialLines, { description: '', quantity: 1, unitPrice: 0 }])}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                            padding: '8px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                            cursor: 'pointer', background: 'transparent',
+                            border: `1px dashed ${C.steel}44`, color: C.steel,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <Plus size={14} /> Add Item
+                        </button>
+
+                        <div style={{ borderTop: `1px solid ${C.steel}33`, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                          <span style={{ color: C.silver, fontWeight: 600 }}>Total</span>
+                          <span style={{ color: C.gold, fontWeight: 700, fontSize: 15 }}>{'\u00A3'}{editTotal.toFixed(2)}</span>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            const validLines = materialLines.filter(m => m.description.trim() || m.unitPrice > 0)
+                            updateQuote(linkedQuote.id, {
+                              materialsBreakdown: validLines,
+                              materials: editTotal,
+                            })
+                            setMaterialsEditMode(false)
+                            setMaterialsInitialised(null)
+                          }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                            cursor: 'pointer', minHeight: 42,
+                            background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                          }}
+                        >
+                          Save Materials
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {/* ── Payment Summary (multi-invoice) ── */}
+              <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <Receipt size={16} color={C.gold} />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Payments</span>
+                </div>
+
+                {/* Quoted total */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, color: C.silver }}>
+                  <span>Quoted Total</span>
+                  <span style={{ color: C.white, fontWeight: 600 }}>{fmtCurrencyDecimals(quotedTotal)}</span>
+                </div>
+
+                {/* Progress bar */}
+                {jobInvoices.length > 0 && (() => {
+                  const barTotal = Math.max(quotedTotal, totalInvoiced)
+                  if (barTotal === 0) return null
+                  const paidPct = Math.min((totalPaid / barTotal) * 100, 100)
+                  const unpaidInvoicedPct = Math.min(((totalInvoiced - totalPaid) / barTotal) * 100, 100 - paidPct)
+                  return (
+                    <div style={{ margin: '8px 0 12px', height: 8, borderRadius: 4, background: `${C.steel}33`, overflow: 'hidden', display: 'flex' }}>
+                      {paidPct > 0 && <div style={{ width: `${paidPct}%`, background: '#4CAF50', height: '100%', transition: 'width .3s' }} />}
+                      {unpaidInvoicedPct > 0 && <div style={{ width: `${unpaidInvoicedPct}%`, background: C.gold, height: '100%', transition: 'width .3s' }} />}
+                    </div>
+                  )
+                })()}
+
+                {/* Invoice list */}
+                {jobInvoices.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                    {jobInvoices.map(inv => {
+                      const invTypeColor = inv.type ? invoiceTypeColors[inv.type] : C.steel
+                      const invStatusColor = invoiceStatusColors[inv.status] ?? C.steel
+                      return (
+                        <div key={inv.id} style={{
+                          background: C.black, borderRadius: 10, padding: '10px 14px',
+                          borderLeft: `3px solid ${invTypeColor}`,
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {inv.type && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                                  color: invTypeColor, background: invTypeColor + '1A',
+                                  textTransform: 'uppercase', letterSpacing: 0.5,
+                                }}>
+                                  {inv.type}
+                                </span>
+                              )}
+                              <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{inv.ref}</span>
+                            </div>
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                              color: invStatusColor, background: invStatusColor + '1A',
+                              textTransform: 'uppercase', letterSpacing: 0.5,
+                            }}>
+                              {inv.status}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: C.gold }}>{fmtCurrencyDecimals(inv.grandTotal)}</span>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button
+                                onClick={() => {
+                                  if (linkedQuote) generateInvoicePDF(linkedQuote, inv.ref, settingsToBusinessInfo(settings))
+                                }}
+                                style={{
+                                  background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 6,
+                                  color: C.silver, cursor: 'pointer', padding: '4px 8px', fontSize: 11,
+                                  display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
+                                }}
+                              >
+                                <FileDown size={12} /> PDF
+                              </button>
+                              {inv.status !== 'Paid' && (
+                                <button
+                                  onClick={() => {
+                                    updateInvoice(inv.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
+                                    const url = `${window.location.origin}/inv/${inv.id}`
+                                    navigator.clipboard.writeText(url)
+                                    addComm({
+                                      customerId: selectedJob.customerId, customerName: selectedJob.customerName,
+                                      templateName: 'Send Invoice', channel: 'email', status: 'Sent',
+                                      date: new Date().toISOString(), body: url,
+                                    })
+                                    alert(`Invoice link copied — send to ${selectedJob.customerName}:\n\n${url}`)
+                                  }}
+                                  style={{
+                                    background: 'transparent', border: `1px solid ${C.gold}33`, borderRadius: 6,
+                                    color: C.gold, cursor: 'pointer', padding: '4px 8px', fontSize: 11,
+                                    display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
+                                  }}
+                                >
+                                  <Send size={12} /> Send
+                                </button>
+                              )}
+                              {inv.status !== 'Paid' && (
+                                <button
+                                  onClick={() => {
+                                    updateInvoice(inv.id, { status: 'Paid', paidAt: new Date().toISOString().split('T')[0] })
+                                    // Check if ALL invoices are now paid and total paid >= quoted
+                                    const updatedPaid = totalPaid + inv.grandTotal
+                                    const allPaidAfter = jobInvoices.every(i => i.id === inv.id || i.status === 'Paid')
+                                    if (allPaidAfter && updatedPaid >= quotedTotal) {
+                                      moveJob(selectedJob.id, 'Paid')
+                                      setSelectedJob({ ...selectedJob, status: 'Paid' })
+                                    }
+                                  }}
+                                  style={{
+                                    background: '#4CAF5010', border: '1px solid #4CAF5033', borderRadius: 6,
+                                    color: '#4CAF50', cursor: 'pointer', padding: '4px 8px', fontSize: 11,
+                                    display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
+                                  }}
+                                >
+                                  <Receipt size={12} /> Paid
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Totals */}
+                {jobInvoices.length > 0 && (
+                  <div style={{ background: C.black, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: C.silver }}>
+                      <span>Total Invoiced</span>
+                      <span style={{ color: C.white, fontWeight: 600 }}>{fmtCurrencyDecimals(totalInvoiced)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#4CAF50' }}>
+                      <span>Total Paid</span>
+                      <span style={{ fontWeight: 600 }}>{fmtCurrencyDecimals(totalPaid)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: remaining > 0 ? C.gold : C.steel }}>
+                      <span>Remaining</span>
+                      <span style={{ fontWeight: 600 }}>{fmtCurrencyDecimals(remaining)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add Invoice button / form */}
+                {selectedJob.status !== 'Paid' && !showAddInvoice && (
+                  <button
+                    onClick={() => {
+                      setShowAddInvoice(true)
+                      // Set defaults
+                      const existingTypes = jobInvoices.map(i => i.type)
+                      let defaultType: InvoiceType = 'Deposit'
+                      if (existingTypes.includes('Deposit') && !existingTypes.includes('Final')) {
+                        defaultType = jobInvoices.length === 0 ? 'Deposit' : 'Progress'
+                      }
+                      if (existingTypes.includes('Progress') || (existingTypes.includes('Deposit') && jobInvoices.length >= 2)) {
+                        defaultType = 'Final'
+                      }
+                      if (jobInvoices.length === 0) defaultType = 'Deposit'
+                      setNewInvType(defaultType)
+                      setNewInvAmount(remaining > 0 ? remaining.toFixed(2) : '')
+                      const jobTypeName = selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (linkedQuote?.jobTypeName || 'Works')
+                      const descMap: Record<InvoiceType, string> = {
+                        Deposit: `Deposit — ${jobTypeName}`,
+                        Progress: `Progress payment — ${jobTypeName}`,
+                        Final: `Final payment — ${jobTypeName}`,
+                        Custom: `${jobTypeName}`,
+                      }
+                      setNewInvDesc(descMap[defaultType])
+                    }}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
+                      cursor: 'pointer', minHeight: 42,
+                      background: `${C.gold}10`, border: `1px solid ${C.gold}33`, color: C.gold,
+                    }}
+                  >
+                    <Plus size={14} /> Add Invoice
+                  </button>
+                )}
+
+                {showAddInvoice && selectedJob.status !== 'Paid' && (() => {
+                  const inputStyle: CSSProperties = {
+                    width: '100%', padding: '10px 12px', borderRadius: 10,
+                    background: C.black, border: `1px solid ${C.steel}33`,
+                    color: C.white, fontSize: 14, outline: 'none',
+                    boxSizing: 'border-box' as const,
+                  }
+                  const jobTypeName = selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (linkedQuote?.jobTypeName || 'Works')
+
+                  return (
+                    <div style={{ background: C.black, borderRadius: 12, padding: 16, marginTop: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>New Invoice</span>
+                        <button onClick={() => setShowAddInvoice(false)} style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}>
+                          <X size={16} />
+                        </button>
+                      </div>
+
+                      {/* Type selector */}
+                      <span style={{ ...s.fieldLabel, fontSize: 11 }}>Type</span>
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                        {(['Deposit', 'Progress', 'Final', 'Custom'] as InvoiceType[]).map(t => (
+                          <button
+                            key={t}
+                            onClick={() => {
+                              setNewInvType(t)
+                              const descMap: Record<InvoiceType, string> = {
+                                Deposit: `Deposit — ${jobTypeName}`,
+                                Progress: `Progress payment — ${jobTypeName}`,
+                                Final: `Final payment — ${jobTypeName}`,
+                                Custom: `${jobTypeName}`,
+                              }
+                              setNewInvDesc(descMap[t])
+                              if (t === 'Final') setNewInvAmount(remaining.toFixed(2))
+                            }}
+                            style={{
+                              flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                              cursor: 'pointer', border: `1px solid ${newInvType === t ? invoiceTypeColors[t] + '66' : C.steel + '33'}`,
+                              background: newInvType === t ? invoiceTypeColors[t] + '15' : 'transparent',
+                              color: newInvType === t ? invoiceTypeColors[t] : C.steel,
+                            }}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Amount */}
+                      <span style={{ ...s.fieldLabel, fontSize: 11 }}>Amount (inc. VAT)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={newInvAmount}
+                        onChange={e => setNewInvAmount(e.target.value)}
+                        placeholder="0.00"
+                        style={{ ...inputStyle, marginBottom: 8 }}
+                      />
+
+                      {/* Percentage shortcuts */}
+                      {quotedTotal > 0 && (
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                          {[25, 33, 50, 100].map(pct => (
+                            <button
+                              key={pct}
+                              onClick={() => {
+                                const amt = (quotedTotal * pct) / 100
+                                const adjusted = Math.min(amt, remaining > 0 ? remaining : amt)
+                                setNewInvAmount(adjusted.toFixed(2))
+                              }}
+                              style={{
+                                flex: 1, padding: '6px 4px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                                cursor: 'pointer', border: `1px solid ${C.steel}33`,
+                                background: 'transparent', color: C.silver,
+                              }}
+                            >
+                              {pct}%
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Description */}
+                      <span style={{ ...s.fieldLabel, fontSize: 11 }}>Description</span>
+                      <input
+                        type="text"
+                        value={newInvDesc}
+                        onChange={e => setNewInvDesc(e.target.value)}
+                        style={{ ...inputStyle, marginBottom: 14 }}
+                      />
+
+                      {/* Create */}
+                      <button
+                        disabled={!newInvAmount || Number(newInvAmount) <= 0}
+                        onClick={() => {
+                          const amount = Number(newInvAmount)
+                          if (!amount || amount <= 0) return
+                          const vatRate = 0.20
+                          const net = amount / (1 + vatRate)
+                          const vat = amount - net
+                          const dueDate = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
+
+                          addInvoice({
+                            jobId: selectedJob.id,
+                            quoteId: linkedQuote?.id,
+                            customerId: selectedJob.customerId,
+                            customerName: selectedJob.customerName,
+                            jobTypeName: selectedJob.jobType,
+                            description: newInvDesc,
+                            type: newInvType,
+                            netTotal: Math.round(net * 100) / 100,
+                            vat: Math.round(vat * 100) / 100,
+                            grandTotal: Math.round(amount * 100) / 100,
+                            status: 'Draft',
+                            dueDate,
+                          })
+
+                          // Auto-move to Invoiced if total invoiced >= quoted AND job is Complete
+                          const newTotalInvoiced = totalInvoiced + amount
+                          if (selectedJob.status === 'Complete' && newTotalInvoiced >= quotedTotal) {
+                            moveJob(selectedJob.id, 'Invoiced')
+                            setSelectedJob({ ...selectedJob, status: 'Invoiced' })
+                          }
+
+                          setShowAddInvoice(false)
+                          setNewInvAmount('')
+                          setNewInvDesc('')
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                          cursor: newInvAmount && Number(newInvAmount) > 0 ? 'pointer' : 'not-allowed',
+                          minHeight: 42, background: '#4CAF5015', border: '1px solid #4CAF5044', color: '#4CAF50',
+                          opacity: newInvAmount && Number(newInvAmount) > 0 ? 1 : 0.5,
+                        }}
+                      >
+                        <Receipt size={14} /> Create Invoice
+                      </button>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* ── Certificates ── */}
+              {(() => {
+                const certTypes = ['consumer unit', 'ev charger', 'rewire', 'eicr', 'consumer', 'condition report']
+                const jt = selectedJob.jobType.toLowerCase()
+                const showCerts = certTypes.some(t => jt.includes(t))
+                if (!showCerts) return null
+                return (
+                  <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                    <button
+                      onClick={() => { setSelectedJob(null); navigate(`/certificates/${selectedJob.id}`) }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                        cursor: 'pointer', minHeight: 42,
+                        background: '#9B7ED815', border: '1px solid #9B7ED844', color: '#9B7ED8',
+                      }}
+                    >
+                      <FileCheck size={14} /> Certificates
+                    </button>
+                  </div>
+                )
+              })()}
+
               {/* ── Status + Actions ── */}
               <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
                 <span style={s.fieldLabel}>Status</span>
@@ -886,7 +1465,7 @@ export default function Jobs() {
                       appearance: 'none', WebkitAppearance: 'none',
                     }}
                   >
-                    {columns.map(col => (
+                    {[...columns, 'Paid' as JobStatus].map(col => (
                       <option key={col} value={col} style={{ color: '#fff', background: '#1A1C20' }}>{col}</option>
                     ))}
                   </select>
@@ -896,7 +1475,7 @@ export default function Jobs() {
                 </div>
               </div>
 
-              {/* ── Actions ── */}
+              {/* ── Quote Actions ── */}
               {(() => {
                 const btnStyle: CSSProperties = {
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -905,8 +1484,6 @@ export default function Jobs() {
                   background: C.black, border: `1px solid ${C.steel}33`, color: C.silver,
                   flex: 1,
                 }
-                const existingInvoice = getInvoiceForJob(selectedJob.id)
-                const isCompleteOrLater = selectedJob.status === 'Complete' || selectedJob.status === 'Invoiced' || selectedJob.status === 'Paid'
 
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -954,82 +1531,6 @@ export default function Jobs() {
                         >
                           <Send size={14} /> {linkedQuote.status === 'Draft' ? 'Send Quote' : 'Resend Quote'}
                         </button>
-                      </>
-                    )}
-
-                    {/* Invoice actions */}
-                    {isCompleteOrLater && linkedQuote && (
-                      <>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 10, marginBottom: 2 }}>Invoice</div>
-                        {!existingInvoice ? (
-                          <button
-                            style={{ ...btnStyle, color: C.green, borderColor: `${C.green}33` }}
-                            onClick={() => {
-                              const dueDate = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
-                              const inv = addInvoice({
-                                jobId: selectedJob.id,
-                                quoteId: linkedQuote.id,
-                                customerId: selectedJob.customerId,
-                                customerName: selectedJob.customerName,
-                                jobTypeName: selectedJob.jobType,
-                                description: linkedQuote.description,
-                                netTotal: linkedQuote.netTotal,
-                                vat: linkedQuote.vat,
-                                grandTotal: linkedQuote.grandTotal,
-                                status: 'Draft',
-                                dueDate,
-                              })
-                              updateJob(selectedJob.id, { invoiceId: inv.id })
-                              moveJob(selectedJob.id, 'Invoiced')
-                              setSelectedJob({ ...selectedJob, status: 'Invoiced', invoiceId: inv.id })
-                            }}
-                          >
-                            <Receipt size={14} /> Create Invoice
-                          </button>
-                        ) : (
-                          <>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button style={btnStyle} onClick={() => generateInvoicePDF(linkedQuote, existingInvoice.ref, settingsToBusinessInfo(settings))}>
-                                <FileDown size={14} /> PDF
-                              </button>
-                              <button style={btnStyle} onClick={() => {
-                                const url = `${window.location.origin}/inv/${existingInvoice.id}`
-                                navigator.clipboard.writeText(url)
-                                alert(`Invoice link copied:\n${url}`)
-                              }}>
-                                <Link2 size={14} /> Link
-                              </button>
-                            </div>
-                            <button
-                              style={{ ...btnStyle, color: C.gold, borderColor: `${C.gold}33` }}
-                              onClick={() => {
-                                updateInvoice(existingInvoice.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
-                                const url = `${window.location.origin}/inv/${existingInvoice.id}`
-                                navigator.clipboard.writeText(url)
-                                addComm({
-                                  customerId: selectedJob.customerId, customerName: selectedJob.customerName,
-                                  templateName: 'Send Invoice', channel: 'email', status: 'Sent',
-                                  date: new Date().toISOString(), body: url,
-                                })
-                                alert(`Invoice link copied — send to ${selectedJob.customerName}:\n\n${url}`)
-                              }}
-                            >
-                              <Send size={14} /> {existingInvoice.status === 'Draft' ? 'Send Invoice' : 'Resend Invoice'}
-                            </button>
-                            {selectedJob.status !== 'Paid' && (
-                              <button
-                                style={{ ...btnStyle, color: '#4CAF50', borderColor: '#4CAF5033', background: '#4CAF5010' }}
-                                onClick={() => {
-                                  updateInvoice(existingInvoice.id, { status: 'Paid', paidAt: new Date().toISOString().split('T')[0] })
-                                  moveJob(selectedJob.id, 'Paid')
-                                  setSelectedJob({ ...selectedJob, status: 'Paid' })
-                                }}
-                              >
-                                <Receipt size={14} /> Mark as Paid
-                              </button>
-                            )}
-                          </>
-                        )}
                       </>
                     )}
                   </div>

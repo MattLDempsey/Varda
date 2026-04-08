@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { Save, Building2, Clock, FileText, Bell } from 'lucide-react'
+import { Save, Building2, Clock, FileText, Bell, Link, Copy, Check } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
+import { useAuth } from '../auth/AuthContext'
 import { useData } from '../data/DataContext'
 import type { AppSettings } from '../data/DataContext'
 
@@ -12,9 +13,19 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 
 export default function SettingsPage() {
   const { C } = useTheme()
+  const { user } = useAuth()
   const { settings, updateSettings } = useData()
   const [activeTab, setActiveTab] = useState<SettingsTab>('business')
   const [saved, setSaved] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  const bookingUrl = user?.orgId ? `${window.location.origin}/book/${user.orgId}` : ''
+  const handleCopyBookingLink = () => {
+    if (!bookingUrl) return
+    navigator.clipboard.writeText(bookingUrl)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2500)
+  }
 
   // Local draft state so edits don't persist until Save is clicked
   const [business, setBusiness] = useState<AppSettings['business']>({ ...settings.business })
@@ -225,6 +236,37 @@ export default function SettingsPage() {
                 <div style={s.field}>
                   <label style={s.label}>Company Number</label>
                   <input style={s.input} placeholder="Optional" value={business.companyNumber} onChange={e => updateBusiness('companyNumber', e.target.value)} />
+                </div>
+              </div>
+
+              {/* Booking Link */}
+              <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${C.steel}33` }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: C.white, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Link size={16} color={C.gold} />
+                  Customer Booking Link
+                </div>
+                <div style={{ fontSize: 13, color: C.silver, marginBottom: 12, lineHeight: 1.5 }}>
+                  Share this link on your website, social media, or with customers so they can book online.
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    style={{ ...s.input, flex: 1, fontSize: 13, color: C.gold, cursor: 'text' }}
+                    value={bookingUrl}
+                    readOnly
+                    onFocus={e => e.target.select()}
+                  />
+                  <button
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px',
+                      borderRadius: 8, background: linkCopied ? C.green : C.gold,
+                      color: C.black, border: 'none', cursor: 'pointer', fontSize: 13,
+                      fontWeight: 600, minHeight: 44, transition: 'background .15s',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onClick={handleCopyBookingLink}
+                  >
+                    {linkCopied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy Link</>}
+                  </button>
                 </div>
               </div>
             </>

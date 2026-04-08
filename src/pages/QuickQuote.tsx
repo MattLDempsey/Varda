@@ -5,6 +5,7 @@ import { useData } from '../data/DataContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { generateQuotePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { validateEmail, validatePhone } from '../lib/validation'
+import PricingSuggestion from '../components/PricingSuggestion'
 import './QuickQuote.css'
 
 /* ──────────────────────────────────────────────────────
@@ -918,6 +919,14 @@ export default function QuickQuote() {
             <div className="qq-metric__value">{totals.estHours.toFixed(1)}</div>
           </div>
         </div>
+
+        {/* Pricing Insight */}
+        {lines.length > 0 && lines[0].jobTypeId && (
+          <PricingSuggestion
+            jobTypeId={lines[0].jobTypeId}
+            currentTotal={totals.netTotal}
+          />
+        )}
 
         {/* Saved feedback */}
         {savedMsg && (

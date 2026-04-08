@@ -24,6 +24,9 @@ import Expenses from './pages/Expenses'
 import PricingPage from './pages/Pricing'
 import QuoteView from './pages/QuoteView'
 import InvoiceView from './pages/InvoiceView'
+import BookingPage from './pages/BookingPage'
+import CertificateForm from './pages/CertificateForm'
+import Integrations from './pages/Integrations'
 import { useTheme } from './theme/ThemeContext'
 import type { ReactNode, CSSProperties } from 'react'
 
@@ -104,6 +107,7 @@ export default function App() {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/q/:quoteId" element={<QuoteView />} />
               <Route path="/inv/:invoiceId" element={<InvoiceView />} />
+              <Route path="/book/:orgId" element={<BookingPage />} />
               <Route path="/*" element={<AuthenticatedApp />}>
                 <Route index element={<Dashboard />} />
                 <Route path="quote" element={<QuickQuote />} />
@@ -115,6 +119,8 @@ export default function App() {
                 <Route path="pricing" element={<RoleGuard minRole="admin"><PricingRules /></RoleGuard>} />
                 <Route path="settings" element={<RoleGuard minRole="admin"><SettingsPage /></RoleGuard>} />
                 <Route path="expenses" element={<RoleGuard minRole="admin"><Expenses /></RoleGuard>} />
+                <Route path="integrations" element={<RoleGuard minRole="admin"><Integrations /></RoleGuard>} />
+                <Route path="certificates/:jobId" element={<CertificateForm />} />
                 <Route path="plans" element={<RoleGuard minRole="owner"><PricingPage /></RoleGuard>} />
               </Route>
             </Routes>

@@ -24,10 +24,13 @@ import {
   Check,
   Search,
   MoreHorizontal,
+  Plug,
 } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '../../theme/ThemeContext'
 import { useAuth } from '../../auth/AuthContext'
+import { useData } from '../../data/DataContext'
+import { useFollowUps } from '../FollowUpManager'
 import { supabase } from '../../lib/supabase'
 import type { CSSProperties } from 'react'
 import TrialBanner from '../TrialBanner'
@@ -75,6 +78,7 @@ const allNavItems: NavItem[] = [
   { to: '/expenses',  icon: <Receipt size={24} />,        label: 'Expenses',      minRole: 'admin' },
   { to: '/insights',  icon: <BarChart3 size={24} />,      label: 'Insights',      minRole: 'admin' },
   { to: '/pricing',   icon: <Tags size={24} />,           label: 'Pricing Rules', minRole: 'admin' },
+  { to: '/integrations', icon: <Plug size={24} />,          label: 'Integrations',  minRole: 'admin' },
   { to: '/settings',  icon: <Settings size={24} />,       label: 'Settings',      minRole: 'admin' },
 ]
 
@@ -93,6 +97,8 @@ const roleColors: Record<string, string> = {
 export default function AppShell() {
   const { mode, C, toggle } = useTheme()
   const { user, signOut } = useAuth()
+  const { quotes, jobs, invoices, settings } = useData()
+  const { activeCount: followUpCount } = useFollowUps(quotes, jobs, invoices, settings)
   const navigate = useNavigate()
   const [showProfile, setShowProfile] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
@@ -341,8 +347,18 @@ export default function AppShell() {
                   }
                   title={item.label}
                   aria-label={item.label}
+                  style={{ position: 'relative' }}
                 >
                   {item.icon}
+                  {item.to === '/' && followUpCount > 0 && (
+                    <span style={{
+                      position: 'absolute', top: 4, right: 4,
+                      background: '#D46A6A', color: '#fff', fontSize: 9, fontWeight: 700,
+                      borderRadius: 8, minWidth: 16, height: 16, padding: '0 4px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      lineHeight: 1, boxShadow: '0 1px 4px rgba(0,0,0,.4)',
+                    }}>{followUpCount > 9 ? '9+' : followUpCount}</span>
+                  )}
                 </NavLink>
               </li>
             ))}
@@ -383,9 +399,19 @@ export default function AppShell() {
             className={({ isActive }) =>
               `mobile-nav-item${isActive ? ' mobile-nav-item--active' : ''}`
             }
+            style={{ position: 'relative' }}
           >
             {item.icon}
             <span className="mobile-nav-label">{item.label}</span>
+            {item.to === '/' && followUpCount > 0 && (
+              <span style={{
+                position: 'absolute', top: 2, right: 6,
+                background: '#D46A6A', color: '#fff', fontSize: 8, fontWeight: 700,
+                borderRadius: 7, minWidth: 14, height: 14, padding: '0 3px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                lineHeight: 1, boxShadow: '0 1px 4px rgba(0,0,0,.4)',
+              }}>{followUpCount > 9 ? '9+' : followUpCount}</span>
+            )}
           </NavLink>
         ))}
         <button

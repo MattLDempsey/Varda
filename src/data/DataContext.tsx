@@ -83,6 +83,7 @@ export const DEFAULT_JOB_TYPE_CONFIGS: JobTypeConfig[] = [
 export type JobStatus = 'Lead' | 'Quoted' | 'Accepted' | 'Scheduled' | 'In Progress' | 'Complete' | 'Invoiced' | 'Paid'
 export type QuoteStatus = 'Draft' | 'Sent' | 'Viewed' | 'Accepted' | 'Expired' | 'Declined'
 export type InvoiceStatus = 'Draft' | 'Sent' | 'Viewed' | 'Paid' | 'Overdue'
+export type InvoiceType = 'Deposit' | 'Progress' | 'Final' | 'Custom'
 export type CommChannel = 'email' | 'whatsapp'
 export type CommStatus = 'Sent' | 'Delivered' | 'Read' | 'Failed'
 export type EventSlot = 'morning' | 'afternoon' | 'full'
@@ -143,6 +144,8 @@ export interface Quote {
   grandTotal: number
   margin: number
   estHours: number
+  // materials breakdown (line-item materials after sourcing)
+  materialsBreakdown?: Array<{ description: string; quantity: number; unitPrice: number }>
   // meta
   status: QuoteStatus
   createdAt: string
@@ -188,6 +191,7 @@ export interface Invoice {
   customerName: string
   jobTypeName: string
   description: string
+  type?: InvoiceType
   netTotal: number
   vat: number
   grandTotal: number
@@ -342,6 +346,7 @@ interface DataContextValue {
   addInvoice: (i: Omit<Invoice, 'id' | 'ref' | 'createdAt'>) => Invoice
   updateInvoice: (id: string, updates: Partial<Invoice>) => void
   getInvoiceForJob: (jobId: string) => Invoice | undefined
+  getInvoicesForJob: (jobId: string) => Invoice[]
   // comm actions
   addComm: (c: Omit<CommLog, 'id'>) => CommLog
   // expense actions
@@ -601,6 +606,7 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
   }, [persist, bgCall])
 
   const getInvoiceForJob = useCallback((jobId: string) => storeRef.current.invoices.find(i => i.jobId === jobId), [])
+  const getInvoicesForJob = useCallback((jobId: string) => storeRef.current.invoices.filter(i => i.jobId === jobId), [])
 
   // ── Expense ──
   const addExpense = useCallback((e: Omit<Expense, 'id'>): Expense => {
@@ -685,7 +691,7 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       addCustomer, updateCustomer, deleteCustomer,
       addQuote, updateQuote,
       addJob, updateJob, moveJob,
-      addInvoice, updateInvoice, getInvoiceForJob,
+      addInvoice, updateInvoice, getInvoiceForJob, getInvoicesForJob,
       addEvent, updateEvent, deleteEvent,
       addComm,
       expenses: store.expenses, addExpense, updateExpense, deleteExpense,
