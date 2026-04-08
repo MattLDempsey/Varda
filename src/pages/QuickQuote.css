@@ -32,6 +32,46 @@
   background: var(--color-charcoal-light);
 }
 
+/* ── Sections (visual grouping cards) ───────────── */
+
+.qq-section {
+  background: var(--color-charcoal-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.qq-section--faded {
+  opacity: 0.55;
+  transition: opacity var(--transition-base);
+}
+
+.qq-section--faded:focus-within,
+.qq-section--faded:hover {
+  opacity: 1;
+}
+
+.qq-section-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--color-gold);
+  margin-bottom: 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-gold);
+  line-height: 1;
+}
+
+.qq-divider {
+  height: 1px;
+  background: var(--color-steel);
+  opacity: 0.15;
+  margin: var(--space-4) 0;
+}
+
 /* ── Section Labels ──────────────────────────────── */
 
 .qq-label {
@@ -82,9 +122,10 @@
 }
 
 .qq-job-btn {
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--color-black);
   border: 1px solid var(--color-steel);
+  border-left: 3px solid var(--color-steel);
   border-radius: var(--radius-md);
   color: var(--color-silver);
   font-family: var(--font-body);
@@ -94,23 +135,28 @@
   transition:
     background-color var(--transition-fast),
     border-color var(--transition-fast),
-    color var(--transition-fast);
+    border-left-color var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
   touch-action: manipulation;
-  min-height: 44px;
+  min-height: 48px;
   text-align: center;
   line-height: 1.2;
 }
 
 .qq-job-btn:hover {
-  background: var(--color-charcoal-light);
+  background: var(--color-charcoal);
   border-color: var(--color-silver);
+  border-left-color: var(--color-gold);
 }
 
 .qq-job-btn--active {
   background: var(--color-gold-dark);
   border-color: var(--color-gold);
+  border-left-color: var(--color-gold);
   color: var(--color-black);
   font-weight: 600;
+  box-shadow: 0 0 12px rgba(198, 168, 106, 0.3), 0 0 4px rgba(198, 168, 106, 0.15);
 }
 
 /* ── Number Stepper ──────────────────────────────── */
@@ -564,7 +610,12 @@
 
   .qq-panel {
     padding: var(--space-4);
-    gap: var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .qq-section {
+    padding: var(--space-4);
+    gap: var(--space-3);
   }
 
   .qq-job-grid {

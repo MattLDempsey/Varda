@@ -483,6 +483,9 @@ export default function QuickQuote() {
     <div className="qq-page">
       {/* ─── LEFT PANEL: Build Quote ─────────────────── */}
       <div className="qq-panel">
+
+        {/* ── SECTION 1: Customer & Job Info ── */}
+        <div className="qq-section">
         {/* Customer search */}
         <div className="qq-field" style={{ position: 'relative' }}>
           <span className="qq-label">Customer</span>
@@ -678,6 +681,11 @@ export default function QuickQuote() {
             onChange={e => setDescription(e.target.value)}
           />
         </div>
+        </div>{/* end qq-section: Customer & Job Info */}
+
+        {/* ── SECTION 2: Job Configuration ── */}
+        <div className="qq-section">
+        <div className="qq-section-header">Job Details</div>
 
         {/* Quote-level options */}
         <div className="qq-field">
@@ -730,20 +738,24 @@ export default function QuickQuote() {
             </div>
           </div>
         )}
+        </div>{/* end qq-section: Job Configuration */}
 
-        {/* ── Add Line Form ── */}
+        {/* ── SECTION 3: Add Line Item ── */}
         {lines.length > 0 && !canMultiLine ? (
-          <div style={{ borderTop: '1px solid var(--color-steel)', paddingTop: 16, textAlign: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '16px 20px', borderRadius: 10, background: 'var(--color-gold, #C6A86A)15', border: '1px solid var(--color-gold, #C6A86A)33', color: 'var(--color-gold, #C6A86A)', fontSize: 13, lineHeight: 1.5 }}>
-              <Lock size={14} style={{ flexShrink: 0 }} />
-              <span>Multi-line quotes require a Pro plan. <a href="/pricing" style={{ color: 'inherit', fontWeight: 600 }}>Upgrade to add more line items.</a></span>
+          <div className="qq-section">
+            <div className="qq-section-header">Add Line Item</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '16px 20px', borderRadius: 10, background: 'var(--color-gold, #C6A86A)15', border: '1px solid var(--color-gold, #C6A86A)33', color: 'var(--color-gold, #C6A86A)', fontSize: 13, lineHeight: 1.5 }}>
+                <Lock size={14} style={{ flexShrink: 0 }} />
+                <span>Multi-line quotes require a Pro plan. <a href="/pricing" style={{ color: 'inherit', fontWeight: 600 }}>Upgrade to add more line items.</a></span>
+              </div>
             </div>
           </div>
         ) : (
-        <div style={{ borderTop: lines.length > 0 ? '1px solid var(--color-steel)' : 'none', paddingTop: lines.length > 0 ? 16 : 0 }}>
-          <span className="qq-label" style={{ marginBottom: 8, display: 'block' }}>
+        <div className={`qq-section${!curJobTypeId ? ' qq-section--faded' : ''}`}>
+          <div className="qq-section-header">
             {lines.length > 0 ? 'Add Another Line' : 'Add Line Item'}
-          </span>
+          </div>
 
           {/* Job Type Grid */}
           <div className="qq-field">
@@ -857,9 +869,10 @@ export default function QuickQuote() {
         </div>
         )}
 
-        {/* Notes */}
+        {/* ── SECTION 4: Notes ── */}
+        <div className="qq-section">
+        <div className="qq-section-header">Notes</div>
         <div className="qq-field">
-          <span className="qq-label">Notes</span>
           <div className="qq-notes-wrap">
             <textarea
               className="qq-input qq-textarea"
@@ -877,6 +890,8 @@ export default function QuickQuote() {
             </button>
           </div>
         </div>
+        </div>{/* end qq-section: Notes */}
+
       </div>
 
       {/* ─── RIGHT PANEL: Live Output ───────────────── */}
