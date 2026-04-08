@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Eye, EyeOff, LogIn, Building2 } from 'lucide-react'
+import { useSearchParams, Link } from 'react-router-dom'
+import { Eye, EyeOff, LogIn, Building2, ArrowLeft, Mail } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../theme/ThemeContext'
 import { validateEmail, validateMinLength } from '../lib/validation'
+import { supabase } from '../lib/supabase'
 import type { CSSProperties } from 'react'
 
-type Mode = 'signin' | 'register'
+type Mode = 'signin' | 'register' | 'forgot'
 
 export default function Login() {
   const { C } = useTheme()
@@ -14,7 +15,8 @@ export default function Login() {
   const [searchParams] = useSearchParams()
   const inviteMode = searchParams.get('invite') === 'true'
 
-  const [mode, setMode] = useState<Mode>('signin')
+  const registerParam = searchParams.get('register') === 'true'
+  const [mode, setMode] = useState<Mode>(registerParam ? 'register' : 'signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -24,6 +26,23 @@ export default function Login() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [registerSuccess, setRegisterSuccess] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    const errs: Record<string, string> = {}
+    if (!email) errs.email = 'Email is required'
+    else { const emailErr = validateEmail(email); if (emailErr) errs.email = emailErr }
+    setFieldErrors(errs)
+    if (Object.keys(errs).length > 0) return
+    setLoading(true)
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/reset-password',
+    })
+    setLoading(false)
+    if (resetError) { setError(resetError.message) } else { setResetSent(true) }
+  }
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -130,9 +149,75 @@ export default function Login() {
             </button>
           </form>
 
+          <div style={{ textAlign: 'center', marginTop: 16 } as CSSProperties}>
+            <button type="button" style={s.toggleLink} onClick={() => { setMode('forgot'); setError(''); setFieldErrors({}) }}>Forgot password?</button>
+          </div>
+
           <div style={s.toggle as CSSProperties}>
             New business?{' '}
             <button type="button" style={s.toggleLink} onClick={() => { setMode('register'); setError('') }}>Register your business</button>
+          </div>
+
+          <div style={{ marginTop: 24, textAlign: 'center', display: 'flex', justifyContent: 'center', gap: 16 } as CSSProperties}>
+            <Link to="/terms" style={{ color: C.steel, fontSize: 12, textDecoration: 'none' }}>Terms of Service</Link>
+            <Link to="/privacy" style={{ color: C.steel, fontSize: 12, textDecoration: 'none' }}>Privacy Policy</Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Forgot Password
+  if (mode === 'forgot') {
+    if (resetSent) {
+      return (
+        <div style={s.page}>
+          <div style={s.card}>
+            <div style={s.brand as CSSProperties}>Varda</div>
+            <div style={s.brandSub as CSSProperties}>Business Management</div>
+            <div style={s.success as CSSProperties}>
+              Check your email for a password reset link
+            </div>
+            <button type="button" style={s.submitBtn as CSSProperties} onClick={() => { setResetSent(false); setMode('signin'); setEmail('') }}>
+              <ArrowLeft size={18} /> Back to Sign In
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div style={s.page}>
+        <div style={s.card}>
+          <div style={s.brand as CSSProperties}>Varda</div>
+          <div style={s.brandSub as CSSProperties}>Business Management</div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+            <Mail size={40} color={C.gold} strokeWidth={1.5} />
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: C.white, textAlign: 'center', marginBottom: 8 } as CSSProperties}>
+            Reset your password
+          </div>
+          <p style={{ fontSize: 13, color: C.silver, textAlign: 'center', marginBottom: 28 } as CSSProperties}>
+            Enter your email and we'll send you a link to reset your password.
+          </p>
+
+          <form onSubmit={handleForgotPassword}>
+            <div style={s.field}>
+              <label style={s.label}>Email</label>
+              <input style={{ ...s.input, ...(fieldErrors.email ? { borderColor: '#D46A6A' } : {}) }} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" autoFocus />
+              {fieldErrors.email && <div style={s.fieldError}>{fieldErrors.email}</div>}
+            </div>
+            {error && <div style={s.error as CSSProperties}>{error}</div>}
+            <button type="submit" style={{ ...s.submitBtn, opacity: loading ? 0.7 : 1 } as CSSProperties} disabled={loading}>
+              <Mail size={18} /> {loading ? 'Sending...' : 'Send Reset Link'}
+            </button>
+          </form>
+
+          <div style={s.toggle as CSSProperties}>
+            <button type="button" style={s.toggleLink} onClick={() => { setMode('signin'); setError(''); setFieldErrors({}) }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ArrowLeft size={14} /> Back to sign in</span>
+            </button>
           </div>
         </div>
       </div>
@@ -183,6 +268,14 @@ export default function Login() {
             {fieldErrors.confirmPassword && <div style={s.fieldError}>{fieldErrors.confirmPassword}</div>}
           </div>
           {error && <div style={s.error as CSSProperties}>{error}</div>}
+
+          <p style={{ fontSize: 12, color: C.steel, textAlign: 'center', marginBottom: 16, lineHeight: 1.5 } as CSSProperties}>
+            By registering you agree to our{' '}
+            <Link to="/terms" style={{ color: C.gold, textDecoration: 'underline' }}>Terms</Link>
+            {' '}and{' '}
+            <Link to="/privacy" style={{ color: C.gold, textDecoration: 'underline' }}>Privacy Policy</Link>.
+          </p>
+
           <button type="submit" style={{ ...s.submitBtn, opacity: loading ? 0.7 : 1 } as CSSProperties} disabled={loading}>
             <Building2 size={18} /> {loading ? 'Creating account...' : 'Register'}
           </button>
@@ -191,6 +284,11 @@ export default function Login() {
         <div style={s.toggle as CSSProperties}>
           Already have an account?{' '}
           <button type="button" style={s.toggleLink} onClick={() => { setMode('signin'); setError('') }}>Sign In</button>
+        </div>
+
+        <div style={{ marginTop: 24, textAlign: 'center', display: 'flex', justifyContent: 'center', gap: 16 } as CSSProperties}>
+          <Link to="/terms" style={{ color: C.steel, fontSize: 12, textDecoration: 'none' }}>Terms of Service</Link>
+          <Link to="/privacy" style={{ color: C.steel, fontSize: 12, textDecoration: 'none' }}>Privacy Policy</Link>
         </div>
       </div>
     </div>

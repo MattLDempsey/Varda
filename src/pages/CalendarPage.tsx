@@ -547,7 +547,7 @@ export default function CalendarPage() {
                         }} style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}>
                           <Clock size={14} />
                         </button>
-                        <button onClick={() => deleteEvent(ev.id)}
+                        <button onClick={() => { if (window.confirm('Remove this event from the calendar?')) deleteEvent(ev.id) }}
                           style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
                           onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
                           onMouseLeave={e => { e.currentTarget.style.color = C.steel }}

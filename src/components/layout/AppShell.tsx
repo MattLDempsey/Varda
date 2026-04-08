@@ -340,6 +340,7 @@ export default function AppShell() {
                     `sidebar-link${isActive ? ' sidebar-link--active' : ''}`
                   }
                   title={item.label}
+                  aria-label={item.label}
                 >
                   {item.icon}
                 </NavLink>
@@ -358,8 +359,13 @@ export default function AppShell() {
           </button>
           <div
             className="sidebar-avatar"
+            role="button"
+            tabIndex={0}
             title="User profile"
+            aria-label="User profile"
+            aria-expanded={showProfile}
             onClick={() => setShowProfile(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowProfile(true) } }}
             style={{ background: C.gold, color: C.black, fontWeight: 700, fontSize: 15 }}
           >
             {initials}
@@ -438,7 +444,7 @@ export default function AppShell() {
         </>
       )}
 
-      <main className="main-content">
+      <main className="main-content" aria-label="Main content">
         <TrialBanner />
         <Outlet />
       </main>

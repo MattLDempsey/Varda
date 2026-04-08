@@ -6,6 +6,10 @@ import { DataProvider } from './data/DataContext'
 import { SubscriptionProvider } from './subscription/SubscriptionContext'
 import AppShell from './components/layout/AppShell'
 import Login from './pages/Login'
+import Landing from './pages/Landing'
+import Terms from './pages/Terms'
+import Privacy from './pages/Privacy'
+import ResetPassword from './pages/ResetPassword'
 import Onboarding from './pages/Onboarding'
 import Dashboard from './pages/Dashboard'
 import QuickQuote from './pages/QuickQuote'
@@ -73,7 +77,7 @@ function AuthenticatedApp() {
   const { user, isLoading, isAuthenticated, needsOnboarding } = useAuth()
 
   if (isLoading) return <LoadingScreen />
-  if (!isAuthenticated && !needsOnboarding) return <Navigate to="/login" replace />
+  if (!isAuthenticated && !needsOnboarding) return <Navigate to="/landing" replace />
   if (needsOnboarding) return <Onboarding />
   if (!user) return <LoadingScreen />
 
@@ -93,7 +97,11 @@ export default function App() {
         <AuthProvider>
           <BrowserRouter>
             <Routes>
+              <Route path="/landing" element={<PublicRoute><Landing /></PublicRoute>} />
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+              <Route path="/terms" element={<Terms />} />
+              <Route path="/privacy" element={<Privacy />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/q/:quoteId" element={<QuoteView />} />
               <Route path="/inv/:invoiceId" element={<InvoiceView />} />
               <Route path="/*" element={<AuthenticatedApp />}>

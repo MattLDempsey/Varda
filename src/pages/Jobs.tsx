@@ -750,7 +750,7 @@ export default function Jobs() {
                               <span style={{ fontSize: 12, color: C.steel, marginLeft: 8 }}>{slotLabels[ev.slot]}</span>
                             </div>
                             <button
-                              onClick={() => deleteEvent(ev.id)}
+                              onClick={() => { if (window.confirm('Remove this event from the calendar?')) deleteEvent(ev.id) }}
                               style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
                               onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
                               onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
