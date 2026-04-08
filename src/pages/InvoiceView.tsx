@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useData } from '../data/DataContext'
-import { CheckCircle, Clock, FileText, Phone, Mail, Globe, AlertTriangle, Banknote } from 'lucide-react'
+import { CheckCircle, Clock, FileText, Phone, Mail, Globe, AlertTriangle, Banknote, CreditCard } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import type { CSSProperties } from 'react'
 
 function fmtCurrency(n: number): string {
@@ -15,6 +17,9 @@ function fmtDate(iso: string): string {
 export default function InvoiceView() {
   const { invoiceId } = useParams<{ invoiceId: string }>()
   const { invoices, quotes, customers, settings } = useData()
+  const [payLoading, setPayLoading] = useState(false)
+  const [payError, setPayError] = useState('')
+  const [showBankFallback, setShowBankFallback] = useState(false)
 
   const invoice = invoices.find(i => i.id === invoiceId)
 
@@ -223,12 +228,69 @@ export default function InvoiceView() {
             <div style={s.grandRow}><span>Total</span><span>{fmtCurrency(invoice.grandTotal)}</span></div>
           </div>
 
-          {/* Payment Details */}
-          {!isPaid && (settings.quoteConfig.bankName || settings.quoteConfig.sortCode || settings.quoteConfig.accountNumber) && (
-            <div style={s.paymentBox}>
+          {/* Pay Now button for unpaid invoices */}
+          {!isPaid && (
+            <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button
+                onClick={async () => {
+                  setPayLoading(true)
+                  setPayError('')
+                  try {
+                    const { data, error } = await supabase.functions.invoke('create-checkout', {
+                      body: {
+                        invoiceId: invoice.id,
+                        invoiceRef: invoice.ref,
+                        amount: Math.round(invoice.grandTotal * 100),
+                        customerName: invoice.customerName,
+                        description: invoice.jobTypeName,
+                      },
+                    })
+                    if (error) throw error
+                    if (data?.url) {
+                      window.location.href = data.url
+                    } else {
+                      throw new Error('No checkout URL returned')
+                    }
+                  } catch {
+                    setPayError('Online payments are not yet configured. Please use bank transfer details below.')
+                    setShowBankFallback(true)
+                  } finally {
+                    setPayLoading(false)
+                  }
+                }}
+                disabled={payLoading}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  padding: '16px 24px', borderRadius: 12, border: 'none', cursor: payLoading ? 'wait' : 'pointer',
+                  background: `linear-gradient(135deg, ${gold} 0%, #D4B876 100%)`,
+                  color: '#1A1C20', fontSize: 18, fontWeight: 700, letterSpacing: 0.3,
+                  boxShadow: `0 4px 16px ${gold}44`, transition: 'transform .15s, box-shadow .15s',
+                  opacity: payLoading ? 0.7 : 1, minHeight: 56,
+                }}
+                onMouseEnter={(e) => { if (!payLoading) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = `0 6px 24px ${gold}55` } }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = `0 4px 16px ${gold}44` }}
+              >
+                <CreditCard size={22} />
+                {payLoading ? 'Processing...' : `Pay Now — £${invoice.grandTotal.toFixed(2)}`}
+              </button>
+
+              {payError && (
+                <div style={{
+                  fontSize: 13, color: gold, padding: '10px 14px', borderRadius: 8,
+                  background: `${gold}11`, border: `1px solid ${gold}33`, textAlign: 'center',
+                }}>
+                  {payError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bank transfer details — always show for unpaid, or show as fallback */}
+          {!isPaid && (showBankFallback || settings.quoteConfig.bankName || settings.quoteConfig.sortCode || settings.quoteConfig.accountNumber) && (
+            <div style={{ ...s.paymentBox, marginTop: payError ? 12 : 24 }}>
               <div style={s.paymentLabel}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Banknote size={14} /> Payment Details
+                  <Banknote size={14} /> Bank Transfer Details
                 </span>
               </div>
               <div style={s.paymentGrid}>

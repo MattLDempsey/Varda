@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   FileText, Briefcase, PoundSterling, Clock, TrendingUp,
   CalendarCheck, CheckCircle, AlertTriangle, ChevronRight,
-  Calendar, Bell, X,
+  Calendar, Bell, X, Square, CheckSquare,
 } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
@@ -61,7 +61,7 @@ const statusColor: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate()
   const { C } = useTheme()
-  const { quotes, jobs, events, invoices, settings, isDataLoading } = useData()
+  const { quotes, jobs, events, invoices, settings, customers, isDataLoading } = useData()
   const today = todayStr()
 
   // Follow-up system
@@ -190,6 +190,35 @@ export default function Dashboard() {
     empty: { textAlign: 'center' as const, padding: '32px 16px', color: C.steel, fontSize: 13 },
   }
 
+  /* ── Onboarding checklist ── */
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() =>
+    localStorage.getItem('varda-onboarding-dismissed') === 'true',
+  )
+
+  const onboardingItems = useMemo(() => {
+    const hasPhone = settings.business.phone && settings.business.phone !== '07XXX XXX XXX'
+    const hasCustomer = customers.length > 0
+    const hasQuote = quotes.length > 0
+    const hasEvent = events.length > 0
+
+    return [
+      { label: 'Create your account', done: true, route: '/' },
+      { label: 'Set up your business details', done: !!hasPhone, route: '/settings' },
+      { label: 'Add your first customer', done: hasCustomer, route: '/customers' },
+      { label: 'Create your first quote', done: hasQuote, route: '/quote' },
+      { label: 'Schedule a job', done: hasEvent, route: '/calendar' },
+    ]
+  }, [settings, customers, quotes, events])
+
+  const onboardingComplete = onboardingItems.filter(i => i.done).length
+  const allOnboardingDone = onboardingComplete === onboardingItems.length
+  const showOnboarding = jobs.length < 3 && !onboardingDismissed
+
+  const dismissOnboarding = useCallback(() => {
+    setOnboardingDismissed(true)
+    localStorage.setItem('varda-onboarding-dismissed', 'true')
+  }, [])
+
   if (isDataLoading) {
     return (
       <div style={s.page}>
@@ -204,6 +233,109 @@ export default function Dashboard() {
     <div style={s.page}>
       <h1 style={s.heading}>Dashboard</h1>
       <p style={s.subheading}>Your business at a glance.</p>
+
+      {/* ── Onboarding Checklist ── */}
+      {showOnboarding && (
+        <div style={{
+          background: C.charcoalLight,
+          border: `2px solid ${C.gold}`,
+          borderRadius: 14,
+          padding: '24px 28px 20px',
+          marginBottom: 28,
+          boxShadow: '0 6px 24px rgba(0,0,0,.25)',
+          position: 'relative',
+        }}>
+          <button
+            onClick={dismissOnboarding}
+            title="Dismiss"
+            style={{
+              position: 'absolute', top: 14, right: 14,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: C.steel, padding: 4, minWidth: 32, minHeight: 32,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = C.silver)}
+            onMouseLeave={(e) => (e.currentTarget.style.color = C.steel)}
+          >
+            <X size={16} />
+          </button>
+
+          {allOnboardingDone ? (
+            <div style={{ textAlign: 'center', padding: '12px 0' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
+              <div style={{ fontSize: 18, fontWeight: 600, color: C.white, marginBottom: 4 }}>
+                You're all set!
+              </div>
+              <div style={{ fontSize: 13, color: C.silver, marginBottom: 16 }}>
+                Your workspace is ready to go. Start quoting and managing jobs.
+              </div>
+              <button
+                onClick={dismissOnboarding}
+                style={{
+                  background: C.gold, color: C.black, border: 'none', borderRadius: 8,
+                  padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  minHeight: 44,
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 16, fontWeight: 600, color: C.white, marginBottom: 4 }}>
+                Get started with Varda
+              </div>
+              <div style={{ fontSize: 13, color: C.silver, marginBottom: 16 }}>
+                {onboardingComplete} of {onboardingItems.length} complete
+              </div>
+
+              {/* Progress bar */}
+              <div style={{
+                height: 6, borderRadius: 3, background: `${C.steel}33`,
+                overflow: 'hidden', marginBottom: 18,
+              }}>
+                <div style={{
+                  width: `${(onboardingComplete / onboardingItems.length) * 100}%`,
+                  height: '100%', background: C.gold, borderRadius: 3,
+                  transition: 'width .3s ease',
+                }} />
+              </div>
+
+              {/* Checklist items */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {onboardingItems.map((item) => (
+                  <div
+                    key={item.label}
+                    onClick={() => !item.done && navigate(item.route)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 10px', borderRadius: 8,
+                      cursor: item.done ? 'default' : 'pointer',
+                      transition: 'background .15s',
+                    }}
+                    onMouseEnter={(e) => { if (!item.done) e.currentTarget.style.background = C.steel + '33' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    {item.done ? (
+                      <CheckSquare size={18} color={C.gold} />
+                    ) : (
+                      <Square size={18} color={C.steel} />
+                    )}
+                    <span style={{
+                      fontSize: 14, fontWeight: 500,
+                      color: item.done ? C.steel : C.white,
+                      textDecoration: item.done ? 'line-through' : 'none',
+                    }}>
+                      {item.label}
+                    </span>
+                    {!item.done && <ChevronRight size={14} color={C.steel} style={{ marginLeft: 'auto' }} />}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Row 1: KPI Cards ── */}
       <div style={s.statsRow}>

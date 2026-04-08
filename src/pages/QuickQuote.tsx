@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { CheckCircle, FileDown, Plus, Trash2, Lock, MapPin, ChevronDown } from 'lucide-react'
 import { useData } from '../data/DataContext'
 import { useAuth } from '../auth/AuthContext'
@@ -72,6 +72,7 @@ let nextLineId = 1
 export default function QuickQuote() {
   const { addQuote, updateQuote, updateJob, moveJob, addJob, addCustomer, quotes, jobs, customers, settings, getNextQuoteRef, pricingConfig, jobTypeConfigs } = useData()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { canUse } = useSubscription()
   const canMultiLine = canUse('multiLineQuotes')
 
@@ -1064,8 +1065,14 @@ export default function QuickQuote() {
 
         {/* Auto-save indicator */}
         {activeQuote && (
-          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--color-steel-light)' }}>
-            {activeQuote.ref} · Lead · Auto-saved
+          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--color-steel-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <span>{activeQuote.ref} · Lead · Auto-saved</span>
+            <span
+              onClick={() => navigate('/jobs')}
+              style={{ color: 'var(--color-gold)', cursor: 'pointer', fontWeight: 500 }}
+            >
+              View in Jobs →
+            </span>
           </div>
         )}
 
@@ -1154,7 +1161,7 @@ export default function QuickQuote() {
 
           const methods = [sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link copied'].filter(Boolean)
           setSendMsg(`Sent via ${methods.join(' + ')}`)
-          setTimeout(() => { setSendMsg(''); setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }) }, 2500)
+          setTimeout(() => { setSendMsg('') }, 5000)
         }
 
         return (
@@ -1176,8 +1183,21 @@ export default function QuickQuote() {
               </div>
 
               {sendMsg && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: '#6ABF8A22', color: '#6ABF8A', fontSize: 13, fontWeight: 500, marginBottom: 16 }}>
-                  <CheckCircle size={16} /> {sendMsg}
+                <div style={{ padding: '10px 14px', borderRadius: 10, background: '#6ABF8A22', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6ABF8A', fontSize: 13, fontWeight: 500 }}>
+                    <CheckCircle size={16} /> {sendMsg}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg(''); navigate('/jobs') }}
+                    style={{
+                      marginTop: 8, background: 'transparent', border: `1px solid var(--color-gold)`,
+                      color: 'var(--color-gold)', borderRadius: 8, padding: '8px 16px',
+                      fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 36,
+                    }}
+                  >
+                    View Job →
+                  </button>
                 </div>
               )}
 

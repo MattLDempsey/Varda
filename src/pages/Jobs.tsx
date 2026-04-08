@@ -511,6 +511,36 @@ export default function Jobs() {
                       <span style={s.cardDate}>{fmtDate(job.date)}</span>
                     </div>
                     {renderCardPaymentBar(job.id, job.value > 0 ? job.value : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.grandTotal || 0 })())}
+                    {/* Contextual next-action hint */}
+                    {job.status === 'Lead' && (
+                      <div
+                        style={{ fontSize: 11, color: C.steel, marginTop: 6, cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); navigate(job.quoteId ? `/quote?quoteId=${job.quoteId}` : '/quote') }}
+                      >
+                        Quote this job →
+                      </div>
+                    )}
+                    {job.status === 'Quoted' && (
+                      <div style={{ fontSize: 11, color: C.steel, marginTop: 6 }}>
+                        Waiting for response
+                      </div>
+                    )}
+                    {job.status === 'Accepted' && (
+                      <div
+                        style={{ fontSize: 11, color: C.steel, marginTop: 6, cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); selectJob(job) }}
+                      >
+                        Schedule this job
+                      </div>
+                    )}
+                    {job.status === 'Complete' && (
+                      <div
+                        style={{ fontSize: 11, color: C.steel, marginTop: 6, cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); selectJob(job); setPanelTab('payments') }}
+                      >
+                        Create invoice
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1305,7 +1335,7 @@ export default function Jobs() {
                             </div>
                             <button
                               style={{ ...btnStyle, color: C.gold, borderColor: `${C.gold}33` }}
-                              onClick={() => {
+                              onClick={async () => {
                                 const url = `${window.location.origin}/q/${linkedQuote.id}`
                                 navigator.clipboard.writeText(url)
                                 if (linkedQuote.status === 'Draft') {
@@ -1319,6 +1349,35 @@ export default function Jobs() {
                                     templateName: 'Send Quote', channel: 'email', status: 'Sent',
                                     date: new Date().toISOString(), body: url,
                                   })
+                                }
+                                // Try sending real email if customer has an email address
+                                const customer = customers.find(c => c.id === selectedJob.customerId)
+                                if (customer?.email) {
+                                  const biz = settings.business
+                                  const quoteEmailData = buildQuoteEmail({
+                                    customerName: selectedJob.customerName,
+                                    businessName: biz.businessName,
+                                    quoteRef: linkedQuote.ref,
+                                    total: fmtCurrencyDecimals(linkedQuote.grandTotal),
+                                    quoteUrl: url,
+                                    validityDays: settings.quoteConfig.validityDays,
+                                    businessPhone: biz.phone,
+                                    businessEmail: biz.email,
+                                  })
+                                  const result = await sendEmail({
+                                    to: customer.email,
+                                    subject: quoteEmailData.subject,
+                                    htmlBody: quoteEmailData.html,
+                                    textBody: quoteEmailData.text,
+                                    replyTo: biz.email,
+                                    orgId: user?.orgId || '',
+                                    customerId: customer.id,
+                                    templateName: 'Send Quote',
+                                  })
+                                  if (result.method === 'edge') {
+                                    alert(`Quote emailed to ${customer.email} and link copied.`)
+                                    return
+                                  }
                                 }
                                 alert(`Quote link copied — send to ${selectedJob.customerName}:\n\n${url}`)
                               }}
@@ -1407,7 +1466,7 @@ export default function Jobs() {
                                 </button>
                                 {inv.status !== 'Paid' && (
                                   <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                       updateInvoice(inv.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
                                       const url = `${window.location.origin}/inv/${inv.id}`
                                       navigator.clipboard.writeText(url)
@@ -1416,6 +1475,34 @@ export default function Jobs() {
                                         templateName: 'Send Invoice', channel: 'email', status: 'Sent',
                                         date: new Date().toISOString(), body: url,
                                       })
+                                      // Try sending real email if customer has an email address
+                                      const customer = customers.find(c => c.id === selectedJob.customerId)
+                                      if (customer?.email) {
+                                        const biz = settings.business
+                                        const invoiceEmailData = buildInvoiceEmail({
+                                          customerName: selectedJob.customerName,
+                                          businessName: biz.businessName,
+                                          invoiceRef: inv.ref,
+                                          total: fmtCurrencyDecimals(inv.grandTotal),
+                                          invoiceUrl: url,
+                                          businessPhone: biz.phone,
+                                          businessEmail: biz.email,
+                                        })
+                                        const result = await sendEmail({
+                                          to: customer.email,
+                                          subject: invoiceEmailData.subject,
+                                          htmlBody: invoiceEmailData.html,
+                                          textBody: invoiceEmailData.text,
+                                          replyTo: biz.email,
+                                          orgId: user?.orgId || '',
+                                          customerId: customer.id,
+                                          templateName: 'Send Invoice',
+                                        })
+                                        if (result.method === 'edge') {
+                                          alert(`Invoice emailed to ${customer.email} and link copied.`)
+                                          return
+                                        }
+                                      }
                                       alert(`Invoice link copied — send to ${selectedJob.customerName}:\n\n${url}`)
                                     }}
                                     style={{

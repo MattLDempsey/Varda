@@ -26,7 +26,7 @@ import {
   MoreHorizontal,
   Plug,
 } from 'lucide-react'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useTheme } from '../../theme/ThemeContext'
 import { useAuth } from '../../auth/AuthContext'
 import { useData } from '../../data/DataContext'
@@ -346,31 +346,39 @@ export default function AppShell() {
             <Search size={24} />
           </button>
           <ul className="sidebar-nav">
-            {navItems.map((item) => (
-              <li key={item.to}>
-                <NavLink
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    `sidebar-link${isActive ? ' sidebar-link--active' : ''}`
-                  }
-                  title={item.label}
-                  aria-label={item.label}
-                  style={{ position: 'relative' }}
-                >
-                  {item.icon}
-                  {item.to === '/' && followUpCount > 0 && (
-                    <span style={{
-                      position: 'absolute', top: 4, right: 4,
-                      background: '#D46A6A', color: '#fff', fontSize: 9, fontWeight: 700,
-                      borderRadius: 8, minWidth: 16, height: 16, padding: '0 4px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      lineHeight: 1, boxShadow: '0 1px 4px rgba(0,0,0,.4)',
-                    }}>{followUpCount > 9 ? '9+' : followUpCount}</span>
-                  )}
-                </NavLink>
-              </li>
-            ))}
+            {navItems.map((item, idx) => {
+              const configPaths = ['/pricing', '/integrations', '/settings']
+              const isFirstConfigItem = configPaths.includes(item.to) &&
+                !navItems.slice(0, idx).some(prev => configPaths.includes(prev.to))
+              return (
+                <Fragment key={item.to}>
+                  {isFirstConfigItem && <li className="sidebar-divider" />}
+                  <li>
+                    <NavLink
+                      to={item.to}
+                      end={item.to === '/'}
+                      className={({ isActive }) =>
+                        `sidebar-link${isActive ? ' sidebar-link--active' : ''}`
+                      }
+                      title={item.label}
+                      aria-label={item.label}
+                      style={{ position: 'relative' }}
+                    >
+                      {item.icon}
+                      {item.to === '/' && followUpCount > 0 && (
+                        <span style={{
+                          position: 'absolute', top: 4, right: 4,
+                          background: '#D46A6A', color: '#fff', fontSize: 9, fontWeight: 700,
+                          borderRadius: 8, minWidth: 16, height: 16, padding: '0 4px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          lineHeight: 1, boxShadow: '0 1px 4px rgba(0,0,0,.4)',
+                        }}>{followUpCount > 9 ? '9+' : followUpCount}</span>
+                      )}
+                    </NavLink>
+                  </li>
+                </Fragment>
+              )
+            })}
           </ul>
         </div>
 
