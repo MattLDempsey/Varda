@@ -69,7 +69,14 @@ function hasMinRole(userRole: string, minRole: string): boolean {
   return (ROLE_LEVEL[userRole] ?? 0) >= (ROLE_LEVEL[minRole] ?? 0)
 }
 
-const allNavItems: NavItem[] = [{ to: '/', icon: <LayoutDashboard size={24} />, label: 'Dashboard' }, { to: '/quote', icon: <FileText size={24} />, label: 'Quick Quote' }, { to: '/jobs', icon: <Briefcase size={24} />, label: 'Jobs' }, { to: '/calendar', icon: <Calendar size={24} />, label: 'Calendar' }, { to: '/customers', icon: <Users size={24} />, label: 'Customers' }, { to: '/expenses', icon: <Receipt size={24} />, label: 'Expenses', minRole: 'admin' }, { to: '/insights', icon: <BarChart3 size={24} />, label: 'Insights', minRole: 'admin' }, { to: '/pricing', icon: <Tags size={24} />, label: 'Pricing Rules', minRole: 'admin' }, { to: '/integrations', icon: <Plug size={24} />, label: 'Integrations', minRole: 'admin' }, { to: '/settings', icon: <Settings size={24} />, label: 'Settings', minRole: 'admin' }]
+const allNavItems: NavItem[] = [
+  { to: '/quote',     icon: <FileText size={24} />,  label: 'Quick Quote' },
+  { to: '/jobs',      icon: <Briefcase size={24} />, label: 'Jobs' },
+  { to: '/calendar',  icon: <Calendar size={24} />,  label: 'Calendar' },
+  { to: '/customers', icon: <Users size={24} />,     label: 'Customers' },
+  { to: '/expenses',  icon: <Receipt size={24} />,   label: 'Expenses',  minRole: 'admin' },
+  { to: '/insights',  icon: <BarChart3 size={24} />, label: 'Insights',  minRole: 'admin' },
+]
 
 const roleLabels: Record<string, string> = {
   owner: 'Owner',
@@ -327,13 +334,6 @@ export default function AppShell() {
       <nav className="sidebar sidebar--desktop" aria-label="Main navigation">
         <div className="sidebar-top">
           <div className="sidebar-brand" onClick={() => navigate('/')} style={{ cursor: 'pointer' }} title="Dashboard">V</div>
-          <button
-            className="sidebar-link"
-            onClick={() => setShowSearch(true)}
-            title="Search (Ctrl+K)"
-          >
-            <Search size={24} />
-          </button>
           <ul className="sidebar-nav">
             {navItems.map((item, idx) => {
               const configPaths = ['/pricing', '/integrations', '/settings']
@@ -372,6 +372,15 @@ export default function AppShell() {
         </div>
 
         <div className="sidebar-bottom">
+          {isAdmin && (
+            <NavLink
+              to="/settings"
+              className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link--active' : ''}`}
+              title="Settings"
+            >
+              <Settings size={24} />
+            </NavLink>
+          )}
           <button
             className="sidebar-link"
             onClick={toggle}
