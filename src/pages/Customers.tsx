@@ -239,6 +239,7 @@ export default function Customers() {
       cursor: 'pointer',
       minHeight: 48,
     },
+    fieldError: { fontSize: 12, color: '#D46A6A', marginTop: -12, marginBottom: 12 },
     detailRow: {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
@@ -264,6 +265,15 @@ export default function Customers() {
 
   const handleAddCustomer = (e: React.FormEvent) => {
     e.preventDefault()
+    const errs: Record<string, string> = {}
+    const nameErr = validateRequired(form.name, 'Name')
+    if (nameErr) errs.name = nameErr
+    if (form.email.trim()) {
+      const emailErr = validateEmail(form.email.trim())
+      if (emailErr) errs.email = emailErr
+    }
+    setFormErrors(errs)
+    if (Object.keys(errs).length > 0) return
     addCustomer({
       name: form.name,
       phone: form.phone,
@@ -274,6 +284,7 @@ export default function Customers() {
       postcode: form.postcode,
       notes: form.notes,
     })
+    setFormErrors({})
     closePanel()
   }
 
@@ -521,7 +532,8 @@ export default function Customers() {
             {showForm && (
               <form onSubmit={handleAddCustomer}>
                 <label style={s.fieldLabel}>Name</label>
-                <input style={s.input} value={form.name} onChange={(e) => handleFormChange('name', e.target.value)} />
+                <input style={{ ...s.input, ...(formErrors.name ? { borderColor: '#D46A6A' } : {}) }} value={form.name} onChange={(e) => handleFormChange('name', e.target.value)} />
+                {formErrors.name && <div style={s.fieldError}>{formErrors.name}</div>}
 
                 <div style={s.detailRow}>
                   <div>
@@ -530,7 +542,8 @@ export default function Customers() {
                   </div>
                   <div>
                     <label style={s.fieldLabel}>Email</label>
-                    <input style={s.input} type="email" value={form.email} onChange={(e) => handleFormChange('email', e.target.value)} />
+                    <input style={{ ...s.input, ...(formErrors.email ? { borderColor: '#D46A6A' } : {}) }} type="email" value={form.email} onChange={(e) => handleFormChange('email', e.target.value)} />
+                    {formErrors.email && <div style={{ ...s.fieldError, marginTop: -12 }}>{formErrors.email}</div>}
                   </div>
                 </div>
 
