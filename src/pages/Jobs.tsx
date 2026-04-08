@@ -442,12 +442,7 @@ export default function Jobs() {
       <LimitWarning current={activeJobCount} max={features?.maxActiveJobs ?? null} label="active jobs" plan={plan} />
 
       {/* kanban view */}
-      {view === 'kanban' && jobs.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '64px 24px', color: C.steel, fontSize: 15 }}>
-          No jobs yet. Create your first quote to get started.
-        </div>
-      )}
-      {view === 'kanban' && jobs.length > 0 && (
+      {view === 'kanban' && (
         <div style={s.kanban}>
           {columns.map((col) => {
             const colJobs = jobs.filter((j) => j.status === col)
