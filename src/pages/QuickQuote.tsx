@@ -1,11 +1,12 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CheckCircle, FileDown, Plus, Trash2, Lock } from 'lucide-react'
+import { CheckCircle, FileDown, Plus, Trash2, Lock, MapPin } from 'lucide-react'
 import { useData } from '../data/DataContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { generateQuotePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { validateEmail, validatePhone } from '../lib/validation'
 import PricingSuggestion from '../components/PricingSuggestion'
+import { estimateDistance, getDistanceHassleAdjustment } from '../lib/postcode-distance'
 import './QuickQuote.css'
 
 /* ──────────────────────────────────────────────────────
@@ -135,6 +136,12 @@ export default function QuickQuote() {
   const [newCustEmail, setNewCustEmail] = useState('')
   const [newCustPostcode, setNewCustPostcode] = useState('')
   const [newCustErrors, setNewCustErrors] = useState<Record<string, string>>({})
+
+  // ── Job site postcode & distance pricing ──
+  const [jobPostcode, setJobPostcode] = useState('')
+  const [distanceMiles, setDistanceMiles] = useState<number | null>(null)
+  const [distanceHassleAdj, setDistanceHassleAdj] = useState(0)
+  const [hassleManuallyOverridden, setHassleManuallyOverridden] = useState(false)
 
   // ── Current line being built ──
   const [curJobTypeId, setCurJobTypeId] = useState('')
@@ -351,6 +358,8 @@ export default function QuickQuote() {
       grandTotal: totals.grandTotal,
       margin: totals.margin,
       estHours: totals.estHours,
+      jobPostcode: jobPostcode.trim() || undefined,
+      distanceMiles: distanceMiles ?? undefined,
     }
   }
 
@@ -423,6 +432,37 @@ export default function QuickQuote() {
 
   const activeQuote = activeQuoteId ? quotes.find(q => q.id === activeQuoteId) : undefined
   const selectedCustomer = selectedCustomerId ? customers.find(c => c.id === selectedCustomerId) : undefined
+
+  // ── Inherit postcode from selected customer ──
+  useEffect(() => {
+    if (selectedCustomer?.postcode && !jobPostcode) {
+      setJobPostcode(selectedCustomer.postcode)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomerId])
+
+  // ── Calculate distance when job postcode or base postcode changes ──
+  useEffect(() => {
+    const basePostcode = settings.business.postcode
+    if (!basePostcode || !jobPostcode || jobPostcode.trim().length < 2) {
+      setDistanceMiles(null)
+      setDistanceHassleAdj(0)
+      return
+    }
+    const dist = estimateDistance(basePostcode, jobPostcode)
+    setDistanceMiles(dist)
+    const adj = dist !== null ? getDistanceHassleAdjustment(dist) : 0
+    setDistanceHassleAdj(adj)
+    // Auto-adjust hassle slider if not manually overridden
+    if (!hassleManuallyOverridden && adj > 0) {
+      setCurHassle(prev => {
+        // Strip any previous distance adjustment, then add new one
+        const base = Math.max(0, prev - distanceHassleAdj)
+        return Math.min(100, base + adj)
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobPostcode, settings.business.postcode])
 
   // ── Customer search matches ──
   const customerMatches = useMemo(() => {
@@ -589,6 +629,44 @@ export default function QuickQuote() {
           )}
         </div>
 
+        {/* Job Site Postcode */}
+        <div className="qq-field">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
+              <MapPin size={14} style={{ color: 'var(--color-steel-light)' }} />
+              <span className="qq-label" style={{ margin: 0 }}>Job Site</span>
+            </div>
+            <input
+              className="qq-input"
+              type="text"
+              placeholder="e.g. CO3 4AB"
+              value={jobPostcode}
+              onChange={e => {
+                setJobPostcode(e.target.value.toUpperCase())
+                setHassleManuallyOverridden(false)
+              }}
+              style={{ maxWidth: 140, textTransform: 'uppercase', fontSize: 13 }}
+            />
+            {distanceMiles !== null && (
+              <span style={{
+                fontSize: 12, color: 'var(--color-steel-light)',
+                display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+              }}>
+                ~{distanceMiles} miles from base
+                {distanceHassleAdj > 0 && (
+                  <span style={{
+                    fontSize: 11, color: 'var(--color-gold)',
+                    background: 'var(--color-gold)15', padding: '2px 6px',
+                    borderRadius: 4, fontWeight: 500,
+                  }}>
+                    +{distanceHassleAdj} hassle
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Description */}
         <div className="qq-field">
           <span className="qq-label">Job Description</span>
@@ -750,7 +828,7 @@ export default function QuickQuote() {
                     <span className="qq-label">Hassle Factor</span>
                     <span className="qq-slider-value">{curHassle}</span>
                   </div>
-                  <input className="qq-slider" type="range" min={0} max={100} value={curHassle} onChange={e => setCurHassle(Number(e.target.value))} />
+                  <input className="qq-slider" type="range" min={0} max={100} value={curHassle} onChange={e => { setCurHassle(Number(e.target.value)); setHassleManuallyOverridden(true) }} />
                   <div className="qq-slider-labels"><span>Straightforward</span><span>Complex</span></div>
                 </div>
               </div>
