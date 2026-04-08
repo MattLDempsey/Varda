@@ -422,18 +422,25 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
     fn().catch((err) => console.error('[DataContext] Supabase background write failed', err))
   }, [])
 
+  // Map temp IDs to real Supabase IDs — used to resolve FK references
+  const idMapRef = useRef<Record<string, string>>({})
+
+  function resolveId(id: string | undefined): string | undefined {
+    if (!id) return id
+    return idMapRef.current[id] || id
+  }
+
   // ── Customer ──
   const addCustomer = useCallback((c: Omit<Customer, 'id' | 'createdAt'>): Customer => {
-    // Use a temporary local ID; Supabase will assign the real one
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     const created: Customer = { ...c, id: tempId, createdAt: new Date().toISOString().split('T')[0] }
 
-    // Optimistic update
     persist(s => ({ ...s, customers: [created, ...s.customers] }))
 
-    // Background: insert into Supabase, then swap the temp ID for the real one
     bgCall(async () => {
       const real = await svc.insertCustomer(orgIdRef.current, c)
+      // Store the mapping so quotes/jobs can resolve this temp ID
+      idMapRef.current[tempId] = real.id
       setStore(prev => {
         const next = {
           ...prev,
@@ -471,7 +478,9 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
     persist(s => ({ ...s, quotes: [created, ...s.quotes] }))
 
     bgCall(async () => {
-      const real = await svc.insertQuote(orgIdRef.current, { ...q, ref, status: 'Draft' })
+      // Resolve any temp IDs to real Supabase IDs before inserting
+      const resolved = { ...q, ref, status: 'Draft' as const, customerId: resolveId(q.customerId) || q.customerId }
+      const real = await svc.insertQuote(orgIdRef.current, resolved)
       setStore(prev => {
         const next = { ...prev, quotes: prev.quotes.map(qu => qu.id === tempId ? real : qu) }
         saveCache(next)
@@ -498,7 +507,9 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
     persist(s => ({ ...s, jobs: [created, ...s.jobs] }))
 
     bgCall(async () => {
-      const real = await svc.insertJob(orgIdRef.current, j)
+      // Resolve temp IDs for customer and quote references
+      const resolved = { ...j, customerId: resolveId(j.customerId) || j.customerId, quoteId: resolveId(j.quoteId) }
+      const real = await svc.insertJob(orgIdRef.current, resolved)
       setStore(prev => {
         const next = { ...prev, jobs: prev.jobs.map(jo => jo.id === tempId ? real : jo) }
         saveCache(next)

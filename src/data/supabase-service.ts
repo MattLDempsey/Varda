@@ -124,14 +124,15 @@ export async function fetchQuotes(): Promise<Quote[]> {
 // Whitelist of actual database columns — only these get sent to Supabase
 // This prevents TypeScript-only fields (customerName, distanceMiles, etc.) from causing 400 errors
 const QUOTE_COLS = new Set([
-  'ref', 'customer_id', 'job_type_id', 'job_type_name', 'description', 'quantity',
+  'ref', 'customer_id', 'customer_name', 'job_type_id', 'job_type_name', 'description', 'quantity',
   'difficulty', 'hassle_factor', 'emergency', 'out_of_hours', 'cert_required',
   'customer_supplies_materials', 'notes', 'materials', 'labour', 'certificates',
   'waste', 'subtotal', 'adjustments', 'net_total', 'vat', 'grand_total', 'margin',
   'est_hours', 'status', 'sent_at', 'viewed_at', 'accepted_at', 'materials_breakdown',
+  'job_postcode', 'distance_miles',
 ])
 const JOB_COLS = new Set([
-  'customer_id', 'quote_id', 'invoice_id', 'job_type', 'value', 'estimated_hours',
+  'customer_id', 'customer_name', 'quote_id', 'invoice_id', 'job_type', 'value', 'estimated_hours',
   'actual_hours', 'status', 'date', 'notes',
 ])
 
