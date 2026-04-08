@@ -578,6 +578,8 @@ export default function QuickQuote() {
                   setNewCustEmail('')
                   setNewCustPostcode('')
                   setNewCustErrors({})
+                  setSavedMsg('✓ Customer saved')
+                  setTimeout(() => setSavedMsg(''), 2500)
                 }}
               >
                 Save Customer
