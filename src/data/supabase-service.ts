@@ -78,7 +78,7 @@ export async function insertCustomer(
   orgId: string,
   customer: Omit<Customer, 'id' | 'createdAt'>
 ): Promise<Customer> {
-  const row = toSnake(customer as unknown as Record<string, unknown>)
+  const row = pickCols(toSnake(customer as unknown as Record<string, unknown>), CUSTOMER_COLS)
   const { data, error } = await supabase
     .from('customers')
     .insert({ org_id: orgId, ...row })
@@ -92,7 +92,7 @@ export async function updateCustomer(
   id: string,
   updates: Partial<Customer>
 ): Promise<Customer> {
-  const row = toSnakePartial(updates as Record<string, unknown>)
+  const row = pickCols(toSnakePartial(updates as Record<string, unknown>), CUSTOMER_COLS)
   const { data, error } = await supabase
     .from('customers')
     .update(row)
@@ -134,6 +134,23 @@ const QUOTE_COLS = new Set([
 const JOB_COLS = new Set([
   'customer_id', 'customer_name', 'quote_id', 'invoice_id', 'job_type', 'value', 'estimated_hours',
   'actual_hours', 'status', 'date', 'notes',
+])
+const INVOICE_COLS = new Set([
+  'ref', 'job_id', 'quote_id', 'customer_id', 'customer_name', 'job_type_name',
+  'description', 'net_total', 'vat', 'grand_total', 'status', 'due_date',
+  'sent_at', 'paid_at', 'invoice_type',
+])
+const EVENT_COLS = new Set([
+  'job_id', 'customer_id', 'customer_name', 'job_type', 'date', 'slot', 'status', 'notes',
+])
+const COMM_COLS = new Set([
+  'customer_id', 'customer_name', 'template_name', 'channel', 'status', 'date', 'body',
+])
+const EXPENSE_COLS = new Set([
+  'date', 'supplier', 'description', 'category', 'amount', 'vat', 'total', 'job_id', 'receipt',
+])
+const CUSTOMER_COLS = new Set([
+  'name', 'phone', 'email', 'address1', 'address2', 'city', 'postcode', 'notes',
 ])
 
 function pickCols(row: Record<string, unknown>, allowed: Set<string>): Record<string, unknown> {
@@ -245,7 +262,7 @@ export async function insertInvoice(
   orgId: string,
   invoice: Omit<Invoice, 'id' | 'createdAt'>
 ): Promise<Invoice> {
-  const row = toSnake(invoice as unknown as Record<string, unknown>)
+  const row = pickCols(toSnake(invoice as unknown as Record<string, unknown>), INVOICE_COLS)
   const { data, error } = await supabase
     .from('invoices')
     .insert({ org_id: orgId, ...row })
@@ -259,7 +276,7 @@ export async function updateInvoice(
   id: string,
   updates: Partial<Invoice>
 ): Promise<Invoice> {
-  const row = toSnakePartial(updates as Record<string, unknown>)
+  const row = pickCols(toSnakePartial(updates as Record<string, unknown>), INVOICE_COLS)
   const { data, error } = await supabase
     .from('invoices')
     .update(row)
@@ -287,7 +304,7 @@ export async function insertEvent(
   orgId: string,
   event: Omit<ScheduleEvent, 'id'>
 ): Promise<ScheduleEvent> {
-  const row = toSnake(event as unknown as Record<string, unknown>)
+  const row = pickCols(toSnake(event as unknown as Record<string, unknown>), EVENT_COLS)
   const { data, error } = await supabase
     .from('schedule_events')
     .insert({ org_id: orgId, ...row })
@@ -301,7 +318,7 @@ export async function updateEvent(
   id: string,
   updates: Partial<ScheduleEvent>
 ): Promise<ScheduleEvent> {
-  const row = toSnakePartial(updates as Record<string, unknown>)
+  const row = pickCols(toSnakePartial(updates as Record<string, unknown>), EVENT_COLS)
   const { data, error } = await supabase
     .from('schedule_events')
     .update(row)
@@ -334,7 +351,7 @@ export async function insertComm(
   orgId: string,
   comm: Omit<CommLog, 'id'>
 ): Promise<CommLog> {
-  const row = toSnake(comm as unknown as Record<string, unknown>)
+  const row = pickCols(toSnake(comm as unknown as Record<string, unknown>), COMM_COLS)
   const { data, error } = await supabase
     .from('communications')
     .insert({ org_id: orgId, ...row })
@@ -361,7 +378,7 @@ export async function insertExpense(
   orgId: string,
   expense: Omit<Expense, 'id'>
 ): Promise<Expense> {
-  const row = toSnake(expense as unknown as Record<string, unknown>)
+  const row = pickCols(toSnake(expense as unknown as Record<string, unknown>), EXPENSE_COLS)
   const { data, error } = await supabase
     .from('expenses')
     .insert({ org_id: orgId, ...row })
@@ -375,7 +392,7 @@ export async function updateExpense(
   id: string,
   updates: Partial<Expense>
 ): Promise<Expense> {
-  const row = toSnakePartial(updates as Record<string, unknown>)
+  const row = pickCols(toSnakePartial(updates as Record<string, unknown>), EXPENSE_COLS)
   const { data, error } = await supabase
     .from('expenses')
     .update(row)
