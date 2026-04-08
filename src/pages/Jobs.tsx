@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload } from 'lucide-react'
+import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload, RefreshCw } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
@@ -60,7 +60,7 @@ const invoiceStatusColors: Record<string, string> = {
 
 export default function Jobs() {
   const { C } = useTheme()
-  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, isDataLoading } = useData()
+  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, isDataLoading } = useData()
   const { user } = useAuth()
   const { features, plan } = useSubscription()
   const activeJobCount = useMemo(() => jobs.filter(j => j.status !== 'Paid').length, [jobs])
@@ -922,6 +922,157 @@ export default function Jobs() {
                       <div style={{ ...s.fieldValue, fontStyle: 'italic', color: C.silver }}>{selectedJob.notes}</div>
                     </>
                   )}
+
+                  {/* ── Recurring Job ── */}
+                  {(['Complete', 'Paid'] as JobStatus[]).includes(selectedJob.status) && (() => {
+                    const isRecurring = selectedJob.isRecurring ?? false
+                    const rule = selectedJob.recurrenceRule || 'annual'
+                    const customMonths = selectedJob.recurrenceIntervalMonths || 12
+
+                    function computeNextDate(baseDate: string, ruleVal: string, months: number): string {
+                      const d = new Date(baseDate)
+                      const intervalMonths = ruleVal === 'annual' ? 12 : ruleVal === 'quarterly' ? 3 : ruleVal === 'monthly' ? 1 : months
+                      d.setMonth(d.getMonth() + intervalMonths)
+                      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                    }
+
+                    const nextDate = selectedJob.nextRecurrenceDate || (isRecurring ? computeNextDate(selectedJob.date, rule, customMonths) : '')
+
+                    return (
+                      <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <RefreshCw size={16} color={C.gold} />
+                            <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Recurring</span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const newRecurring = !isRecurring
+                              const updates: Partial<Job> = { isRecurring: newRecurring }
+                              if (newRecurring) {
+                                updates.recurrenceRule = rule
+                                const interval = rule === 'annual' ? 12 : rule === 'quarterly' ? 3 : rule === 'monthly' ? 1 : customMonths
+                                updates.recurrenceIntervalMonths = interval
+                                updates.nextRecurrenceDate = computeNextDate(selectedJob.date, rule, customMonths)
+                              } else {
+                                updates.recurrenceRule = undefined
+                                updates.recurrenceIntervalMonths = undefined
+                                updates.nextRecurrenceDate = undefined
+                              }
+                              updateJob(selectedJob.id, updates)
+                              setSelectedJob({ ...selectedJob, ...updates })
+                            }}
+                            style={{
+                              width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                              background: isRecurring ? C.gold : `${C.steel}44`,
+                              position: 'relative', transition: 'background .2s',
+                            }}
+                          >
+                            <div style={{
+                              width: 18, height: 18, borderRadius: 9, background: '#fff',
+                              position: 'absolute', top: 3,
+                              left: isRecurring ? 23 : 3,
+                              transition: 'left .2s',
+                            }} />
+                          </button>
+                        </div>
+
+                        {isRecurring && (
+                          <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px' }}>
+                            <span style={{ ...s.fieldLabel, fontSize: 11 }}>Frequency</span>
+                            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                              {(['annual', 'quarterly', 'monthly', 'custom'] as const).map(opt => (
+                                <button
+                                  key={opt}
+                                  onClick={() => {
+                                    const interval = opt === 'annual' ? 12 : opt === 'quarterly' ? 3 : opt === 'monthly' ? 1 : customMonths
+                                    const nd = computeNextDate(selectedJob.date, opt, interval)
+                                    updateJob(selectedJob.id, { recurrenceRule: opt, recurrenceIntervalMonths: interval, nextRecurrenceDate: nd })
+                                    setSelectedJob({ ...selectedJob, recurrenceRule: opt, recurrenceIntervalMonths: interval, nextRecurrenceDate: nd })
+                                  }}
+                                  style={{
+                                    flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                                    cursor: 'pointer',
+                                    border: `1px solid ${rule === opt ? C.gold + '66' : C.steel + '33'}`,
+                                    background: rule === opt ? `${C.gold}15` : 'transparent',
+                                    color: rule === opt ? C.gold : C.steel,
+                                    textTransform: 'capitalize',
+                                  }}
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+
+                            {rule === 'custom' && (
+                              <div style={{ marginBottom: 12 }}>
+                                <span style={{ ...s.fieldLabel, fontSize: 11 }}>Months between recurrences</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={60}
+                                  value={customMonths}
+                                  onChange={e => {
+                                    const months = Math.max(1, Number(e.target.value) || 1)
+                                    const nd = computeNextDate(selectedJob.date, 'custom', months)
+                                    updateJob(selectedJob.id, { recurrenceIntervalMonths: months, nextRecurrenceDate: nd })
+                                    setSelectedJob({ ...selectedJob, recurrenceIntervalMonths: months, nextRecurrenceDate: nd })
+                                  }}
+                                  style={{
+                                    width: '100%', padding: '10px 12px', borderRadius: 10,
+                                    background: C.charcoal, border: `1px solid ${C.steel}33`,
+                                    color: C.white, fontSize: 14, outline: 'none',
+                                    boxSizing: 'border-box' as const,
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {nextDate && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', marginBottom: 8 }}>
+                                <span style={{ fontSize: 13, color: C.silver }}>Next:</span>
+                                <span style={{ fontSize: 14, fontWeight: 600, color: C.gold }}>{fmtDate(nextDate)}</span>
+                              </div>
+                            )}
+
+                            <button
+                              onClick={() => {
+                                const newJob = addJob({
+                                  customerId: selectedJob.customerId,
+                                  customerName: selectedJob.customerName,
+                                  quoteId: selectedJob.quoteId,
+                                  jobType: selectedJob.jobType,
+                                  value: selectedJob.value,
+                                  estimatedHours: selectedJob.estimatedHours,
+                                  status: 'Lead',
+                                  date: nextDate,
+                                  notes: selectedJob.notes,
+                                  parentJobId: selectedJob.id,
+                                  isRecurring: true,
+                                  recurrenceRule: rule,
+                                  recurrenceIntervalMonths: rule === 'annual' ? 12 : rule === 'quarterly' ? 3 : rule === 'monthly' ? 1 : customMonths,
+                                })
+                                // Update next recurrence date on current job
+                                const interval = rule === 'annual' ? 12 : rule === 'quarterly' ? 3 : rule === 'monthly' ? 1 : customMonths
+                                const newNextDate = computeNextDate(nextDate, rule, interval)
+                                updateJob(selectedJob.id, { nextRecurrenceDate: newNextDate })
+                                setSelectedJob({ ...selectedJob, nextRecurrenceDate: newNextDate })
+                                alert(`Next occurrence created for ${fmtDate(nextDate)} — check the Jobs board.`)
+                              }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                                cursor: 'pointer', minHeight: 42,
+                                background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                              }}
+                            >
+                              <RefreshCw size={14} /> Create Next Occurrence
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   {/* ── Schedule Job ── */}
                   {(selectedJob.status === 'Accepted' || selectedJob.status === 'Scheduled' || selectedJob.status === 'In Progress') && (() => {

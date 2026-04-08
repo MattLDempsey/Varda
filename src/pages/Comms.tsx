@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { buildSMSLink, isMobileDevice } from '../lib/sms-templates'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 import FeatureGate from '../components/FeatureGate'
 import type { Customer, Quote, CommLog } from '../data/DataContext'
@@ -184,6 +185,7 @@ function interpolateSubject(subject: string, _customer?: Customer, latestQuote?:
 export default function Comms() {
   const { C } = useTheme()
   const { customers, quotes, comms, addComm } = useData()
+  const isMobile = useIsMobile()
 
   /* ── state ── */
   const [activeTab, setActiveTab] = useState<TabId>('templates')
@@ -282,6 +284,8 @@ export default function Comms() {
     }
   }, [composeCustomerId, customers, quotes])
 
+  const [smsCopied, setSmsCopied] = useState(false)
+
   const handleSend = useCallback(() => {
     if (!composeCustomer || !composeBody.trim()) return
 
@@ -290,6 +294,16 @@ export default function Comms() {
     if (composeChannel === 'email') {
       const mailtoUrl = `mailto:${encodeURIComponent(composeCustomer.email)}?subject=${encodeURIComponent(composeSubject)}&body=${encodeURIComponent(composeBody)}`
       window.open(mailtoUrl, '_blank')
+    } else if (composeChannel === 'sms') {
+      if (isMobileDevice()) {
+        const smsUrl = buildSMSLink(composeCustomer.phone, composeBody)
+        window.open(smsUrl, '_self')
+      } else {
+        // Desktop: copy to clipboard instead
+        navigator.clipboard.writeText(composeBody)
+        setSmsCopied(true)
+        setTimeout(() => setSmsCopied(false), 3000)
+      }
     } else {
       const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(composeBody)}`
       window.open(waUrl, '_blank')
@@ -326,7 +340,7 @@ export default function Comms() {
 
   /* ── styles ── */
   const s: Record<string, CSSProperties> = {
-    page: { padding: 32, maxWidth: 1400, margin: '0 auto', display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20, minHeight: 'calc(100vh - 64px)' },
+    page: { padding: 32, maxWidth: 1400, margin: '0 auto', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '300px 1fr', gap: 20, minHeight: 'calc(100vh - 64px)' },
     heading: { fontSize: 28, fontWeight: 600, color: C.white, marginBottom: 20 },
     // left sidebar
     sectionLabel: { fontSize: 11, fontWeight: 600, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8, padding: '16px 12px 8px', marginTop: 8 },
@@ -393,11 +407,14 @@ export default function Comms() {
     transition: 'all .15s',
   })
 
+  const channelColor = (channel: Channel) =>
+    channel === 'email' ? C.blue : channel === 'sms' ? '#E8A838' : C.green
+
   const channelToggleStyle = (active: boolean, channel: Channel): CSSProperties => ({
     flex: 1, padding: '10px 16px', border: 'none', cursor: 'pointer', fontSize: 13,
     fontWeight: 600, minHeight: 40, borderRadius: 8,
-    background: active ? (channel === 'email' ? `${C.blue}22` : `${C.green}22`) : 'transparent',
-    color: active ? (channel === 'email' ? C.blue : C.green) : C.steel,
+    background: active ? `${channelColor(channel)}22` : 'transparent',
+    color: active ? channelColor(channel) : C.steel,
     transition: 'all .15s',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
   })
@@ -448,6 +465,24 @@ export default function Comms() {
                 {t.name}
               </button>
             ))}
+
+            <div style={s.sectionLabel}>SMS Templates</div>
+            {smsTemplates.map(t => (
+              <button
+                key={t.id}
+                style={{
+                  ...s.templateBtn,
+                  background: selectedTemplate === t.id && activeTab === 'templates' ? `${C.gold}15` : 'transparent',
+                  color: selectedTemplate === t.id && activeTab === 'templates' ? C.gold : C.silver,
+                }}
+                onClick={() => { setSelectedTemplate(t.id); setActiveTab('templates') }}
+              >
+                <div style={{ ...s.channelIcon, background: '#E8A83822', color: '#E8A838' }}>
+                  <Smartphone size={16} />
+                </div>
+                {t.name}
+              </button>
+            ))}
           </div>
 
           {/* tab toggle */}
@@ -473,12 +508,14 @@ export default function Comms() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 {template.channel === 'email'
                   ? <Mail size={18} color={C.blue} />
+                  : template.channel === 'sms'
+                  ? <Smartphone size={18} color="#E8A838" />
                   : <MessageCircle size={18} color={C.green} />
                 }
                 <span style={s.panelTitle}>{template.name}</span>
               </div>
               <p style={s.panelSub}>
-                {template.channel === 'email' ? 'Email template' : 'WhatsApp message'} — variables shown as {'{{placeholders}}'}
+                {template.channel === 'email' ? 'Email template' : template.channel === 'sms' ? 'SMS message' : 'WhatsApp message'} — variables shown as {'{{placeholders}}'}
               </p>
 
               <div style={s.previewBox}>
@@ -545,6 +582,12 @@ export default function Comms() {
                   >
                     <MessageCircle size={14} /> WhatsApp
                   </button>
+                  <button
+                    style={channelToggleStyle(composeChannel === 'sms', 'sms')}
+                    onClick={() => setComposeChannel('sms')}
+                  >
+                    <Smartphone size={14} /> SMS
+                  </button>
                 </div>
               </div>
 
@@ -598,6 +641,16 @@ export default function Comms() {
                 </div>
               )}
 
+              {/* SMS character count */}
+              {composeChannel === 'sms' && (
+                <div style={{
+                  fontSize: 12, color: composeBody.length > 320 ? '#D46A6A' : composeBody.length > 160 ? '#E8A838' : C.steel,
+                  marginBottom: 8, textAlign: 'right',
+                }}>
+                  {composeBody.length}/160 chars{composeBody.length > 160 ? ` (${Math.ceil(composeBody.length / 153)} SMS segments)` : ''}
+                </div>
+              )}
+
               {/* Send / status */}
               <div style={s.actions}>
                 {composeChannel === 'email' ? (
@@ -612,6 +665,19 @@ export default function Comms() {
                     onClick={handleSend}
                   >
                     <Send size={16} /> Send Email
+                  </button>
+                ) : composeChannel === 'sms' ? (
+                  <button
+                    style={{
+                      ...s.btn,
+                      background: composeCustomer && composeBody.trim() ? '#E8A838' : `${C.steel}44`,
+                      color: composeCustomer && composeBody.trim() ? C.black : C.steel,
+                      cursor: composeCustomer && composeBody.trim() ? 'pointer' : 'not-allowed',
+                    }}
+                    disabled={!composeCustomer || !composeBody.trim()}
+                    onClick={handleSend}
+                  >
+                    <Smartphone size={16} /> {isMobileDevice() ? 'Open SMS' : 'Copy SMS Text'}
                   </button>
                 ) : (
                   <button
@@ -635,6 +701,9 @@ export default function Comms() {
                 </button>
                 {copied && (
                   <span style={{ fontSize: 13, color: C.green, fontWeight: 500 }}>Copied!</span>
+                )}
+                {smsCopied && (
+                  <span style={{ fontSize: 13, color: '#E8A838', fontWeight: 500 }}>SMS text copied to clipboard!</span>
                 )}
                 {composeSent && (
                   <span style={{ fontSize: 13, color: C.green, fontWeight: 500 }}>
@@ -673,7 +742,7 @@ export default function Comms() {
                 </div>
                 {/* Channel filter */}
                 <div style={{ display: 'flex', background: C.black, borderRadius: 8, overflow: 'hidden' }}>
-                  {(['all', 'email', 'whatsapp'] as const).map(f => (
+                  {(['all', 'email', 'whatsapp', 'sms'] as const).map(f => (
                     <button
                       key={f}
                       style={{
@@ -689,6 +758,7 @@ export default function Comms() {
                       {f === 'all' && <><Filter size={12} /> All</>}
                       {f === 'email' && <><Mail size={12} /> Email</>}
                       {f === 'whatsapp' && <><MessageCircle size={12} /> WhatsApp</>}
+                      {f === 'sms' && <><Smartphone size={12} /> SMS</>}
                     </button>
                   ))}
                 </div>
@@ -716,10 +786,10 @@ export default function Comms() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{
                       ...s.channelIcon,
-                      background: comm.channel === 'email' ? `${C.blue}22` : `${C.green}22`,
-                      color: comm.channel === 'email' ? C.blue : C.green,
+                      background: comm.channel === 'email' ? `${C.blue}22` : comm.channel === 'sms' ? '#E8A83822' : `${C.green}22`,
+                      color: comm.channel === 'email' ? C.blue : comm.channel === 'sms' ? '#E8A838' : C.green,
                     }}>
-                      {comm.channel === 'email' ? <Mail size={14} /> : <MessageCircle size={14} />}
+                      {comm.channel === 'email' ? <Mail size={14} /> : comm.channel === 'sms' ? <Smartphone size={14} /> : <MessageCircle size={14} />}
                     </div>
                     <div style={s.logLeft}>
                       <span style={s.logName}>{comm.customerName}</span>
@@ -776,7 +846,7 @@ export default function Comms() {
               {[
                 { label: 'Customer', value: selectedComm.customerName },
                 { label: 'Template', value: selectedComm.templateName },
-                { label: 'Channel', value: selectedComm.channel === 'email' ? 'Email' : 'WhatsApp' },
+                { label: 'Channel', value: selectedComm.channel === 'email' ? 'Email' : selectedComm.channel === 'sms' ? 'SMS' : 'WhatsApp' },
                 { label: 'Date', value: formatCommDate(selectedComm.date) },
                 { label: 'Status', value: selectedComm.status },
               ].map(row => (

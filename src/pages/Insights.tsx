@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { TrendingUp, TrendingDown, AlertTriangle, Award } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 import FeatureGate from '../components/FeatureGate'
 import type { CSSProperties } from 'react'
@@ -35,6 +36,14 @@ export default function Insights() {
   const { jobs, quotes, customers, expenses } = useData()
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year' | 'overall'>('year')
   const [selectedYear, setSelectedYear] = useState('')
+  const [insightsView, setInsightsView] = useState<'simple' | 'detailed'>(() =>
+    (localStorage.getItem('varda-insights-view') as 'simple' | 'detailed') || 'simple'
+  )
+  const isMobile = useIsMobile()
+  const handleViewToggle = useCallback((v: 'simple' | 'detailed') => {
+    setInsightsView(v)
+    localStorage.setItem('varda-insights-view', v)
+  }, [])
 
   // Only paid jobs count in Insights — money received
   // Enrich with quote values as fallback for jobs with stale data
@@ -482,8 +491,8 @@ export default function Insights() {
     kpiValue: { fontSize: 28, fontWeight: 700, color: C.white, lineHeight: 1, marginBottom: 6 },
     kpiLabel: { fontSize: 13, color: C.silver, marginBottom: 8 },
     kpiChange: { fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 },
-    twoCol: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 },
-    threeCol: { display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, marginBottom: 24 },
+    twoCol: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20, marginBottom: 24 },
+    threeCol: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: 20, marginBottom: 24 },
     panel: { background: C.charcoalLight, borderRadius: 12, padding: '20px 24px' },
     panelTitle: { fontSize: 16, fontWeight: 600, color: C.white, marginBottom: 16 },
     // chart
@@ -511,7 +520,25 @@ export default function Insights() {
     <div style={s.page}>
       {/* header */}
       <div style={s.header}>
-        <h1 style={s.heading}>Insights</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={s.heading}>Insights</h1>
+          <div style={{ display: 'flex', background: C.black, borderRadius: 8, overflow: 'hidden' }}>
+            {(['simple', 'detailed'] as const).map(v => (
+              <button
+                key={v}
+                style={{
+                  padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13,
+                  fontWeight: 500, minHeight: 40, transition: 'background .15s, color .15s',
+                  background: insightsView === v ? C.charcoalLight : 'transparent',
+                  color: insightsView === v ? C.gold : C.steel,
+                }}
+                onClick={() => handleViewToggle(v)}
+              >
+                {v === 'simple' ? 'Simple' : 'Detailed'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div style={s.periodToggle}>
             {(['week', 'month', 'quarter', 'overall'] as const).map(p => (
@@ -576,7 +603,7 @@ export default function Insights() {
       </div>
 
       {/* charts + alerts */}
-      <div style={s.threeCol}>
+      <div style={insightsView === 'simple' ? { marginBottom: 24 } : s.threeCol}>
         {/* revenue/costs/profit chart */}
         <div style={s.panel}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -794,6 +821,7 @@ export default function Insights() {
         </div>
 
         {/* smart alerts */}
+        {insightsView === 'detailed' && (
         <div style={s.panel}>
           <div style={s.panelTitle}>Smart Alerts</div>
           {alerts.map((a, i) => (
@@ -810,7 +838,11 @@ export default function Insights() {
             </div>
           ))}
         </div>
+        )}
       </div>
+
+      {/* Everything below is detailed view only */}
+      {insightsView === 'detailed' && <>
 
       {/* job type performance + repeat customers */}
       <div style={s.twoCol}>
@@ -896,7 +928,7 @@ export default function Insights() {
 
       {/* ── Trend & Forecast (full width) — Business plan ── */}
       <FeatureGate feature="insightsAdvanced">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 520px', gap: 20, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 520px', gap: 20, marginBottom: 24 }}>
       <div style={s.panel}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={s.panelTitle}>Trend & Forecast</div>
@@ -1121,7 +1153,7 @@ export default function Insights() {
           ]
 
           return (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10 }}>
               {/* YTD column */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8 }}>Year to Date</div>
@@ -1233,6 +1265,8 @@ export default function Insights() {
         </div>
       </div>
       </FeatureGate>
+
+      </>}
     </div>
     </FeatureGate>
   )

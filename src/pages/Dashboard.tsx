@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { useFollowUps, priorityColor, getPendingReminders, markReminderSent } from '../components/FollowUpManager'
 import { buildBookingConfirmationEmail } from '../lib/email-templates'
 import { sendEmail } from '../lib/send-email'
@@ -66,6 +67,7 @@ export default function Dashboard() {
   const { C } = useTheme()
   const { quotes, jobs, events, invoices, settings, customers, addComm, isDataLoading } = useData()
   const { user } = useAuth()
+  const isMobile = useIsMobile()
   const today = todayStr()
 
   // Follow-up system
@@ -229,7 +231,7 @@ export default function Dashboard() {
     statCard: { background: C.charcoalLight, borderRadius: 12, padding: '20px 20px 16px', borderLeft: `4px solid ${C.gold}`, display: 'flex', flexDirection: 'column', gap: 6 },
     statValue: { fontSize: 28, fontWeight: 700, color: C.white, lineHeight: 1 },
     statLabel: { fontSize: 12, color: C.silver, display: 'flex', alignItems: 'center', gap: 6 },
-    columns: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 28 },
+    columns: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 24, marginBottom: 28 },
     panel: { background: C.charcoalLight, borderRadius: 12, padding: '20px 24px' },
     panelHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
     panelTitle: { fontSize: 16, fontWeight: 600, color: C.white },
@@ -481,7 +483,14 @@ export default function Dashboard() {
                   borderLeft: `3px solid ${color}`,
                   marginBottom: 4,
                 }}
-                onClick={() => navigate(item.route)}
+                onClick={() => {
+                  if (item.id.startsWith('followup-reminder-')) {
+                    const eventId = item.id.replace('followup-reminder-', '')
+                    sendOneReminder(eventId)
+                  } else {
+                    navigate(item.route)
+                  }
+                }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >

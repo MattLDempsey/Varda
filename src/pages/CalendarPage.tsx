@@ -71,7 +71,14 @@ function getMonthGridDates(year: number, month: number): Date[] {
 /* ── component ── */
 export default function CalendarPage() {
   const { C } = useTheme()
-  const { events, customers, addEvent, updateEvent, deleteEvent, isDataLoading } = useData()
+  const { events, customers, jobs, addEvent, updateEvent, deleteEvent, isDataLoading } = useData()
+
+  /** Look up the job value for an event */
+  const getEventValue = (ev: ScheduleEvent): number => {
+    if (!ev.jobId) return 0
+    const job = jobs.find(j => j.id === ev.jobId)
+    return job?.value ?? 0
+  }
 
   const [view, setView] = useState<'month' | 'week' | 'day'>('week')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -359,7 +366,9 @@ export default function CalendarPage() {
                 }}>
                   {d.getDate()}
                 </div>
-                {cellEvents.slice(0, 3).map(ev => (
+                {cellEvents.slice(0, 3).map(ev => {
+                  const val = getEventValue(ev)
+                  return (
                   <div
                     key={ev.id}
                     style={{
@@ -369,9 +378,10 @@ export default function CalendarPage() {
                     }}
                     onClick={(e) => { e.stopPropagation(); setSelectedEvent(ev) }}
                   >
-                    {ev.customerName}
+                    {ev.customerName}{val > 0 ? ` \u00A3${val.toLocaleString('en-GB')}` : ''}
                   </div>
-                ))}
+                  )
+                })}
                 {cellEvents.length > 3 && (
                   <div style={{ fontSize: 10, color: C.steel, padding: '0 4px' }}>
                     +{cellEvents.length - 3} more
@@ -412,7 +422,9 @@ export default function CalendarPage() {
                 {dayEvts.length === 0 && (
                   <div style={{ color: C.steel, fontSize: 11, textAlign: 'center', padding: '20px 0' }}>—</div>
                 )}
-                {dayEvts.map(ev => (
+                {dayEvts.map(ev => {
+                  const val = getEventValue(ev)
+                  return (
                   <div
                     key={ev.id}
                     style={{
@@ -426,12 +438,14 @@ export default function CalendarPage() {
                   >
                     <div style={s.eventCustomer}>{ev.customerName}</div>
                     <div style={s.eventJob}>{ev.jobType}</div>
+                    {val > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: C.gold, marginTop: 1 }}>{'\u00A3'}{val.toLocaleString('en-GB')}</div>}
                     <div style={s.eventSlot as CSSProperties}>
                       <Clock size={10} />
                       {ev.slot === 'full' ? 'Full day' : ev.slot === 'morning' ? 'AM' : 'PM'}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )
           })}
@@ -457,7 +471,9 @@ export default function CalendarPage() {
                   {hour <= 12 ? `${hour}:00` : `${hour}:00`}
                 </div>,
                 <div key={`s-${hour}`} style={s.timeSlot}>
-                  {showEvents && slotEvents.map(ev => (
+                  {showEvents && slotEvents.map(ev => {
+                    const val = getEventValue(ev)
+                    return (
                     <div
                       key={ev.id}
                       style={{
@@ -470,12 +486,14 @@ export default function CalendarPage() {
                     >
                       <div style={s.eventCustomer}>{ev.customerName}</div>
                       <div style={s.eventJob}>{ev.jobType}</div>
+                      {val > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: C.gold, marginTop: 1 }}>{'\u00A3'}{val.toLocaleString('en-GB')}</div>}
                       <div style={s.eventSlot as CSSProperties}>
                         <Clock size={10} />
                         {ev.slot === 'full' ? 'Full day' : ev.slot === 'morning' ? '7:00–12:00' : '12:00–18:00'}
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>,
               ]
             })}
