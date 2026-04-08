@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CheckCircle, FileDown, Plus, Trash2, Lock, MapPin } from 'lucide-react'
+import { CheckCircle, FileDown, Plus, Trash2, Lock, MapPin, ChevronDown } from 'lucide-react'
 import { useData } from '../data/DataContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { generateQuotePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
@@ -136,6 +136,8 @@ export default function QuickQuote() {
   const [newCustEmail, setNewCustEmail] = useState('')
   const [newCustPostcode, setNewCustPostcode] = useState('')
   const [newCustErrors, setNewCustErrors] = useState<Record<string, string>>({})
+  // Collapsible sections — customer collapses once selected, notes starts collapsed
+  const [sectionsOpen, setSectionsOpen] = useState({ customer: true, notes: false })
 
   // ── Job site postcode & distance pricing ──
   const [jobPostcode, setJobPostcode] = useState('')
@@ -484,8 +486,21 @@ export default function QuickQuote() {
       {/* ─── LEFT PANEL: Build Quote ─────────────────── */}
       <div className="qq-panel">
 
-        {/* ── SECTION 1: Customer & Job Info ── */}
+        {/* ── SECTION 1: Customer & Job Info (collapsible) ── */}
         <div className="qq-section">
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: sectionsOpen.customer ? 12 : 0 }}
+          onClick={() => setSectionsOpen(p => ({ ...p, customer: !p.customer }))}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="qq-section-header" style={{ marginBottom: 0 }}>Customer & Job</span>
+            {!sectionsOpen.customer && selectedCustomer && (
+              <span style={{ fontSize: 12, color: 'var(--color-silver)', fontWeight: 400 }}>— {selectedCustomer.name}</span>
+            )}
+          </div>
+          <ChevronDown size={16} style={{ color: 'var(--color-steel)', transition: 'transform .2s', transform: sectionsOpen.customer ? 'rotate(0)' : 'rotate(-90deg)' }} />
+        </div>
+        {sectionsOpen.customer && <>
         {/* Customer search */}
         <div className="qq-field" style={{ position: 'relative' }}>
           <span className="qq-label">Customer</span>
@@ -695,24 +710,24 @@ export default function QuickQuote() {
             onChange={e => setDescription(e.target.value)}
           />
         </div>
+        </>}
         </div>{/* end qq-section: Customer & Job Info */}
 
-        {/* ── SECTION 2: Job Configuration ── */}
+        {/* ── SECTION 2: Line Items ── */}
         <div className="qq-section">
-        <div className="qq-section-header">Job Details</div>
-
-        {/* Quote-level options */}
-        <div className="qq-field">
-          <div className="qq-toggles-row">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div className="qq-section-header" style={{ marginBottom: 0 }}>
+            Line Items{lines.length > 0 ? ` (${lines.length})` : ''}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
             <Toggle label="Emergency" on={isEmergency} onToggle={() => setIsEmergency(!isEmergency)} />
-            <Toggle label="Out of hours" on={isOutOfHours} onToggle={() => setIsOutOfHours(!isOutOfHours)} />
+            <Toggle label="OOH" on={isOutOfHours} onToggle={() => setIsOutOfHours(!isOutOfHours)} />
           </div>
         </div>
 
         {/* ── Added Lines ── */}
         {lines.length > 0 && (
           <div className="qq-field">
-            <span className="qq-label">Line Items ({lines.length})</span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {lines.map(line => (
                 <div
@@ -883,10 +898,21 @@ export default function QuickQuote() {
         </div>
         )}
 
-        {/* ── SECTION 4: Notes ── */}
+        {/* ── SECTION 4: Notes (collapsible, starts closed) ── */}
         <div className="qq-section">
-        <div className="qq-section-header">Notes</div>
-        <div className="qq-field">
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: sectionsOpen.notes ? 12 : 0 }}
+          onClick={() => setSectionsOpen(p => ({ ...p, notes: !p.notes }))}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="qq-section-header" style={{ marginBottom: 0 }}>Notes</span>
+            {!sectionsOpen.notes && notes && (
+              <span style={{ fontSize: 12, color: 'var(--color-steel)', fontWeight: 400, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notes}</span>
+            )}
+          </div>
+          <ChevronDown size={16} style={{ color: 'var(--color-steel)', transition: 'transform .2s', transform: sectionsOpen.notes ? 'rotate(0)' : 'rotate(-90deg)' }} />
+        </div>
+        {sectionsOpen.notes && <div className="qq-field">
           <div className="qq-notes-wrap">
             <textarea
               className="qq-input qq-textarea"
@@ -903,7 +929,7 @@ export default function QuickQuote() {
               <MicIcon />
             </button>
           </div>
-        </div>
+        </div>}
         </div>{/* end qq-section: Notes */}
 
       </div>
