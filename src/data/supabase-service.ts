@@ -121,14 +121,30 @@ export async function fetchQuotes(): Promise<Quote[]> {
   return (data ?? []).map((row) => toCamel<Quote>(row))
 }
 
-// Fields that exist in TypeScript but NOT in the database
-// Fields in TypeScript interfaces that don't exist as database columns
-const QUOTE_STRIP_FIELDS = ['customerName', 'customer_name']
-const JOB_STRIP_FIELDS = ['customerName', 'customer_name']
+// Whitelist of actual database columns — only these get sent to Supabase
+// This prevents TypeScript-only fields (customerName, distanceMiles, etc.) from causing 400 errors
+const QUOTE_COLS = new Set([
+  'ref', 'customer_id', 'job_type_id', 'job_type_name', 'description', 'quantity',
+  'difficulty', 'hassle_factor', 'emergency', 'out_of_hours', 'cert_required',
+  'customer_supplies_materials', 'notes', 'materials', 'labour', 'certificates',
+  'waste', 'subtotal', 'adjustments', 'net_total', 'vat', 'grand_total', 'margin',
+  'est_hours', 'status', 'sent_at', 'viewed_at', 'accepted_at', 'materials_breakdown',
+])
+const JOB_COLS = new Set([
+  'customer_id', 'quote_id', 'invoice_id', 'job_type', 'value', 'estimated_hours',
+  'actual_hours', 'status', 'date', 'notes',
+])
 
-function stripNonDbFields(row: Record<string, unknown>, fields: string[]): Record<string, unknown> {
-  const result = { ...row }
-  for (const f of fields) delete result[f]
+function pickCols(row: Record<string, unknown>, allowed: Set<string>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(row)) {
+    if (!allowed.has(key) || value === undefined) continue
+    // Skip temp IDs — they're not valid UUIDs and will cause FK errors
+    if (typeof value === 'string' && value.startsWith('tmp-') && key.endsWith('_id')) continue
+    // Skip empty string IDs for UUID FK fields
+    if (typeof value === 'string' && value === '' && key.endsWith('_id')) continue
+    result[key] = value
+  }
   return result
 }
 
@@ -136,7 +152,7 @@ export async function insertQuote(
   orgId: string,
   quote: Omit<Quote, 'id' | 'createdAt'>
 ): Promise<Quote> {
-  const row = stripNonDbFields(toSnake(quote as unknown as Record<string, unknown>), QUOTE_STRIP_FIELDS)
+  const row = pickCols(toSnake(quote as unknown as Record<string, unknown>), QUOTE_COLS)
   const { data, error } = await supabase
     .from('quotes')
     .insert({ org_id: orgId, ...row })
@@ -150,7 +166,7 @@ export async function updateQuote(
   id: string,
   updates: Partial<Quote>
 ): Promise<Quote> {
-  const row = stripNonDbFields(toSnakePartial(updates as Record<string, unknown>), QUOTE_STRIP_FIELDS)
+  const row = pickCols(toSnakePartial(updates as Record<string, unknown>), QUOTE_COLS)
   const { data, error } = await supabase
     .from('quotes')
     .update(row)
@@ -178,7 +194,7 @@ export async function insertJob(
   orgId: string,
   job: Omit<Job, 'id' | 'createdAt'>
 ): Promise<Job> {
-  const row = stripNonDbFields(toSnake(job as unknown as Record<string, unknown>), JOB_STRIP_FIELDS)
+  const row = pickCols(toSnake(job as unknown as Record<string, unknown>), JOB_COLS)
   const { data, error } = await supabase
     .from('jobs')
     .insert({ org_id: orgId, ...row })
@@ -192,7 +208,7 @@ export async function updateJob(
   id: string,
   updates: Partial<Job>
 ): Promise<Job> {
-  const row = stripNonDbFields(toSnakePartial(updates as Record<string, unknown>), JOB_STRIP_FIELDS)
+  const row = pickCols(toSnakePartial(updates as Record<string, unknown>), JOB_COLS)
   const { data, error } = await supabase
     .from('jobs')
     .update(row)
