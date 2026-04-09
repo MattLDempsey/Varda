@@ -136,6 +136,7 @@ export default function QuickQuote() {
   const [showSendModal, setShowSendModal] = useState(false)
   const [sendMsg, setSendMsg] = useState('')
   const [sendConfirmed, setSendConfirmed] = useState(false)
+  const [isSending, setIsSending] = useState(false)
   const [sendVia, setSendVia] = useState<{ email: boolean; whatsapp: boolean; link: boolean }>({ email: false, whatsapp: false, link: false })
   const [showNewCustomer, setShowNewCustomer] = useState(false)
   const [newCustPhone, setNewCustPhone] = useState('')
@@ -1184,11 +1185,22 @@ export default function QuickQuote() {
           fontSize: 14, fontWeight: 500, textAlign: 'left', transition: 'all .15s', width: '100%',
         })
 
-        // Dispatches the chosen channels (opens mail client / WhatsApp / copies link).
-        // Does NOT mark the quote as Sent — that only happens once the user confirms
-        // the message actually went out via handleConfirmSent.
-        const handleSend = () => {
+        // Dispatches the chosen channels and auto-marks the quote as Sent on success.
+        //   - Email: awaited via Resend Edge Function. If RESEND_API_KEY is configured the
+        //     email is delivered server-side (no mail client opens). If not, falls back to
+        //     mailto and we trust the user's intent.
+        //   - WhatsApp: opens wa.me with pre-filled message. Auto-confirmed because there
+        //     is no public API to send WhatsApp messages programmatically without Meta's
+        //     Business API (enterprise tier, requires verification + approved templates).
+        //   - Link: copied to clipboard. Auto-confirmed since copying is the user's intent
+        //     to share manually.
+        const handleSend = async () => {
           if (!activeQuoteId) return
+          setIsSending(true)
+
+          const usedMethods: string[] = []
+          let emailMethod: 'edge' | 'mailto' | null = null
+          let hadFailure = false
 
           if (sendVia.email) {
             const email = selectedCustomer?.email || ''
@@ -1203,37 +1215,55 @@ export default function QuickQuote() {
               businessPhone: biz.phone,
               businessEmail: biz.email,
             })
-            // Try real email, falls back to mailto automatically
-            sendEmail({
-              to: email,
-              subject: quoteEmailData.subject,
-              htmlBody: quoteEmailData.html,
-              textBody: quoteEmailData.text,
-              replyTo: biz.email,
-              orgId: user?.orgId || '',
-              customerId: selectedCustomer?.id,
-              templateName: 'Send Quote',
-            })
+            try {
+              const result = await sendEmail({
+                to: email,
+                subject: quoteEmailData.subject,
+                htmlBody: quoteEmailData.html,
+                textBody: quoteEmailData.text,
+                replyTo: biz.email,
+                orgId: user?.orgId || '',
+                customerId: selectedCustomer?.id,
+                templateName: 'Send Quote',
+              })
+              if (result.success) {
+                emailMethod = result.method
+                usedMethods.push(result.method === 'edge' ? 'Email (delivered)' : 'Email (via your client)')
+              } else {
+                hadFailure = true
+              }
+            } catch {
+              hadFailure = true
+            }
           }
+
           if (sendVia.whatsapp) {
             const phone = selectedCustomer?.phone?.replace(/\s/g, '').replace(/^0/, '44') || ''
             const text = `Hi ${customerName}, here's your quote from Grey Havens Electrical:\n\n${url}\n\nTotal: £${fmt(totals.grandTotal)} (inc. VAT)\n\nLet me know if you'd like to go ahead!`
             window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank')
+            usedMethods.push('WhatsApp')
           }
+
           if (sendVia.link) {
-            navigator.clipboard.writeText(url)
+            try {
+              await navigator.clipboard.writeText(url)
+              usedMethods.push('Link copied')
+            } catch {
+              hadFailure = true
+            }
           }
 
-          const methods = [sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link copied'].filter(Boolean)
-          setSendMsg(`Opened via ${methods.join(' + ')}`)
-        }
+          setIsSending(false)
 
-        // User explicitly confirms the quote actually went out — only now do we
-        // flip the quote to Sent and move the job from Lead to Quoted.
-        const handleConfirmSent = () => {
-          if (!activeQuoteId) return
+          if (hadFailure || usedMethods.length === 0) {
+            setSendMsg(`Couldn't send via ${[sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link'].filter(Boolean).join(' + ')}. Please try again.`)
+            return
+          }
+
+          // Auto-mark as sent
           updateQuote(activeQuoteId, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
           if (activeJobId) moveJob(activeJobId, 'Quoted')
+          setSendMsg(`Sent via ${usedMethods.join(' + ')}${emailMethod === 'mailto' ? ' — finish sending in your email client' : ''}`)
           setSendConfirmed(true)
         }
 
@@ -1258,41 +1288,30 @@ export default function QuickQuote() {
 
               {sendMsg && !sendConfirmed ? (
                 <>
-                  {/* ── Awaiting user confirmation that the message actually went out ── */}
-                  <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                  {/* ── Send failed ── */}
+                  <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>
-                      <Send size={36} color="var(--color-gold)" />
+                      <Send size={36} color="#D46A6A" />
                     </div>
                     <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-white)', marginBottom: 4 }}>
-                      Did the quote go out?
+                      Couldn't send
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--color-steel-light)' }}>
-                      {sendMsg} — confirm once it's been sent so we can move {activeQuote?.ref} to Quoted.
+                      {sendMsg}
                     </div>
                   </div>
-
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg('') }}
-                      className="qq-btn qq-btn--secondary"
-                      style={{ flex: 1 }}
-                    >
-                      Not yet
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmSent}
-                      className="qq-btn qq-btn--primary"
-                      style={{ flex: 1 }}
-                    >
-                      Yes, mark as sent
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setSendMsg('') }}
+                    className="qq-btn qq-btn--primary"
+                    style={{ width: '100%' }}
+                  >
+                    Try again
+                  </button>
                 </>
               ) : sendConfirmed ? (
                 <>
-                  {/* ── Post-send confirmation (after user confirmed) ── */}
+                  {/* ── Post-send success ── */}
                   <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>
                       <CheckCircle size={40} color="#6ABF8A" />
@@ -1301,7 +1320,7 @@ export default function QuickQuote() {
                       Quote {activeQuote?.ref} sent to {customerName}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--color-steel-light)', marginBottom: 2 }}>
-                      Moved to Quoted in Jobs.
+                      {sendMsg} · Moved to Quoted in Jobs.
                     </div>
                   </div>
 
@@ -1422,14 +1441,16 @@ export default function QuickQuote() {
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={!anySelected}
+                disabled={!anySelected || isSending}
                 className="qq-btn qq-btn--primary"
                 style={{
-                  width: '100%', opacity: anySelected ? 1 : 0.4,
-                  cursor: anySelected ? 'pointer' : 'not-allowed',
+                  width: '100%', opacity: anySelected && !isSending ? 1 : 0.4,
+                  cursor: anySelected && !isSending ? 'pointer' : 'not-allowed',
                 }}
               >
-                Send{anySelected ? ` via ${[sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link'].filter(Boolean).join(' + ')}` : ''}
+                {isSending
+                  ? 'Sending…'
+                  : `Send${anySelected ? ` via ${[sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link'].filter(Boolean).join(' + ')}` : ''}`}
               </button>
 
               <button
