@@ -1646,18 +1646,25 @@ export default function Jobs() {
                             )}
 
                             {/* Resend prompt — sticks around until the quote is actually resent */}
-                            {linkedQuote.needsResend && (
-                              <div style={{
-                                marginTop: 12, padding: '12px 14px', borderRadius: 10,
-                                background: '#D46A6A10', border: '1px solid #D46A6A44',
-                                display: 'flex', alignItems: 'flex-start', gap: 10,
-                              }}>
-                                <AlertCircle size={16} color="#D46A6A" style={{ flexShrink: 0, marginTop: 1 }} />
-                                <div style={{ fontSize: 12, color: C.silver, lineHeight: 1.5 }}>
-                                  This quote has changed since you last sent it. <strong style={{ color: C.white }}>Resend it</strong> below so the customer sees the new total — the job will move back to <strong style={{ color: C.white }}>Quoted</strong> automatically.
+                            {linkedQuote.needsResend && (() => {
+                              const isUnderway = !(['Lead', 'Quoted', 'Accepted'] as JobStatus[]).includes(selectedJob.status)
+                              return (
+                                <div style={{
+                                  marginTop: 12, padding: '12px 14px', borderRadius: 10,
+                                  background: '#D46A6A10', border: '1px solid #D46A6A44',
+                                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                                }}>
+                                  <AlertCircle size={16} color="#D46A6A" style={{ flexShrink: 0, marginTop: 1 }} />
+                                  <div style={{ fontSize: 12, color: C.silver, lineHeight: 1.5 }}>
+                                    This quote has changed since you last sent it. <strong style={{ color: C.white }}>Resend it</strong> below so the customer sees the new total
+                                    {isUnderway
+                                      ? <> — the job will stay in <strong style={{ color: C.white }}>{selectedJob.status}</strong> since work is already underway.</>
+                                      : <> — the job will move back to <strong style={{ color: C.white }}>Quoted</strong> automatically.</>
+                                    }
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )
+                            })()}
                           </div>
                         )
                       })()}
@@ -1705,15 +1712,19 @@ export default function Jobs() {
                                 navigator.clipboard.writeText(url)
 
                                 // Sending (or resending) always normalises the quote to a
-                                // Sent state, clears the needs-resend flag, and pushes the
-                                // linked job back to Quoted so the customer is back in the
-                                // approval lane.
+                                // Sent state and clears the needs-resend flag.
                                 updateQuote(linkedQuote.id, {
                                   status: 'Sent',
                                   sentAt: new Date().toISOString().split('T')[0],
                                   needsResend: false,
                                 })
-                                if (selectedJob.status !== 'Quoted') {
+
+                                // Only push the job back to Quoted if it's in a pre-work
+                                // state — once a job is Scheduled or beyond, the work is
+                                // underway and reverting the column would be jarring.
+                                // The warning has already been cleared above.
+                                const preWorkStatuses: JobStatus[] = ['Lead', 'Quoted', 'Accepted']
+                                if (preWorkStatuses.includes(selectedJob.status) && selectedJob.status !== 'Quoted') {
                                   moveJob(selectedJob.id, 'Quoted')
                                   setSelectedJob({ ...selectedJob, status: 'Quoted' })
                                 }
