@@ -375,6 +375,13 @@ interface DataContextValue {
   getJobsForCustomer: (customerId: string) => Job[]
   getQuotesForCustomer: (customerId: string) => Quote[]
   getNextQuoteRef: () => string
+  /**
+   * Resolves a temp ID to its real Supabase UUID, waiting for the optimistic
+   * insert to round-trip if necessary. Returns the input unchanged if it's
+   * already a real UUID. Use this before building any external URL or
+   * persisting a reference that the user might share.
+   */
+  awaitRealId: (id: string) => Promise<string>
   // loading state
   isDataLoading: boolean
 }
@@ -476,6 +483,39 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
     bgCall(() => svc.deleteCustomer(id))
   }, [persist, bgCall])
 
+  // Pending callbacks waiting for a temp ID to be resolved to a real Supabase
+  // ID. Used by addQuote/addJob so consumers can update local state (e.g.
+  // QuickQuote's activeQuoteId) once the server confirms the row.
+  const pendingResolversRef = useRef<Record<string, ((realId: string) => void)[]>>({})
+
+  function registerResolver(tempId: string, cb: (realId: string) => void) {
+    if (!tempId.startsWith('tmp-')) { cb(tempId); return }
+    const map = pendingResolversRef.current
+    if (!map[tempId]) map[tempId] = []
+    map[tempId].push(cb)
+  }
+
+  function fireResolvers(tempId: string, realId: string) {
+    idMapRef.current[tempId] = realId
+    const cbs = pendingResolversRef.current[tempId]
+    if (cbs) {
+      delete pendingResolversRef.current[tempId]
+      cbs.forEach(cb => { try { cb(realId) } catch (err) { console.error(err) } })
+    }
+  }
+
+  /**
+   * Wait for a temp ID to be resolved to a real Supabase ID. Resolves
+   * immediately if `id` is already a real UUID. Used to defer Supabase writes
+   * until the row actually exists server-side.
+   */
+  function awaitRealId(id: string): Promise<string> {
+    if (!id || !id.startsWith('tmp-')) return Promise.resolve(id)
+    const mapped = idMapRef.current[id]
+    if (mapped) return Promise.resolve(mapped)
+    return new Promise(resolve => registerResolver(id, resolve))
+  }
+
   // ── Quote ──
   const addQuote = useCallback((q: Omit<Quote, 'id' | 'ref' | 'createdAt' | 'status'>): Quote => {
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -495,6 +535,7 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
         saveCache(next)
         return next
       })
+      fireResolvers(tempId, real.id)
     })
 
     return created
@@ -505,7 +546,10 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       ...s,
       quotes: s.quotes.map(q => q.id === id ? { ...q, ...updates } : q),
     }))
-    bgCall(() => svc.updateQuote(id, updates))
+    bgCall(async () => {
+      const realId = await awaitRealId(id)
+      await svc.updateQuote(realId, updates)
+    })
   }, [persist, bgCall])
 
   // ── Job ──
@@ -516,14 +560,20 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
     persist(s => ({ ...s, jobs: [created, ...s.jobs] }))
 
     bgCall(async () => {
-      // Resolve temp IDs for customer and quote references
-      const resolved = { ...j, customerId: resolveId(j.customerId) || j.customerId, quoteId: resolveId(j.quoteId) }
+      // Resolve temp IDs for customer and quote references — wait for the
+      // quote insert to finish if it's still in flight.
+      const customerId = j.customerId && j.customerId.startsWith('tmp-')
+        ? await awaitRealId(j.customerId) : j.customerId
+      const quoteId = j.quoteId && j.quoteId.startsWith('tmp-')
+        ? await awaitRealId(j.quoteId) : j.quoteId
+      const resolved = { ...j, customerId: customerId || j.customerId, quoteId }
       const real = await svc.insertJob(orgIdRef.current, resolved)
       setStore(prev => {
         const next = { ...prev, jobs: prev.jobs.map(jo => jo.id === tempId ? real : jo) }
         saveCache(next)
         return next
       })
+      fireResolvers(tempId, real.id)
     })
 
     return created
@@ -534,7 +584,10 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       ...s,
       jobs: s.jobs.map(j => j.id === id ? { ...j, ...updates } : j),
     }))
-    bgCall(() => svc.updateJob(id, updates))
+    bgCall(async () => {
+      const realId = await awaitRealId(id)
+      await svc.updateJob(realId, updates)
+    })
   }, [persist, bgCall])
 
   const moveJob = useCallback((id: string, status: JobStatus) => {
@@ -542,7 +595,10 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       ...s,
       jobs: s.jobs.map(j => j.id === id ? { ...j, status } : j),
     }))
-    bgCall(() => svc.moveJob(id, status))
+    bgCall(async () => {
+      const realId = await awaitRealId(id)
+      await svc.moveJob(realId, status)
+    })
   }, [persist, bgCall])
 
   const softDeleteJob = useCallback((id: string) => {
@@ -551,7 +607,10 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       ...s,
       jobs: s.jobs.map(j => j.id === id ? { ...j, deletedAt: ts } : j),
     }))
-    bgCall(() => svc.updateJob(id, { deletedAt: ts } as Partial<Job>))
+    bgCall(async () => {
+      const realId = await awaitRealId(id)
+      await svc.updateJob(realId, { deletedAt: ts } as Partial<Job>)
+    })
   }, [persist, bgCall])
 
   const restoreJob = useCallback((id: string) => {
@@ -559,7 +618,10 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       ...s,
       jobs: s.jobs.map(j => j.id === id ? { ...j, deletedAt: null } : j),
     }))
-    bgCall(() => svc.updateJob(id, { deletedAt: null } as Partial<Job>))
+    bgCall(async () => {
+      const realId = await awaitRealId(id)
+      await svc.updateJob(realId, { deletedAt: null } as Partial<Job>)
+    })
   }, [persist, bgCall])
 
   // ── Event ──
@@ -717,6 +779,7 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
   const getJobsForCustomer = useCallback((customerId: string) => storeRef.current.jobs.filter(j => j.customerId === customerId), [])
   const getQuotesForCustomer = useCallback((customerId: string) => storeRef.current.quotes.filter(q => q.customerId === customerId), [])
   const getNextQuoteRef = useCallback(() => `GH-Q${storeRef.current.quotes.length + 1}`, [])
+  const awaitRealIdCb = useCallback((id: string) => awaitRealId(id), [])
 
   // Soft-deleted jobs are hidden from the main `jobs` list everywhere — they remain
   // in the underlying store and surface only via getJobsForCustomer (customer history).
@@ -740,6 +803,7 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       settings: store.settings, pricingConfig: store.pricingConfig, jobTypeConfigs: store.jobTypeConfigs,
       updateSettings, updatePricingConfig, updateJobTypeConfig,
       getCustomer, getJobsForCustomer, getQuotesForCustomer, getNextQuoteRef,
+      awaitRealId: awaitRealIdCb,
       isDataLoading,
     }}>
       {children}

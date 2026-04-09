@@ -70,7 +70,7 @@ function AnimatedValue({ value, prefix = '' }: { value: number; prefix?: string 
 let nextLineId = 1
 
 export default function QuickQuote() {
-  const { addQuote, updateQuote, updateJob, moveJob, addJob, addCustomer, quotes, jobs, customers, settings, getNextQuoteRef, pricingConfig, jobTypeConfigs } = useData()
+  const { addQuote, updateQuote, updateJob, moveJob, addJob, addCustomer, quotes, jobs, customers, settings, getNextQuoteRef, awaitRealId, pricingConfig, jobTypeConfigs } = useData()
   const { user } = useAuth()
   const navigate = useNavigate()
   const { canUse } = useSubscription()
@@ -465,6 +465,13 @@ export default function QuickQuote() {
           })
           setActiveQuoteId(q.id)
           if (j && j.id) setActiveJobId(j.id)
+          // Swap the temp IDs for the real Supabase IDs as soon as the
+          // optimistic insert round-trips, so any URL we build (and any
+          // updateQuote call we make) targets the persisted row.
+          awaitRealId(q.id).then(realId => { if (realId !== q.id) setActiveQuoteId(realId) })
+          if (j && j.id) {
+            awaitRealId(j.id).then(realId => { if (realId !== j.id) setActiveJobId(realId) })
+          }
         }
       }
     }, 800)
@@ -1175,6 +1182,10 @@ export default function QuickQuote() {
 
       {/* ─── Send Modal ─────────────────────────────── */}
       {showSendModal && activeQuoteId && (() => {
+        // Guard against the optimistic temp ID — quotes that haven't finished
+        // round-tripping to Supabase yet would otherwise produce a permanently
+        // broken /q/tmp-... link in the customer's email.
+        const idIsPending = activeQuoteId.startsWith('tmp-')
         const url = `${window.location.origin}/q/${activeQuoteId}`
         const anySelected = sendVia.email || sendVia.whatsapp || sendVia.link
         const optStyle = (on: boolean): React.CSSProperties => ({
@@ -1198,6 +1209,12 @@ export default function QuickQuote() {
           if (!activeQuoteId) return
           setIsSending(true)
 
+          // Wait for the optimistic insert to round-trip if it hasn't yet,
+          // then build the URL from the real Supabase ID. Without this the
+          // customer would receive a /q/tmp-... link that never resolves.
+          const realQuoteId = await awaitRealId(activeQuoteId)
+          const safeUrl = `${window.location.origin}/q/${realQuoteId}`
+
           const usedMethods: string[] = []
           let emailMethod: 'edge' | 'mailto' | null = null
           let hadFailure = false
@@ -1210,7 +1227,7 @@ export default function QuickQuote() {
               businessName: biz.businessName,
               quoteRef: activeQuote?.ref || '',
               total: `£${fmt(totals.grandTotal)}`,
-              quoteUrl: url,
+              quoteUrl: safeUrl,
               validityDays: settings.quoteConfig.validityDays,
               businessPhone: biz.phone,
               businessEmail: biz.email,
@@ -1240,14 +1257,14 @@ export default function QuickQuote() {
 
           if (sendVia.whatsapp) {
             const phone = selectedCustomer?.phone?.replace(/\s/g, '').replace(/^0/, '44') || ''
-            const text = `Hi ${customerName}, here's your quote from Grey Havens Electrical:\n\n${url}\n\nTotal: £${fmt(totals.grandTotal)} (inc. VAT)\n\nLet me know if you'd like to go ahead!`
+            const text = `Hi ${customerName}, here's your quote from ${settings.business.businessName}:\n\n${safeUrl}\n\nTotal: £${fmt(totals.grandTotal)} (inc. VAT)\n\nLet me know if you'd like to go ahead!`
             window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank')
             usedMethods.push('WhatsApp')
           }
 
           if (sendVia.link) {
             try {
-              await navigator.clipboard.writeText(url)
+              await navigator.clipboard.writeText(safeUrl)
               usedMethods.push('Link copied')
             } catch {
               hadFailure = true
@@ -1442,16 +1459,18 @@ export default function QuickQuote() {
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={!anySelected || isSending}
+                disabled={!anySelected || isSending || idIsPending}
                 className="qq-btn qq-btn--primary"
                 style={{
-                  width: '100%', opacity: anySelected && !isSending ? 1 : 0.4,
-                  cursor: anySelected && !isSending ? 'pointer' : 'not-allowed',
+                  width: '100%', opacity: anySelected && !isSending && !idIsPending ? 1 : 0.4,
+                  cursor: anySelected && !isSending && !idIsPending ? 'pointer' : 'not-allowed',
                 }}
               >
-                {isSending
-                  ? 'Sending…'
-                  : `Send${anySelected ? ` via ${[sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link'].filter(Boolean).join(' + ')}` : ''}`}
+                {idIsPending
+                  ? 'Saving quote…'
+                  : isSending
+                    ? 'Sending…'
+                    : `Send${anySelected ? ` via ${[sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link'].filter(Boolean).join(' + ')}` : ''}`}
               </button>
 
               <button
