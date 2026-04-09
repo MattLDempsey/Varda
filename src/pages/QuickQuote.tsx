@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { CheckCircle, FileDown, Plus, Trash2, Lock, MapPin, ChevronDown } from 'lucide-react'
+import { CheckCircle, FileDown, Plus, Trash2, Lock, MapPin, ChevronDown, Send } from 'lucide-react'
 import { useData } from '../data/DataContext'
 import { useAuth } from '../auth/AuthContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
@@ -135,6 +135,7 @@ export default function QuickQuote() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [showSendModal, setShowSendModal] = useState(false)
   const [sendMsg, setSendMsg] = useState('')
+  const [sendConfirmed, setSendConfirmed] = useState(false)
   const [sendVia, setSendVia] = useState<{ email: boolean; whatsapp: boolean; link: boolean }>({ email: false, whatsapp: false, link: false })
   const [showNewCustomer, setShowNewCustomer] = useState(false)
   const [newCustPhone, setNewCustPhone] = useState('')
@@ -1183,11 +1184,11 @@ export default function QuickQuote() {
           fontSize: 14, fontWeight: 500, textAlign: 'left', transition: 'all .15s', width: '100%',
         })
 
+        // Dispatches the chosen channels (opens mail client / WhatsApp / copies link).
+        // Does NOT mark the quote as Sent — that only happens once the user confirms
+        // the message actually went out via handleConfirmSent.
         const handleSend = () => {
           if (!activeQuoteId) return
-          updateQuote(activeQuoteId, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
-          // Move job from Lead to Quoted now that the quote has been sent
-          if (activeJobId) moveJob(activeJobId, 'Quoted')
 
           if (sendVia.email) {
             const email = selectedCustomer?.email || ''
@@ -1224,14 +1225,23 @@ export default function QuickQuote() {
           }
 
           const methods = [sendVia.email && 'Email', sendVia.whatsapp && 'WhatsApp', sendVia.link && 'Link copied'].filter(Boolean)
-          setSendMsg(`Sent via ${methods.join(' + ')}`)
+          setSendMsg(`Opened via ${methods.join(' + ')}`)
+        }
+
+        // User explicitly confirms the quote actually went out — only now do we
+        // flip the quote to Sent and move the job from Lead to Quoted.
+        const handleConfirmSent = () => {
+          if (!activeQuoteId) return
+          updateQuote(activeQuoteId, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
+          if (activeJobId) moveJob(activeJobId, 'Quoted')
+          setSendConfirmed(true)
         }
 
         return (
           <>
             <div
               style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 200 }}
-              onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }) }}
+              onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg(''); setSendConfirmed(false) }}
             />
             <div style={{
               position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
@@ -1246,9 +1256,43 @@ export default function QuickQuote() {
                 {activeQuote?.ref} · £{fmt(totals.grandTotal)} · {customerName}
               </div>
 
-              {sendMsg ? (
+              {sendMsg && !sendConfirmed ? (
                 <>
-                  {/* ── Post-send confirmation ── */}
+                  {/* ── Awaiting user confirmation that the message actually went out ── */}
+                  <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>
+                      <Send size={36} color="var(--color-gold)" />
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-white)', marginBottom: 4 }}>
+                      Did the quote go out?
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--color-steel-light)' }}>
+                      {sendMsg} — confirm once it's been sent so we can move {activeQuote?.ref} to Quoted.
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg('') }}
+                      className="qq-btn qq-btn--secondary"
+                      style={{ flex: 1 }}
+                    >
+                      Not yet
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmSent}
+                      className="qq-btn qq-btn--primary"
+                      style={{ flex: 1 }}
+                    >
+                      Yes, mark as sent
+                    </button>
+                  </div>
+                </>
+              ) : sendConfirmed ? (
+                <>
+                  {/* ── Post-send confirmation (after user confirmed) ── */}
                   <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>
                       <CheckCircle size={40} color="#6ABF8A" />
@@ -1257,7 +1301,7 @@ export default function QuickQuote() {
                       Quote {activeQuote?.ref} sent to {customerName}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--color-steel-light)', marginBottom: 2 }}>
-                      {sendMsg}
+                      Moved to Quoted in Jobs.
                     </div>
                   </div>
 
@@ -1287,7 +1331,7 @@ export default function QuickQuote() {
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button
                       type="button"
-                      onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg(''); navigate('/jobs') }}
+                      onClick={() => { setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg(''); setSendConfirmed(false); navigate('/jobs') }}
                       className="qq-btn qq-btn--primary"
                       style={{ flex: 1 }}
                     >
@@ -1296,7 +1340,7 @@ export default function QuickQuote() {
                     <button
                       type="button"
                       onClick={() => {
-                        setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg('')
+                        setShowSendModal(false); setSendVia({ email: false, whatsapp: false, link: false }); setSendMsg(''); setSendConfirmed(false)
                         // Reset for new quote
                         setCustomerName(''); setDescription(''); setNotes(''); setLines([])
                         setCurJobTypeId(''); setIsEmergency(false); setIsOutOfHours(false)
