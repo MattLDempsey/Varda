@@ -1,12 +1,59 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useData } from '../data/DataContext'
-// Theme not used — public page uses hardcoded colors for consistency
 import { CheckCircle, Clock, FileText, Phone, Mail, Globe } from 'lucide-react'
-import { useState } from 'react'
 import type { CSSProperties } from 'react'
+import { supabase } from '../lib/supabase'
+
+/**
+ * Public quote view — rendered for `/q/:quoteId`. Lives outside the
+ * authenticated DataProvider tree so it must fetch its own data via the
+ * `get_public_quote` SECURITY DEFINER RPC.
+ */
+
+interface PublicQuote {
+  id: string
+  ref: string
+  customer_name: string
+  job_type_name: string
+  description: string
+  net_total: number
+  certificates: number
+  vat: number
+  grand_total: number
+  status: 'Draft' | 'Sent' | 'Viewed' | 'Accepted' | 'Expired' | 'Declined'
+  notes: string
+  created_at: string
+  sent_at: string | null
+  viewed_at: string | null
+  accepted_at: string | null
+}
+
+interface PublicCustomer {
+  name: string
+  address1: string | null
+  address2: string | null
+  city: string | null
+  postcode: string | null
+}
+
+interface PublicBusiness {
+  businessName?: string
+  ownerName?: string
+  phone?: string
+  email?: string
+  website?: string
+  city?: string
+  county?: string
+}
+
+interface PublicQuotePayload {
+  quote: PublicQuote
+  customer: PublicCustomer | null
+  business: PublicBusiness
+}
 
 function fmtCurrency(n: number): string {
-  return '£' + n.toFixed(2)
+  return '£' + Number(n).toFixed(2)
 }
 
 function fmtDate(iso: string): string {
@@ -16,12 +63,62 @@ function fmtDate(iso: string): string {
 
 export default function QuoteView() {
   const { quoteId } = useParams<{ quoteId: string }>()
-  const { quotes, customers, jobs, settings, updateQuote, moveJob } = useData()
+  const [payload, setPayload] = useState<PublicQuotePayload | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
   const [accepted, setAccepted] = useState(false)
+  const [accepting, setAccepting] = useState(false)
 
-  const quote = quotes.find(q => q.id === quoteId)
+  // Fetch the quote on mount
+  useEffect(() => {
+    if (!quoteId) {
+      setNotFound(true)
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.rpc('get_public_quote', { p_quote_id: quoteId })
+      if (cancelled) return
+      if (error || !data) {
+        console.error('[QuoteView] failed to load quote', error)
+        setNotFound(true)
+        setLoading(false)
+        return
+      }
+      setPayload(data as PublicQuotePayload)
+      setLoading(false)
+      // Mark as viewed (best-effort, no UI feedback)
+      if ((data as PublicQuotePayload).quote.status === 'Sent') {
+        void supabase.rpc('mark_quote_viewed', { p_quote_id: quoteId }).then(() => {}, () => {})
+      }
+    })()
+    return () => { cancelled = true }
+  }, [quoteId])
 
-  if (!quote) {
+  const handleAccept = async () => {
+    if (!quoteId || accepting) return
+    setAccepting(true)
+    const { error } = await supabase.rpc('accept_public_quote', { p_quote_id: quoteId })
+    setAccepting(false)
+    if (error) {
+      console.error('[QuoteView] accept failed', error)
+      return
+    }
+    setAccepted(true)
+  }
+
+  // ── Loading / not-found states ──
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#1A1C20', color: '#C9CDD2', gap: 12 }}>
+        <FileText size={48} color="#4B5057" />
+        <div style={{ fontSize: 16, color: '#4B5057' }}>Loading quote…</div>
+      </div>
+    )
+  }
+
+  if (notFound || !payload) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#1A1C20', color: '#C9CDD2', gap: 12 }}>
         <FileText size={48} color="#4B5057" />
@@ -31,25 +128,8 @@ export default function QuoteView() {
     )
   }
 
-  const customer = quote.customerId ? customers.find(c => c.id === quote.customerId) : undefined
-
-  // Mark as viewed on first load
-  if (quote.status === 'Sent' && !quote.viewedAt) {
-    updateQuote(quote.id, { status: 'Viewed', viewedAt: new Date().toISOString().split('T')[0] })
-  }
-
-  const handleAccept = () => {
-    const today = new Date().toISOString().split('T')[0]
-    updateQuote(quote.id, { status: 'Accepted', acceptedAt: today })
-    // Move linked job to Accepted
-    const linkedJob = jobs.find(j => j.quoteId === quote.id)
-      || jobs.find(j => j.customerId === quote.customerId && j.status === 'Quoted')
-    if (linkedJob) {
-      moveJob(linkedJob.id, 'Accepted')
-    }
-    setAccepted(true)
-  }
-
+  const { quote, customer, business } = payload
+  const businessName = business.businessName || 'Business'
   const isAccepted = quote.status === 'Accepted' || accepted
   const isExpired = quote.status === 'Expired' || quote.status === 'Declined'
 
@@ -76,7 +156,7 @@ export default function QuoteView() {
     // body
     body: { padding: '32px 40px 36px' },
     // addresses
-    addressRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginBottom: 28 },
+    addressRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 32, marginBottom: 28 },
     addressBlock: {},
     addressLabel: { fontSize: 10, fontWeight: 700, color: gold, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 },
     addressName: { fontSize: 16, fontWeight: 600, color: white, marginBottom: 4 },
@@ -85,20 +165,16 @@ export default function QuoteView() {
     validity: {
       background: cardLight, borderRadius: 12, padding: '14px 20px',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      marginBottom: 28, border: `1px solid ${steel}33`,
+      marginBottom: 28, border: `1px solid ${steel}33`, gap: 12, flexWrap: 'wrap' as const,
     },
     validityLabel: { fontSize: 12, color: steel, fontWeight: 500 },
     validityValue: { fontSize: 13, color: gold, fontWeight: 600 },
     // line items
-    lineHeader: { display: 'flex', justifyContent: 'space-between', padding: '0 0 10px', borderBottom: `1px solid ${steel}33`, marginBottom: 4 },
-    lineHeaderLabel: { fontSize: 10, fontWeight: 700, color: steel, textTransform: 'uppercase', letterSpacing: 1 },
-    lineItem: { display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${steel}1A`, alignItems: 'flex-start' },
-    lineDesc: { flex: 1 },
+    lineItem: { display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${steel}1A`, alignItems: 'flex-start', gap: 12 },
+    lineDesc: { flex: 1, minWidth: 0 },
     lineTitle: { fontSize: 15, fontWeight: 600, color: white },
     lineSub: { fontSize: 12, color: steel, marginTop: 2 },
     lineAmount: { fontSize: 15, fontWeight: 600, color: white, textAlign: 'right', minWidth: 90 },
-    // breakdown rows
-    breakdownRow: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, color: silver },
     // totals
     totalsWrap: { marginTop: 20, marginLeft: 'auto', maxWidth: 300 },
     totalRow: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 14, color: silver },
@@ -113,9 +189,9 @@ export default function QuoteView() {
     // accept
     acceptBtn: {
       width: '100%', padding: '18px', borderRadius: 14, border: 'none',
-      background: gold, color: '#1A1C20', fontSize: 17, fontWeight: 700, cursor: 'pointer',
+      background: gold, color: '#1A1C20', fontSize: 17, fontWeight: 700, cursor: accepting ? 'not-allowed' : 'pointer',
       minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-      marginTop: 28, transition: 'transform .15s, box-shadow .15s',
+      marginTop: 28, transition: 'transform .15s, box-shadow .15s', opacity: accepting ? 0.7 : 1,
       boxShadow: `0 4px 20px ${gold}33`,
     },
     acceptedBanner: {
@@ -136,7 +212,7 @@ export default function QuoteView() {
     footerItem: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: steel },
   }
 
-  // We don't show individual cost breakdown to customer — just the job total
+  const websiteDisplay = (business.website || '').replace('https://', '').replace('http://', '')
 
   return (
     <div style={s.page}>
@@ -145,7 +221,7 @@ export default function QuoteView() {
         <div style={s.headerBand}>
           <div style={s.headerRow}>
             <div>
-              <div style={s.brand}>{settings.business.businessName.replace(' Electrical', '')}</div>
+              <div style={s.brand}>{businessName.replace(' Electrical', '')}</div>
               <div style={s.brandSub}>Electrical Services</div>
             </div>
             <div style={s.docBadge as CSSProperties}>
@@ -161,7 +237,7 @@ export default function QuoteView() {
           <div style={s.addressRow}>
             <div style={s.addressBlock}>
               <div style={s.addressLabel}>Prepared For</div>
-              <div style={s.addressName}>{quote.customerName}</div>
+              <div style={s.addressName}>{quote.customer_name}</div>
               {customer && (
                 <div style={s.addressLine}>
                   {customer.address1 && <>{customer.address1}<br /></>}
@@ -173,11 +249,11 @@ export default function QuoteView() {
             </div>
             <div style={{ ...s.addressBlock, textAlign: 'right' } as CSSProperties}>
               <div style={s.addressLabel}>From</div>
-              <div style={s.addressName}>{settings.business.businessName}</div>
+              <div style={s.addressName}>{businessName}</div>
               <div style={s.addressLine}>
-                {settings.business.city}{settings.business.county ? `, ${settings.business.county}` : ''}<br />
-                {settings.business.email}<br />
-                {settings.business.website.replace('https://', '')}
+                {business.city}{business.county ? `, ${business.county}` : ''}<br />
+                {business.email}<br />
+                {websiteDisplay}
               </div>
             </div>
           </div>
@@ -186,20 +262,20 @@ export default function QuoteView() {
           <div style={s.validity}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Clock size={14} color={steel} />
-              <span style={s.validityLabel}>Issued {fmtDate(quote.createdAt)}</span>
+              <span style={s.validityLabel}>Issued {fmtDate(quote.created_at)}</span>
             </div>
             <span style={s.validityValue}>
-              Valid until {fmtDate(new Date(new Date(quote.createdAt).getTime() + 30 * 86400000).toISOString())}
+              Valid until {fmtDate(new Date(new Date(quote.created_at).getTime() + 30 * 86400000).toISOString())}
             </span>
           </div>
 
           {/* Job line item — single price, no breakdown */}
           <div style={s.lineItem}>
             <div style={s.lineDesc}>
-              <div style={s.lineTitle}>{quote.jobTypeName}</div>
+              <div style={s.lineTitle}>{quote.job_type_name}</div>
               {quote.description && <div style={s.lineSub}>{quote.description}</div>}
             </div>
-            <div style={s.lineAmount as CSSProperties}>{fmtCurrency(quote.netTotal - quote.certificates)}</div>
+            <div style={s.lineAmount as CSSProperties}>{fmtCurrency(quote.net_total - quote.certificates)}</div>
           </div>
 
           {/* Certification as separate line if applicable */}
@@ -214,9 +290,9 @@ export default function QuoteView() {
 
           {/* Totals */}
           <div style={s.totalsWrap}>
-            <div style={s.totalRow}><span>Subtotal</span><span style={{ color: white }}>{fmtCurrency(quote.netTotal)}</span></div>
+            <div style={s.totalRow}><span>Subtotal</span><span style={{ color: white }}>{fmtCurrency(quote.net_total)}</span></div>
             <div style={s.totalRow}><span>VAT (20%)</span><span style={{ color: white }}>{fmtCurrency(quote.vat)}</span></div>
-            <div style={s.grandRow}><span>Total</span><span>{fmtCurrency(quote.grandTotal)}</span></div>
+            <div style={s.grandRow}><span>Total</span><span>{fmtCurrency(quote.grand_total)}</span></div>
           </div>
 
           {/* Notes */}
@@ -248,19 +324,20 @@ export default function QuoteView() {
             <button
               style={s.acceptBtn}
               onClick={handleAccept}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 30px ${gold}44` }}
+              disabled={accepting}
+              onMouseEnter={e => { if (!accepting) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 30px ${gold}44` } }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = `0 4px 20px ${gold}33` }}
             >
-              <CheckCircle size={22} /> Accept Quote
+              <CheckCircle size={22} /> {accepting ? 'Accepting…' : 'Accept Quote'}
             </button>
           )}
         </div>
 
         {/* ── Footer ── */}
         <div style={s.footer as CSSProperties}>
-          <span style={s.footerItem}><Phone size={12} /> {settings.business.phone}</span>
-          <span style={s.footerItem}><Mail size={12} /> {settings.business.email}</span>
-          <span style={s.footerItem}><Globe size={12} /> {settings.business.website.replace('https://', '')}</span>
+          {business.phone && <span style={s.footerItem}><Phone size={12} /> {business.phone}</span>}
+          {business.email && <span style={s.footerItem}><Mail size={12} /> {business.email}</span>}
+          {websiteDisplay && <span style={s.footerItem}><Globe size={12} /> {websiteDisplay}</span>}
         </div>
       </div>
     </div>
