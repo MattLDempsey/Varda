@@ -25,14 +25,22 @@ export default function TrialBanner() {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 36,
+    minHeight: 36,
+    padding: '8px 16px',
     fontSize: 13,
     fontWeight: 600,
     color: expired ? '#fff' : '#1A1C20',
-    background: expired ? '#D46A6A' : '#C6A86A',
+    background: expired
+      ? 'linear-gradient(135deg, #D46A6A 0%, #B85555 100%)'
+      : 'linear-gradient(135deg, #D9BC7E 0%, #B0944F 100%)',
     width: '100%',
     flexShrink: 0,
     position: 'relative',
+    borderRadius: 12,
+    marginBottom: 16,
+    boxShadow: expired
+      ? '0 4px 14px rgba(212,106,106,0.25), inset 0 1px 0 rgba(255,255,255,0.15)'
+      : '0 4px 14px rgba(198,168,106,0.25), inset 0 1px 0 rgba(255,255,255,0.2)',
   }
 
   const linkStyle: CSSProperties = {

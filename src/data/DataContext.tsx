@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import * as svc from './supabase-service'
 
 /* ──────────────────────────────────────────────────────
@@ -173,6 +173,8 @@ export interface Job {
   recurrenceIntervalMonths?: number
   nextRecurrenceDate?: string
   parentJobId?: string
+  /** ISO timestamp set when job is soft-deleted; null/undefined for active jobs */
+  deletedAt?: string | null
 }
 
 export interface ScheduleEvent {
@@ -343,6 +345,8 @@ interface DataContextValue {
   addJob: (j: Omit<Job, 'id' | 'createdAt'>) => Job
   updateJob: (id: string, updates: Partial<Job>) => void
   moveJob: (id: string, status: JobStatus) => void
+  softDeleteJob: (id: string) => void
+  restoreJob: (id: string) => void
   // event actions
   addEvent: (e: Omit<ScheduleEvent, 'id'>) => ScheduleEvent
   updateEvent: (id: string, updates: Partial<ScheduleEvent>) => void
@@ -541,6 +545,23 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
     bgCall(() => svc.moveJob(id, status))
   }, [persist, bgCall])
 
+  const softDeleteJob = useCallback((id: string) => {
+    const ts = new Date().toISOString()
+    persist(s => ({
+      ...s,
+      jobs: s.jobs.map(j => j.id === id ? { ...j, deletedAt: ts } : j),
+    }))
+    bgCall(() => svc.updateJob(id, { deletedAt: ts } as Partial<Job>))
+  }, [persist, bgCall])
+
+  const restoreJob = useCallback((id: string) => {
+    persist(s => ({
+      ...s,
+      jobs: s.jobs.map(j => j.id === id ? { ...j, deletedAt: null } : j),
+    }))
+    bgCall(() => svc.updateJob(id, { deletedAt: null } as Partial<Job>))
+  }, [persist, bgCall])
+
   // ── Event ──
   const addEvent = useCallback((e: Omit<ScheduleEvent, 'id'>): ScheduleEvent => {
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -692,21 +713,26 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
 
   // ── Helpers ──
   const getCustomer = useCallback((id: string) => storeRef.current.customers.find(c => c.id === id), [])
+  // Customer history intentionally includes soft-deleted jobs so the record stays retrievable
   const getJobsForCustomer = useCallback((customerId: string) => storeRef.current.jobs.filter(j => j.customerId === customerId), [])
   const getQuotesForCustomer = useCallback((customerId: string) => storeRef.current.quotes.filter(q => q.customerId === customerId), [])
   const getNextQuoteRef = useCallback(() => `GH-Q${storeRef.current.quotes.length + 1}`, [])
+
+  // Soft-deleted jobs are hidden from the main `jobs` list everywhere — they remain
+  // in the underlying store and surface only via getJobsForCustomer (customer history).
+  const visibleJobs = useMemo(() => store.jobs.filter(j => !j.deletedAt), [store.jobs])
 
   return (
     <DataContext.Provider value={{
       customers: store.customers,
       quotes: store.quotes,
-      jobs: store.jobs,
+      jobs: visibleJobs,
       invoices: store.invoices,
       events: store.events,
       comms: store.comms,
       addCustomer, updateCustomer, deleteCustomer,
       addQuote, updateQuote,
-      addJob, updateJob, moveJob,
+      addJob, updateJob, moveJob, softDeleteJob, restoreJob,
       addInvoice, updateInvoice, getInvoiceForJob, getInvoicesForJob,
       addEvent, updateEvent, deleteEvent,
       addComm,

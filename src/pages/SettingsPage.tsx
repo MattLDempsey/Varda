@@ -92,7 +92,7 @@ export default function SettingsPage() {
     panel: { background: C.charcoalLight, borderRadius: 12, padding: '24px 28px' },
     panelTitle: { fontSize: 18, fontWeight: 600, color: C.white, marginBottom: 4 },
     panelSub: { fontSize: 13, color: C.silver, marginBottom: 24 },
-    fieldRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 0 },
+    fieldRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 0 },
     field: { marginBottom: 16 },
     label: { fontSize: 12, fontWeight: 600, color: C.silver, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, display: 'block' },
     input: {
@@ -107,7 +107,7 @@ export default function SettingsPage() {
     },
     // hours
     hoursRow: {
-      display: 'grid', gridTemplateColumns: '120px 44px 1fr 30px 1fr', gap: 12,
+      display: 'grid', gridTemplateColumns: 'minmax(80px, 120px) 44px 1fr 14px 1fr', gap: 8,
       alignItems: 'center', padding: '10px 0',
       borderBottom: `1px solid ${C.steel}1A`,
     },

@@ -61,7 +61,7 @@ const invoiceStatusColors: Record<string, string> = {
 
 export default function Jobs() {
   const { C } = useTheme()
-  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, isDataLoading } = useData()
+  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, softDeleteJob, restoreJob, isDataLoading } = useData()
   const { user } = useAuth()
   const { features, plan } = useSubscription()
   const { showUndo } = useUndo()
@@ -191,7 +191,7 @@ export default function Jobs() {
   /* ── styles ── */
   const s: Record<string, CSSProperties> = {
     page: {
-      padding: '32px',
+      padding: 'clamp(16px, 4vw, 32px)',
       maxWidth: 1400,
       margin: '0 auto',
       position: 'relative',
@@ -202,9 +202,11 @@ export default function Jobs() {
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: 24,
+      flexWrap: 'wrap' as const,
+      gap: 12,
     },
     heading: {
-      fontSize: 28,
+      fontSize: 'clamp(22px, 5vw, 28px)' as any,
       fontWeight: 600,
       color: C.white,
     },
@@ -229,14 +231,19 @@ export default function Jobs() {
     /* kanban */
     kanban: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(7, minmax(150px, 1fr))',
+      gridTemplateColumns: 'repeat(7, minmax(140px, 1fr))',
       gap: 12,
       overflowX: 'auto' as const,
+      // Allow horizontal swipe-scrolling on touch devices
+      WebkitOverflowScrolling: 'touch' as any,
+      scrollSnapType: 'x mandatory' as const,
+      paddingBottom: 8,
     },
     column: {
       background: C.black,
       borderRadius: 12,
       padding: 12,
+      scrollSnapAlign: 'start' as const,
       minWidth: 140,
       transition: 'background .15s',
     },
@@ -363,13 +370,13 @@ export default function Jobs() {
       top: 0,
       right: 0,
       bottom: 0,
-      width: 440,
+      width: 'min(440px, 100vw)',
       maxWidth: '100vw',
       background: C.charcoal,
       borderLeft: `1px solid ${C.steel}44`,
       zIndex: 100,
       overflowY: 'auto' as const,
-      padding: '28px 28px 40px',
+      padding: 'clamp(16px, 4vw, 28px)',
       boxShadow: '-8px 0 32px rgba(0,0,0,.5)',
     },
     panelHeader: {
@@ -1256,7 +1263,7 @@ export default function Jobs() {
                     )}
 
                     {attachments.length > 0 && (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 8 }}>
                         {attachments.map(att => {
                           const categoryColors: Record<string, string> = {
                             before: '#5B9BD5', after: '#6ABF8A', certificate: '#9B7ED8',
@@ -1403,6 +1410,36 @@ export default function Jobs() {
                       </div>
                     )
                   })()}
+
+                  {/* ── Delete Job (soft) ── */}
+                  <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                    <button
+                      onClick={() => {
+                        const ok = window.confirm(
+                          `Delete this job for ${selectedJob.customerName}?\n\nIt will be hidden from the board but kept in the customer's history so you can restore it later.`
+                        )
+                        if (!ok) return
+                        const jobId = selectedJob.id
+                        const customerName = selectedJob.customerName
+                        softDeleteJob(jobId)
+                        setSelectedJob(null)
+                        showUndo({
+                          message: `Job deleted: ${customerName}`,
+                          undo: () => restoreJob(jobId),
+                        })
+                      }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                        cursor: 'pointer', minHeight: 42,
+                        background: '#D46A6A15', border: '1px solid #D46A6A44', color: '#D46A6A',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#D46A6A22' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#D46A6A15' }}
+                    >
+                      <Trash2 size={14} /> Delete Job
+                    </button>
+                  </div>
                 </div>
               )}
 

@@ -158,7 +158,7 @@ export default function CalendarPage() {
       width: 40, height: 40, borderRadius: 10, background: C.charcoalLight,
       border: 'none', color: C.silver, cursor: 'pointer', transition: 'background .15s',
     },
-    weekLabel: { fontSize: 15, fontWeight: 500, color: C.silver, minWidth: 180, textAlign: 'center' },
+    weekLabel: { fontSize: 15, fontWeight: 500, color: C.silver, minWidth: 0, padding: '0 8px', textAlign: 'center' as const, whiteSpace: 'nowrap' as const },
     todayBtn: {
       padding: '8px 16px', borderRadius: 8, background: 'transparent',
       border: `1px solid ${C.steel}`, color: C.silver, fontSize: 13, fontWeight: 500,
@@ -245,8 +245,9 @@ export default function CalendarPage() {
       alignItems: 'center', justifyContent: 'center', zIndex: 100,
     },
     modal: {
-      background: C.charcoalLight, borderRadius: 16, padding: 28, minWidth: 340, maxWidth: 440,
-      width: '90%', boxShadow: '0 12px 40px rgba(0,0,0,.5)', position: 'relative',
+      background: C.charcoalLight, borderRadius: 16, padding: 'clamp(18px, 5vw, 28px)',
+      width: 'min(440px, calc(100vw - 24px))', maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto' as const,
+      boxShadow: '0 12px 40px rgba(0,0,0,.5)', position: 'relative',
     },
     modalClose: {
       position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 8,

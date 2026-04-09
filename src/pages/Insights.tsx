@@ -483,7 +483,7 @@ export default function Insights() {
       padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13,
       fontWeight: 500, minHeight: 40, transition: 'background .15s, color .15s',
     },
-    kpiRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 },
+    kpiRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 },
     kpiCard: {
       background: C.charcoalLight, borderRadius: 12, padding: '20px 24px',
       borderLeft: `4px solid ${C.gold}`,

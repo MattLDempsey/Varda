@@ -659,7 +659,7 @@ export default function QuickQuote() {
               marginTop: 6, padding: '14px', background: 'var(--color-black)',
               borderRadius: 'var(--radius-md)', border: '1px solid var(--color-steel)',
             }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
                 <div>
                   <span className="qq-label">Phone</span>
                   <input className="qq-input" type="tel" placeholder="07XXX XXX XXX" value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)} />
@@ -1235,8 +1235,9 @@ export default function QuickQuote() {
             />
             <div style={{
               position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-              background: 'var(--color-charcoal-light)', borderRadius: 20, padding: '32px 28px',
-              width: 420, maxWidth: '90vw', zIndex: 210, boxShadow: '0 16px 48px rgba(0,0,0,.5)',
+              background: 'var(--color-charcoal-light)', borderRadius: 20, padding: 'clamp(20px, 5vw, 32px)',
+              width: 'min(420px, calc(100vw - 24px))', maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto',
+              zIndex: 210, boxShadow: '0 16px 48px rgba(0,0,0,.5)',
             }}>
               <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-white)', marginBottom: 4 }}>
                 Send Quote

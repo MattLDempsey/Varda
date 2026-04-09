@@ -81,7 +81,7 @@ function CommRow({ cm, channelIcon, statusColors, C }: {
 export default function Customers() {
   const { C } = useTheme()
   const navigate = useNavigate()
-  const { customers, jobs, comms, addCustomer, deleteCustomer, isDataLoading } = useData()
+  const { customers, jobs, comms, addCustomer, deleteCustomer, getJobsForCustomer, restoreJob, isDataLoading } = useData()
   const { features, plan } = useSubscription()
   const { showUndo } = useUndo()
 
@@ -221,13 +221,13 @@ export default function Customers() {
       top: 0,
       right: 0,
       bottom: 0,
-      width: 440,
+      width: 'min(440px, 100vw)',
       maxWidth: '100vw',
       background: C.charcoal,
       borderLeft: `1px solid ${C.steel}44`,
       zIndex: 100,
       overflowY: 'auto' as const,
-      padding: '28px 28px 40px',
+      padding: 'clamp(16px, 4vw, 28px)',
       boxShadow: '-8px 0 32px rgba(0,0,0,.5)',
     },
     panelHeader: {
@@ -309,7 +309,7 @@ export default function Customers() {
     fieldError: { fontSize: 12, color: '#D46A6A', marginTop: -12, marginBottom: 12 },
     detailRow: {
       display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
       gap: 12,
     },
   }
@@ -468,8 +468,10 @@ export default function Customers() {
 
             {/* detail view */}
             {selected && !showForm && (() => {
-              const custJobs = jobs.filter(j => j.customerId === selected.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-              const totalSpend = custJobs.reduce((s, j) => s + j.value, 0)
+              // getJobsForCustomer intentionally includes soft-deleted jobs so they remain in customer history
+              const custJobs = getJobsForCustomer(selected.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              const activeCustJobs = custJobs.filter(j => !j.deletedAt)
+              const totalSpend = activeCustJobs.reduce((s, j) => s + j.value, 0)
 
               const statusColors: Record<string, string> = {
                 Lead: '#8A8F96', Quoted: '#9B7ED8', Accepted: '#6ABF8A', Scheduled: '#5B9BD5',
@@ -512,9 +514,9 @@ export default function Customers() {
                   </div>
 
                   {/* Stats row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(95px, 1fr))', gap: 10, marginBottom: 16 }}>
                     <div style={{ background: C.black, borderRadius: 10, padding: '12px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: C.gold }}>{custJobs.length}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: C.gold }}>{activeCustJobs.length}</div>
                       <div style={{ fontSize: 11, color: C.steel }}>Jobs</div>
                     </div>
                     <div style={{ background: C.black, borderRadius: 10, padding: '12px', textAlign: 'center' }}>
@@ -538,36 +540,69 @@ export default function Customers() {
                   {custJobs.length > 0 && (
                     <div style={{ borderTop: `1px solid ${C.steel}33`, paddingTop: 16, marginTop: 8 }}>
                       <span style={{ fontSize: 14, fontWeight: 600, color: C.white, display: 'block', marginBottom: 10 }}>Job History</span>
-                      {custJobs.map(j => (
-                        <div
-                          key={j.id}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '10px 8px', borderRadius: 8, marginBottom: 4,
-                            cursor: 'default', borderBottom: `1px solid ${C.steel}1A`,
-                          }}
-                        >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{j.jobType}</span>
-                            <span style={{ fontSize: 11, color: C.silver }}>
-                              {j.id} · {formatDate(j.date)}
-                            </span>
+                      {custJobs.map(j => {
+                        const isDeleted = !!j.deletedAt
+                        return (
+                          <div
+                            key={j.id}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '10px 8px', borderRadius: 8, marginBottom: 4,
+                              cursor: 'default', borderBottom: `1px solid ${C.steel}1A`,
+                              opacity: isDeleted ? 0.55 : 1,
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                              <span style={{
+                                fontSize: 13, fontWeight: 500, color: C.white,
+                                textDecoration: isDeleted ? 'line-through' : 'none',
+                              }}>{j.jobType}</span>
+                              <span style={{ fontSize: 11, color: C.silver }}>
+                                {j.id} · {formatDate(j.date)}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: C.gold }}>
+                                £{j.value.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+                              </span>
+                              {isDeleted ? (
+                                <>
+                                  <span style={{
+                                    fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+                                    color: '#D46A6A', background: '#D46A6A1A',
+                                    textTransform: 'uppercase', letterSpacing: 0.5,
+                                  }}>
+                                    Deleted
+                                  </span>
+                                  <button
+                                    onClick={() => restoreJob(j.id)}
+                                    title="Restore job"
+                                    style={{
+                                      background: 'transparent', border: `1px solid ${C.steel}55`,
+                                      color: C.silver, fontSize: 10, fontWeight: 600,
+                                      padding: '3px 8px', borderRadius: 10, cursor: 'pointer',
+                                      textTransform: 'uppercase', letterSpacing: 0.5,
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.color = C.gold; e.currentTarget.style.borderColor = C.gold }}
+                                    onMouseLeave={e => { e.currentTarget.style.color = C.silver; e.currentTarget.style.borderColor = `${C.steel}55` }}
+                                  >
+                                    Restore
+                                  </button>
+                                </>
+                              ) : (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+                                  color: statusColors[j.status] || C.steel,
+                                  background: (statusColors[j.status] || C.steel) + '1A',
+                                  textTransform: 'uppercase', letterSpacing: 0.5,
+                                }}>
+                                  {j.status}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: C.gold }}>
-                              £{j.value.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
-                            </span>
-                            <span style={{
-                              fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
-                              color: statusColors[j.status] || C.steel,
-                              background: (statusColors[j.status] || C.steel) + '1A',
-                              textTransform: 'uppercase', letterSpacing: 0.5,
-                            }}>
-                              {j.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
 

@@ -110,6 +110,13 @@
   min-width: 44px;
   min-height: 44px;
   border-radius: 50%;
+  border: 1px solid var(--color-gold);
+  box-shadow:
+    0 4px 12px rgba(198, 168, 106, 0.3),
+    inset 0 2px 3px rgba(255, 255, 255, 0.3),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.3px;
   background-color: var(--color-steel);
   display: flex;
   align-items: center;
@@ -120,7 +127,15 @@
 }
 
 .sidebar-avatar:hover {
-  background-color: var(--color-steel-light);
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 16px rgba(198, 168, 106, 0.45),
+    inset 0 2px 3px rgba(255, 255, 255, 0.35),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-avatar {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 /* ── Main Content ───────────────────────────────── */

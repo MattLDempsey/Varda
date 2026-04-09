@@ -222,9 +222,15 @@ export default function AppShell() {
       padding: 8, minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
     },
     avatarLg: {
-      width: 72, height: 72, borderRadius: '50%', background: C.gold, color: C.black,
+      width: 72, height: 72, borderRadius: '50%',
+      background: `radial-gradient(circle at 30% 25%, ${C.gold} 0%, ${C.goldDark} 75%, #6B5526 100%)`,
+      color: C.black,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: 28, fontWeight: 700, margin: '0 auto 16px',
+      letterSpacing: 0.5,
+      border: `1px solid ${C.gold}`,
+      boxShadow: `0 6px 20px rgba(198,168,106,0.35), inset 0 2px 4px rgba(255,255,255,0.35), inset 0 -3px 6px rgba(0,0,0,0.25)`,
+      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
     },
     userName: { textAlign: 'center', fontSize: 20, fontWeight: 600, color: C.white, marginBottom: 4 },
     userEmail: { textAlign: 'center', fontSize: 13, color: C.silver, marginBottom: 4 },
@@ -256,9 +262,13 @@ export default function AppShell() {
       background: `${C.steel}11`, borderRadius: 10, marginBottom: 8,
     },
     memberAvatar: {
-      width: 36, height: 36, borderRadius: '50%', background: `${C.steel}33`,
+      width: 36, height: 36, borderRadius: '50%',
+      background: `radial-gradient(circle at 30% 25%, ${C.steel}88 0%, ${C.steel}55 70%, ${C.steel}33 100%)`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: 13, fontWeight: 700, color: C.white, flexShrink: 0,
+      border: `1px solid ${C.steel}66`,
+      boxShadow: `0 2px 6px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.15)`,
+      letterSpacing: 0.3,
     },
     memberInfo: { flex: 1, minWidth: 0 },
     memberName: { fontSize: 14, fontWeight: 600, color: C.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
@@ -397,7 +407,12 @@ export default function AppShell() {
             aria-expanded={showProfile}
             onClick={() => setShowProfile(true)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowProfile(true) } }}
-            style={{ background: C.gold, color: C.black, fontWeight: 700, fontSize: 15 }}
+            style={{
+              background: `radial-gradient(circle at 30% 25%, ${C.gold} 0%, ${C.goldDark} 75%, #6B5526 100%)`,
+              color: C.black,
+              fontWeight: 700,
+              fontSize: 15,
+            }}
           >
             {initials}
           </div>

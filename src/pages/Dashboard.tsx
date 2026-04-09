@@ -225,10 +225,10 @@ export default function Dashboard() {
 
   /* ── styles ── */
   const s: Record<string, CSSProperties> = {
-    page: { padding: '32px', maxWidth: 1200, margin: '0 auto' },
-    heading: { fontSize: 28, fontWeight: 600, color: C.white, marginBottom: 8 },
+    page: { padding: 'clamp(16px, 4vw, 32px)', maxWidth: 1200, margin: '0 auto' },
+    heading: { fontSize: 'clamp(22px, 5vw, 28px)' as any, fontWeight: 600, color: C.white, marginBottom: 8 },
     subheading: { fontSize: 14, color: C.silver, marginBottom: 28 },
-    statsRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 16, marginBottom: 28 },
+    statsRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 28 },
     statCard: { background: C.charcoalLight, borderRadius: 12, padding: '20px 20px 16px', borderLeft: `4px solid ${C.gold}`, display: 'flex', flexDirection: 'column', gap: 6 },
     statValue: { fontSize: 28, fontWeight: 700, color: C.white, lineHeight: 1 },
     statLabel: { fontSize: 12, color: C.silver, display: 'flex', alignItems: 'center', gap: 6 },
