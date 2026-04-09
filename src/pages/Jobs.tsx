@@ -381,14 +381,36 @@ export default function Jobs() {
     },
     panelHeader: {
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'space-between',
-      marginBottom: 24,
+      gap: 12,
+      marginBottom: 20,
     },
     panelTitle: {
       fontSize: 20,
       fontWeight: 600,
       color: C.white,
+      lineHeight: 1.2,
+      wordBreak: 'break-word' as const,
+    },
+    panelSubtitle: {
+      fontSize: 13,
+      color: C.silver,
+      marginTop: 4,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap' as const,
+    },
+    panelRef: {
+      fontSize: 11,
+      fontWeight: 600,
+      color: C.steel,
+      background: `${C.steel}22`,
+      padding: '2px 8px',
+      borderRadius: 10,
+      letterSpacing: 0.5,
+      fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
     },
     closeBtn: {
       background: 'transparent',
@@ -792,7 +814,13 @@ export default function Jobs() {
             <div style={s.overlay} onClick={() => setSelectedJob(null)} />
             <div style={s.panel}>
               <div style={s.panelHeader}>
-                <span style={s.panelTitle}>{selectedJob.id}</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={s.panelTitle}>{selectedJob.customerName}</div>
+                  <div style={s.panelSubtitle}>
+                    <span>{selectedJob.jobType}</span>
+                    <span style={s.panelRef}>#{selectedJob.id.slice(-6).toUpperCase()}</span>
+                  </div>
+                </div>
                 <button style={s.closeBtn} onClick={() => setSelectedJob(null)}>
                   <X size={22} />
                 </button>
@@ -818,25 +846,18 @@ export default function Jobs() {
               {/* ════════════════════════════════════════════════ */}
               {panelTab === 'details' && (
                 <div>
-                  <span style={s.fieldLabel}>Customer</span>
-                  <div style={s.fieldValue}>{selectedJob.customerName}</div>
-
                   <div style={s.detailRow}>
-                    <div>
-                      <span style={s.fieldLabel}>Job Type</span>
-                      <div style={s.fieldValue}>{selectedJob.jobType}</div>
-                    </div>
                     <div>
                       <span style={s.fieldLabel}>Value</span>
                       <div style={{ ...s.fieldValue, color: C.gold, fontSize: 20, fontWeight: 700 }}>{fmtCurrency(selectedJob.value)}</div>
                     </div>
-                  </div>
-
-                  <div style={s.detailRow}>
                     <div>
                       <span style={s.fieldLabel}>Date</span>
                       <div style={s.fieldValue}>{fmtDate(selectedJob.date)}</div>
                     </div>
+                  </div>
+
+                  <div style={s.detailRow}>
                     <div>
                       <span style={s.fieldLabel}>Status</span>
                       <div style={{ marginBottom: 16 }}>
@@ -866,14 +887,10 @@ export default function Jobs() {
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  <div style={s.detailRow}>
                     <div>
                       <span style={s.fieldLabel}>Est. Hours</span>
                       <div style={s.fieldValue}>{selectedJob.estimatedHours}h</div>
                     </div>
-                    <div style={{ minHeight: 1 }} />
                   </div>
 
                   {/* ── Actual Hours Tracking ── */}
@@ -1388,58 +1405,57 @@ export default function Jobs() {
                     </>
                   )}
 
-                  {/* ── Certificates ── */}
+                  {/* ── Footer Actions: Certificates + Delete ── */}
                   {(() => {
                     const certTypes = ['consumer unit', 'ev charger', 'rewire', 'eicr', 'consumer', 'condition report']
                     const jt = selectedJob.jobType.toLowerCase()
                     const showCerts = certTypes.some(t => jt.includes(t))
-                    if (!showCerts) return null
+
+                    const footerBtn: CSSProperties = {
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer', minHeight: 36, background: 'transparent',
+                    }
+
                     return (
-                      <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                      <div style={{
+                        marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.steel}33`,
+                        display: 'flex', gap: 8,
+                      }}>
+                        {showCerts && (
+                          <button
+                            onClick={() => { setSelectedJob(null); navigate(`/certificates/${selectedJob.id}`) }}
+                            style={{ ...footerBtn, border: '1px solid #9B7ED844', color: '#9B7ED8' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#9B7ED815' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                          >
+                            <FileCheck size={13} /> Certificates
+                          </button>
+                        )}
                         <button
-                          onClick={() => { setSelectedJob(null); navigate(`/certificates/${selectedJob.id}`) }}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                            cursor: 'pointer', minHeight: 42,
-                            background: '#9B7ED815', border: '1px solid #9B7ED844', color: '#9B7ED8',
+                          onClick={() => {
+                            const ok = window.confirm(
+                              `Delete this job for ${selectedJob.customerName}?\n\nIt will be hidden from the board but kept in the customer's history so you can restore it later.`
+                            )
+                            if (!ok) return
+                            const jobId = selectedJob.id
+                            const customerName = selectedJob.customerName
+                            softDeleteJob(jobId)
+                            setSelectedJob(null)
+                            showUndo({
+                              message: `Job deleted: ${customerName}`,
+                              undo: () => restoreJob(jobId),
+                            })
                           }}
+                          style={{ ...footerBtn, border: '1px solid #D46A6A44', color: '#D46A6A' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#D46A6A15' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                         >
-                          <FileCheck size={14} /> Certificates
+                          <Trash2 size={13} /> Delete
                         </button>
                       </div>
                     )
                   })()}
-
-                  {/* ── Delete Job (soft) ── */}
-                  <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                    <button
-                      onClick={() => {
-                        const ok = window.confirm(
-                          `Delete this job for ${selectedJob.customerName}?\n\nIt will be hidden from the board but kept in the customer's history so you can restore it later.`
-                        )
-                        if (!ok) return
-                        const jobId = selectedJob.id
-                        const customerName = selectedJob.customerName
-                        softDeleteJob(jobId)
-                        setSelectedJob(null)
-                        showUndo({
-                          message: `Job deleted: ${customerName}`,
-                          undo: () => restoreJob(jobId),
-                        })
-                      }}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                        cursor: 'pointer', minHeight: 42,
-                        background: '#D46A6A15', border: '1px solid #D46A6A44', color: '#D46A6A',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#D46A6A22' }}
-                      onMouseLeave={e => { e.currentTarget.style.background = '#D46A6A15' }}
-                    >
-                      <Trash2 size={14} /> Delete Job
-                    </button>
-                  </div>
                 </div>
               )}
 
