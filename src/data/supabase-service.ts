@@ -129,7 +129,7 @@ const QUOTE_COLS = new Set([
   'customer_supplies_materials', 'notes', 'materials', 'labour', 'certificates',
   'waste', 'subtotal', 'adjustments', 'net_total', 'vat', 'grand_total', 'margin',
   'est_hours', 'status', 'sent_at', 'viewed_at', 'accepted_at', 'materials_breakdown',
-  'job_postcode', 'distance_miles',
+  'job_postcode', 'distance_miles', 'needs_resend',
 ])
 const JOB_COLS = new Set([
   'customer_id', 'customer_name', 'quote_id', 'invoice_id', 'job_type', 'value', 'estimated_hours',

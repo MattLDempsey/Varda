@@ -61,7 +61,7 @@ const invoiceStatusColors: Record<string, string> = {
 
 export default function Jobs() {
   const { C } = useTheme()
-  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, softDeleteJob, restoreJob, isDataLoading } = useData()
+  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, softDeleteJob, restoreJob, awaitRealId, isDataLoading } = useData()
   const { user } = useAuth()
   const { features, plan } = useSubscription()
   const { showUndo } = useUndo()
@@ -105,10 +105,11 @@ export default function Jobs() {
   const [panelTab, setPanelTab] = useState<'details' | 'quote' | 'payments'>('details')
   const [requoteSuccess, setRequoteSuccess] = useState(false)
 
-  // Materials breakdown editor state
-  const [materialsEditMode, setMaterialsEditMode] = useState(false)
-  const [materialLines, setMaterialLines] = useState<Array<{ description: string; quantity: number; unitPrice: number }>>([])
-  const [materialsInitialised, setMaterialsInitialised] = useState<string | null>(null)
+  // Materials override — a single actual-cost field that replaces the
+  // estimated materials figure on the quote. Detailed breakdown will come
+  // from expenses tagged to the job, not from a manual line-item editor.
+  const [actualMaterials, setActualMaterials] = useState<string>('')
+  const [materialsLoadedFor, setMaterialsLoadedFor] = useState<string | null>(null)
 
   // Attachments state
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -121,8 +122,8 @@ export default function Jobs() {
   function selectJob(job: Job) {
     setSelectedJob(job)
     setPanelTab('details')
-    setMaterialsEditMode(false)
-    setMaterialsInitialised(null)
+    setActualMaterials('')
+    setMaterialsLoadedFor(null)
     setShowAddInvoice(false)
     setRequoteSuccess(false)
     setUploadError('')
@@ -172,6 +173,14 @@ export default function Jobs() {
     const hasQuote = !!job.quoteId
     const jobInvoices = getInvoicesForJob(job.id)
     const hasInvoice = jobInvoices.length > 0
+
+    // Quote has been edited (e.g. materials override) since it was last sent —
+    // surfaces in the kanban card and the panel header until the user resends.
+    if (hasQuote) {
+      const linkedQuote = quotes.find(q => q.id === job.quoteId)
+      if (linkedQuote?.needsResend) return 'Quote updated — needs resending'
+    }
+
     switch (job.status) {
       case 'Quoted':
       case 'Accepted':
@@ -815,7 +824,17 @@ export default function Jobs() {
             <div style={s.panel}>
               <div style={s.panelHeader}>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={s.panelTitle}>{selectedJob.customerName}</div>
+                  <div style={s.panelTitle}>
+                    {selectedJob.customerName}
+                    {linkedQuote?.needsResend && (
+                      <span
+                        title="Quote updated — needs resending"
+                        style={{ marginLeft: 8, display: 'inline-flex', verticalAlign: -2 }}
+                      >
+                        <AlertCircle size={16} color="#D46A6A" />
+                      </span>
+                    )}
+                  </div>
                   <div style={s.panelSubtitle}>
                     <span>{selectedJob.jobType}</span>
                     <span style={s.panelRef}>#{selectedJob.id.slice(-6).toUpperCase()}</span>
@@ -1521,235 +1540,122 @@ export default function Jobs() {
                         </div>
                       </div>
 
-                      {/* ── Materials Breakdown ── */}
+                      {/* ── Materials Override ── */}
                       {(() => {
-                        const breakdown = linkedQuote.materialsBreakdown ?? []
-                        const materialsTotal = breakdown.reduce((sum, m) => sum + m.quantity * m.unitPrice, 0)
-
-                        // Initialise materialLines from quote data when entering edit mode
-                        if (materialsEditMode && materialsInitialised !== linkedQuote.id) {
-                          setMaterialLines(breakdown.length > 0 ? breakdown.map(m => ({ ...m })) : [{ description: '', quantity: 1, unitPrice: 0 }])
-                          setMaterialsInitialised(linkedQuote.id)
+                        // Lazily seed the input from the quote's current materials value
+                        // the first time we look at this job. Switching jobs resets it
+                        // via selectJob().
+                        if (materialsLoadedFor !== linkedQuote.id) {
+                          setActualMaterials(linkedQuote.materials.toFixed(2))
+                          setMaterialsLoadedFor(linkedQuote.id)
                         }
 
-                        const editTotal = materialLines.reduce((sum, m) => sum + m.quantity * m.unitPrice, 0)
-                        // Check if materials have changed vs the quote's current materials value
-                        const materialsChanged = !materialsEditMode && breakdown.length > 0 && Math.abs(materialsTotal - linkedQuote.materials) > 0.01
-                        const materialsDiff = materialsTotal - linkedQuote.materials
-                        // Compute what the new quote totals would be if we update
-                        const newNetTotal = materialsTotal + linkedQuote.labour + linkedQuote.certificates + linkedQuote.waste + linkedQuote.adjustments
+                        const parsed = parseFloat(actualMaterials)
+                        const valid = !isNaN(parsed) && parsed >= 0
+                        const dirty = valid && Math.abs(parsed - linkedQuote.materials) > 0.005
+                        const newNetTotal = (valid ? parsed : linkedQuote.materials) + linkedQuote.labour + linkedQuote.certificates + linkedQuote.waste + linkedQuote.adjustments
                         const newVat = newNetTotal * 0.2
                         const newGrandTotal = newNetTotal + newVat
+                        const diff = (valid ? parsed : linkedQuote.materials) - linkedQuote.materials
 
                         return (
                           <div style={{ marginBottom: 16, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Package size={16} color={C.gold} />
-                                <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Materials</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <Package size={16} color={C.gold} />
+                              <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Actual materials cost</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: C.steel, marginBottom: 10 }}>
+                              Override the estimate once you know what materials really cost. A detailed breakdown will appear here automatically once you log expenses against this job.
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <div style={{ position: 'relative', flex: 1 }}>
+                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.steel, fontSize: 14 }}>£</span>
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min={0}
+                                  step={0.01}
+                                  value={actualMaterials}
+                                  onChange={e => setActualMaterials(e.target.value)}
+                                  style={{
+                                    width: '100%', padding: '10px 12px 10px 24px', borderRadius: 10,
+                                    background: C.black, border: `1px solid ${C.steel}33`,
+                                    color: C.white, fontSize: 14, outline: 'none', boxSizing: 'border-box',
+                                  }}
+                                />
                               </div>
                               <button
                                 onClick={() => {
-                                  if (materialsEditMode) {
-                                    setMaterialsEditMode(false)
-                                    setMaterialsInitialised(null)
-                                  } else {
-                                    setMaterialsEditMode(true)
-                                  }
+                                  if (!valid || !dirty) return
+                                  const wasSent = linkedQuote.status !== 'Draft'
+                                  updateQuote(linkedQuote.id, {
+                                    materials: parsed,
+                                    netTotal: newNetTotal,
+                                    vat: newVat,
+                                    grandTotal: newGrandTotal,
+                                    needsResend: wasSent,
+                                  })
+                                  updateJob(selectedJob.id, { value: newGrandTotal })
+                                  setSelectedJob({ ...selectedJob, value: newGrandTotal })
+                                  setRequoteSuccess(true)
+                                  setTimeout(() => setRequoteSuccess(false), 2500)
                                 }}
+                                disabled={!valid || !dirty}
                                 style={{
-                                  background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 8,
-                                  color: materialsEditMode ? C.red : C.gold, cursor: 'pointer', padding: '4px 10px',
-                                  fontSize: 12, fontWeight: 500, minHeight: 30,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                                  cursor: (!valid || !dirty) ? 'not-allowed' : 'pointer', minHeight: 42,
+                                  background: (!valid || !dirty) ? C.black : `${C.gold}15`,
+                                  border: `1px solid ${(!valid || !dirty) ? C.steel + '33' : C.gold + '44'}`,
+                                  color: (!valid || !dirty) ? C.steel : C.gold,
+                                  opacity: (!valid || !dirty) ? 0.6 : 1,
                                 }}
                               >
-                                {materialsEditMode ? 'Cancel' : (breakdown.length > 0 ? 'Edit' : 'Add Breakdown')}
+                                Save
                               </button>
                             </div>
 
-                            {!materialsEditMode ? (
-                              <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
-                                {breakdown.length === 0 ? (
-                                  <div style={{ color: C.steel, fontStyle: 'italic' }}>
-                                    Estimated total: {'\u00A3'}{linkedQuote.materials.toFixed(2)} (from quote)
-                                  </div>
-                                ) : (
-                                  <>
-                                    {breakdown.map((m, i) => (
-                                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: C.silver }}>
-                                        <span>{m.description || 'Item'} {m.quantity > 1 ? `x${m.quantity}` : ''}</span>
-                                        <span style={{ color: C.white, fontWeight: 500 }}>{'\u00A3'}{(m.quantity * m.unitPrice).toFixed(2)}</span>
-                                      </div>
-                                    ))}
-                                    <div style={{ borderTop: `1px solid ${C.steel}33`, marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                                      <span style={{ color: C.silver }}>Total</span>
-                                      <span style={{ color: C.gold }}>{'\u00A3'}{materialsTotal.toFixed(2)}</span>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            ) : (
-                              <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', fontSize: 13 }}>
-                                {materialLines.map((line, i) => (
-                                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                                    <input
-                                      type="text"
-                                      placeholder="Description"
-                                      value={line.description}
-                                      onChange={e => {
-                                        const updated = [...materialLines]
-                                        updated[i] = { ...updated[i], description: e.target.value }
-                                        setMaterialLines(updated)
-                                      }}
-                                      style={{
-                                        flex: 3, padding: '8px 10px', borderRadius: 8,
-                                        background: C.charcoal, border: `1px solid ${C.steel}33`,
-                                        color: C.white, fontSize: 13, outline: 'none',
-                                      }}
-                                    />
-                                    <input
-                                      type="number"
-                                      placeholder="Qty"
-                                      min={1}
-                                      value={line.quantity}
-                                      onChange={e => {
-                                        const updated = [...materialLines]
-                                        updated[i] = { ...updated[i], quantity: Math.max(1, Number(e.target.value) || 1) }
-                                        setMaterialLines(updated)
-                                      }}
-                                      style={{
-                                        flex: 1, padding: '8px 6px', borderRadius: 8, textAlign: 'center',
-                                        background: C.charcoal, border: `1px solid ${C.steel}33`,
-                                        color: C.white, fontSize: 13, outline: 'none', minWidth: 40,
-                                      }}
-                                    />
-                                    <input
-                                      type="number"
-                                      placeholder="Price"
-                                      min={0}
-                                      step={0.01}
-                                      value={line.unitPrice || ''}
-                                      onChange={e => {
-                                        const updated = [...materialLines]
-                                        updated[i] = { ...updated[i], unitPrice: Number(e.target.value) || 0 }
-                                        setMaterialLines(updated)
-                                      }}
-                                      style={{
-                                        flex: 1.5, padding: '8px 6px', borderRadius: 8,
-                                        background: C.charcoal, border: `1px solid ${C.steel}33`,
-                                        color: C.white, fontSize: 13, outline: 'none', minWidth: 60,
-                                      }}
-                                    />
-                                    <span style={{ flex: 1, textAlign: 'right', color: C.silver, fontWeight: 500, fontSize: 12, minWidth: 50 }}>
-                                      {'\u00A3'}{(line.quantity * line.unitPrice).toFixed(2)}
-                                    </span>
-                                    <button
-                                      onClick={() => setMaterialLines(materialLines.filter((_, j) => j !== i))}
-                                      style={{
-                                        background: 'transparent', border: 'none', color: C.steel,
-                                        cursor: 'pointer', padding: 4, display: 'flex',
-                                      }}
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                ))}
-
-                                <button
-                                  onClick={() => setMaterialLines([...materialLines, { description: '', quantity: 1, unitPrice: 0 }])}
-                                  style={{
-                                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                                    padding: '8px', borderRadius: 8, fontSize: 12, fontWeight: 500,
-                                    cursor: 'pointer', background: 'transparent',
-                                    border: `1px dashed ${C.steel}44`, color: C.steel,
-                                    marginBottom: 10,
-                                  }}
-                                >
-                                  <Plus size={14} /> Add Item
-                                </button>
-
-                                <div style={{ borderTop: `1px solid ${C.steel}33`, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                  <span style={{ color: C.silver, fontWeight: 600 }}>Total</span>
-                                  <span style={{ color: C.gold, fontWeight: 700, fontSize: 15 }}>{'\u00A3'}{editTotal.toFixed(2)}</span>
-                                </div>
-
-                                <button
-                                  onClick={() => {
-                                    const validLines = materialLines.filter(m => m.description.trim() || m.unitPrice > 0)
-                                    updateQuote(linkedQuote.id, {
-                                      materialsBreakdown: validLines,
-                                      materials: editTotal,
-                                    })
-                                    setMaterialsEditMode(false)
-                                    setMaterialsInitialised(null)
-                                  }}
-                                  style={{
-                                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                    padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                    cursor: 'pointer', minHeight: 42,
-                                    background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
-                                  }}
-                                >
-                                  Save Materials
-                                </button>
+                            {/* Live preview of impact while typing */}
+                            {dirty && (
+                              <div style={{
+                                marginTop: 10, padding: '10px 14px', borderRadius: 10,
+                                background: C.black, border: `1px solid ${C.steel}22`,
+                                fontSize: 12, color: C.silver,
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              }}>
+                                <span>New quote total</span>
+                                <span>
+                                  <span style={{ color: C.steel, textDecoration: 'line-through', marginRight: 8 }}>£{linkedQuote.grandTotal.toFixed(2)}</span>
+                                  <span style={{ color: C.gold, fontWeight: 700 }}>£{newGrandTotal.toFixed(2)}</span>
+                                  <span style={{ color: diff > 0 ? '#D46A6A' : '#6ABF8A', marginLeft: 8, fontWeight: 600 }}>
+                                    {diff > 0 ? '+' : ''}£{diff.toFixed(2)}
+                                  </span>
+                                </span>
                               </div>
                             )}
 
-                            {/* ── Requote Flow ── */}
-                            {materialsChanged && (
-                              <div style={{ background: `${C.gold}08`, border: `1px solid ${C.gold}33`, borderRadius: 10, padding: '14px 16px', marginTop: 12 }}>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: C.silver, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
-                                  Materials Updated
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                  <span style={{ fontSize: 13, color: C.silver }}>Old Total</span>
-                                  <span style={{ fontSize: 14, color: C.steel, textDecoration: 'line-through' }}>{'\u00A3'}{linkedQuote.grandTotal.toFixed(2)}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                  <span style={{ fontSize: 13, color: C.silver }}>New Total</span>
-                                  <span style={{ fontSize: 16, fontWeight: 700, color: C.gold }}>{'\u00A3'}{newGrandTotal.toFixed(2)}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-                                  <span style={{
-                                    fontSize: 13, fontWeight: 700,
-                                    color: materialsDiff > 0 ? C.red : C.green,
-                                  }}>
-                                    {materialsDiff > 0 ? '+' : ''}{'\u00A3'}{materialsDiff.toFixed(2)}
-                                  </span>
-                                </div>
+                            {requoteSuccess && (
+                              <div style={{
+                                marginTop: 10, padding: '10px 14px', borderRadius: 10,
+                                background: '#6ABF8A12', border: '1px solid #6ABF8A44',
+                                fontSize: 13, color: '#6ABF8A', textAlign: 'center', fontWeight: 600,
+                              }}>
+                                Quote updated
+                              </div>
+                            )}
 
-                                {requoteSuccess ? (
-                                  <div style={{
-                                    width: '100%', textAlign: 'center', padding: '10px 16px',
-                                    borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                    background: '#4CAF5015', border: '1px solid #4CAF5044', color: '#4CAF50',
-                                  }}>
-                                    Quote updated successfully
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => {
-                                      updateQuote(linkedQuote.id, {
-                                        materials: materialsTotal,
-                                        netTotal: newNetTotal,
-                                        vat: newVat,
-                                        grandTotal: newGrandTotal,
-                                      })
-                                      updateJob(selectedJob.id, { value: newGrandTotal })
-                                      setSelectedJob({ ...selectedJob, value: newGrandTotal })
-                                      setRequoteSuccess(true)
-                                      setTimeout(() => setRequoteSuccess(false), 2500)
-                                    }}
-                                    style={{
-                                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                      padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                      cursor: 'pointer', minHeight: 42,
-                                      background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
-                                    }}
-                                  >
-                                    Update Quote
-                                  </button>
-                                )}
+                            {/* Resend prompt — sticks around until the quote is actually resent */}
+                            {linkedQuote.needsResend && (
+                              <div style={{
+                                marginTop: 12, padding: '12px 14px', borderRadius: 10,
+                                background: '#D46A6A10', border: '1px solid #D46A6A44',
+                                display: 'flex', alignItems: 'flex-start', gap: 10,
+                              }}>
+                                <AlertCircle size={16} color="#D46A6A" style={{ flexShrink: 0, marginTop: 1 }} />
+                                <div style={{ fontSize: 12, color: C.silver, lineHeight: 1.5 }}>
+                                  This quote has changed since you last sent it. <strong style={{ color: C.white }}>Resend it</strong> below so the customer sees the new total — the job will move back to <strong style={{ color: C.white }}>Quoted</strong> automatically.
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1787,22 +1693,37 @@ export default function Jobs() {
                               </button>
                             </div>
                             <button
-                              style={{ ...btnStyle, color: C.gold, borderColor: `${C.gold}33` }}
+                              style={{
+                                ...btnStyle,
+                                color: linkedQuote.needsResend ? '#D46A6A' : C.gold,
+                                borderColor: linkedQuote.needsResend ? '#D46A6A66' : `${C.gold}33`,
+                                background: linkedQuote.needsResend ? '#D46A6A12' : 'transparent',
+                              }}
                               onClick={async () => {
-                                const url = `${window.location.origin}/q/${linkedQuote.id}`
+                                const realQuoteId = await awaitRealId(linkedQuote.id)
+                                const url = `${window.location.origin}/q/${realQuoteId}`
                                 navigator.clipboard.writeText(url)
-                                if (linkedQuote.status === 'Draft') {
-                                  updateQuote(linkedQuote.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
-                                  if (selectedJob.status === 'Lead') {
-                                    moveJob(selectedJob.id, 'Quoted')
-                                    setSelectedJob({ ...selectedJob, status: 'Quoted' })
-                                  }
-                                  addComm({
-                                    customerId: selectedJob.customerId, customerName: selectedJob.customerName,
-                                    templateName: 'Send Quote', channel: 'email', status: 'Sent',
-                                    date: new Date().toISOString(), body: url,
-                                  })
+
+                                // Sending (or resending) always normalises the quote to a
+                                // Sent state, clears the needs-resend flag, and pushes the
+                                // linked job back to Quoted so the customer is back in the
+                                // approval lane.
+                                updateQuote(linkedQuote.id, {
+                                  status: 'Sent',
+                                  sentAt: new Date().toISOString().split('T')[0],
+                                  needsResend: false,
+                                })
+                                if (selectedJob.status !== 'Quoted') {
+                                  moveJob(selectedJob.id, 'Quoted')
+                                  setSelectedJob({ ...selectedJob, status: 'Quoted' })
                                 }
+                                addComm({
+                                  customerId: selectedJob.customerId, customerName: selectedJob.customerName,
+                                  templateName: linkedQuote.status === 'Draft' ? 'Send Quote' : 'Resend Quote',
+                                  channel: 'email', status: 'Sent',
+                                  date: new Date().toISOString(), body: url,
+                                })
+
                                 // Try sending real email if customer has an email address
                                 const customer = customers.find(c => c.id === selectedJob.customerId)
                                 if (customer?.email) {
@@ -1836,7 +1757,7 @@ export default function Jobs() {
                                 alert(`Quote link copied — send to ${selectedJob.customerName}:\n\n${url}`)
                               }}
                             >
-                              <Send size={14} /> {linkedQuote.status === 'Draft' ? 'Send Quote' : 'Resend Quote'}
+                              <Send size={14} /> {linkedQuote.needsResend ? 'Resend updated quote' : (linkedQuote.status === 'Draft' ? 'Send Quote' : 'Resend Quote')}
                             </button>
                           </div>
                         )

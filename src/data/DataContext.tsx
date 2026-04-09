@@ -152,6 +152,11 @@ export interface Quote {
   sentAt?: string
   viewedAt?: string
   acceptedAt?: string
+  /**
+   * True when the quote has been edited (e.g. materials override) since it
+   * was last sent to the customer. Cleared when the quote is resent.
+   */
+  needsResend?: boolean
 }
 
 export interface Job {
