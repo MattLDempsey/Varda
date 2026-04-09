@@ -6,7 +6,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { generateQuotePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { validateEmail, validatePhone } from '../lib/validation'
-import { sendEmail } from '../lib/send-email'
+import { sendEmail, buildFromName } from '../lib/send-email'
 import { buildQuoteEmail } from '../lib/email-templates'
 import PricingSuggestion from '../components/PricingSuggestion'
 import { estimateDistance, getDistanceHassleAdjustment } from '../lib/postcode-distance'
@@ -1222,6 +1222,7 @@ export default function QuickQuote() {
                 htmlBody: quoteEmailData.html,
                 textBody: quoteEmailData.text,
                 replyTo: biz.email,
+                fromName: buildFromName(biz),
                 orgId: user?.orgId || '',
                 customerId: selectedCustomer?.id,
                 templateName: 'Send Quote',

@@ -11,7 +11,26 @@ const corsHeaders = {
 }
 
 const RESEND_API_URL = 'https://api.resend.com/emails'
-const FROM_ADDRESS = 'Varda <noreply@vardaos.app>'
+// All emails are sent from this verified Resend domain. The display name (the
+// "Friendly Name" customers see in their inbox) is overridden per request via
+// the `fromName` parameter, so quotes appear to come from the business owner.
+const FROM_EMAIL = 'noreply@vardaos.app'
+const DEFAULT_FROM_NAME = 'Varda'
+
+/**
+ * Sanitize a user-supplied display name to make it safe for an RFC 5322
+ * "Friendly Name <addr>" header. Strips CR/LF (header injection), angle
+ * brackets and double quotes, and clamps to a reasonable length.
+ */
+function sanitizeDisplayName(input: string | undefined | null): string {
+  if (!input) return DEFAULT_FROM_NAME
+  const cleaned = String(input)
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/["<>]/g, '')
+    .trim()
+    .slice(0, 80)
+  return cleaned || DEFAULT_FROM_NAME
+}
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -58,6 +77,7 @@ serve(async (req) => {
       htmlBody,
       textBody,
       replyTo,
+      fromName,
       orgId,
       customerId,
       templateName,
@@ -67,6 +87,7 @@ serve(async (req) => {
       htmlBody: string
       textBody?: string
       replyTo?: string
+      fromName?: string
       orgId: string
       customerId?: string
       templateName?: string
@@ -94,9 +115,15 @@ serve(async (req) => {
       })
     }
 
+    // Build the From line so the customer sees the business owner's name
+    // (e.g. "Matt Dempsey - Grey Havens Electrical <noreply@vardaos.app>")
+    // while the actual address stays on our verified Resend domain.
+    const displayName = sanitizeDisplayName(fromName)
+    const fromHeader = `${displayName} <${FROM_EMAIL}>`
+
     // Send via Resend API
     const emailPayload: Record<string, unknown> = {
-      from: FROM_ADDRESS,
+      from: fromHeader,
       to: [to],
       subject,
       html: htmlBody,

@@ -11,7 +11,7 @@ import { useData } from '../data/DataContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useFollowUps, priorityColor, getPendingReminders, markReminderSent } from '../components/FollowUpManager'
 import { buildBookingConfirmationEmail } from '../lib/email-templates'
-import { sendEmail } from '../lib/send-email'
+import { sendEmail, buildFromName } from '../lib/send-email'
 import { useAuth } from '../auth/AuthContext'
 import { SkeletonDashboard } from '../components/Skeleton'
 import type { CSSProperties } from 'react'
@@ -105,6 +105,7 @@ export default function Dashboard() {
       htmlBody: emailData.html,
       textBody: emailData.text,
       replyTo: biz.email,
+      fromName: buildFromName(biz),
       orgId: user?.orgId || '',
       customerId: reminder.customerId,
       templateName: 'Appointment Reminder',

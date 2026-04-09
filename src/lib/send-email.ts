@@ -13,9 +13,31 @@ export interface SendEmailParams {
   htmlBody: string
   textBody?: string
   replyTo?: string
+  /**
+   * Display name shown to the recipient ("Friendly Name" portion of the From
+   * header). Build with `buildFromName(settings.business)` so customer-facing
+   * emails appear to come from the business owner instead of "Varda".
+   */
+  fromName?: string
   orgId: string
   customerId?: string
   templateName?: string
+}
+
+/**
+ * Build the display name shown in the recipient's inbox for customer-facing
+ * emails. Prefers "Owner Name - Business Name", falls back to whichever is
+ * available, and finally to "Varda" as a safety net (the Edge Function will
+ * also default if this is empty).
+ */
+export function buildFromName(business: {
+  ownerName?: string
+  businessName?: string
+}): string {
+  const owner = (business.ownerName || '').trim()
+  const biz = (business.businessName || '').trim()
+  if (owner && biz) return `${owner} - ${biz}`
+  return biz || owner || 'Varda'
 }
 
 export interface SendEmailResult {
@@ -30,7 +52,7 @@ export interface SendEmailResult {
  * If the Edge Function is unreachable or fails, opens a mailto: link as fallback.
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  const { to, subject, htmlBody, textBody, replyTo, orgId, customerId, templateName } = params
+  const { to, subject, htmlBody, textBody, replyTo, fromName, orgId, customerId, templateName } = params
 
   try {
     const { data: { session } } = await supabase.auth.getSession()
@@ -59,6 +81,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
         htmlBody,
         textBody,
         replyTo,
+        fromName,
         orgId,
         customerId,
         templateName,

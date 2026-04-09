@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Download, Calendar, CreditCard, Check, ExternalLink } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Download, Calendar, CreditCard, Check, Mail, MessageCircle, ArrowRight } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
+import { buildFromName } from '../lib/send-email'
 import { exportInvoicesCSV, exportExpensesCSV, exportContactsCSV } from '../lib/xero-export'
 import { exportAllEvents } from '../lib/calendar-export'
 import SettingsNav from '../components/SettingsNav'
@@ -10,8 +12,14 @@ import LoadingSpinner from '../components/LoadingSpinner'
 
 export default function Integrations() {
   const { C } = useTheme()
-  const { invoices, expenses, customers, events, isDataLoading } = useData()
+  const navigate = useNavigate()
+  const { invoices, expenses, customers, events, settings, isDataLoading } = useData()
   const [exportedType, setExportedType] = useState<string | null>(null)
+
+  const biz = settings.business
+  const fromDisplayName = buildFromName(biz)
+  const replyToAddress = biz.email || ''
+  const emailReady = Boolean(biz.businessName && biz.email)
 
   const showExportFeedback = (type: string) => {
     setExportedType(type)
@@ -96,6 +104,85 @@ export default function Integrations() {
       <SettingsNav active="integrations" />
       <div style={s.title}>Integrations</div>
       <div style={s.subtitle}>Connect your tools and export data for your accounting software.</div>
+
+      {/* Email */}
+      <div style={s.card}>
+        <div style={{ ...s.iconBox, background: `${C.gold}15` }}>
+          <Mail size={24} color={C.gold} />
+        </div>
+        <div style={s.cardContent}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+            <div style={s.cardTitle}>Customer Email</div>
+            <span style={{
+              ...s.statusBadge,
+              color: emailReady ? '#6ABF8A' : '#D46A6A',
+              background: emailReady ? '#6ABF8A15' : '#D46A6A15',
+            }}>
+              <Check size={12} /> {emailReady ? 'Ready' : 'Needs setup'}
+            </span>
+          </div>
+          <div style={s.cardDesc}>
+            Quotes and invoices are sent through Varda's mail service so you don't have to set anything up.
+            Customers see <strong style={{ color: C.white }}>your business name</strong> in their inbox and replies
+            come straight to your email.
+          </div>
+
+          {/* Live preview of how an email will appear */}
+          <div style={{
+            background: C.black, borderRadius: 10, padding: '14px 16px',
+            border: `1px solid ${C.steel}33`, marginBottom: 14,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+              Inbox preview
+            </div>
+            <div style={{ fontSize: 13, color: C.silver, marginBottom: 4 }}>
+              <span style={{ color: C.steel }}>From:</span>{' '}
+              <span style={{ color: C.white, fontWeight: 600 }}>{fromDisplayName}</span>
+            </div>
+            <div style={{ fontSize: 13, color: C.silver }}>
+              <span style={{ color: C.steel }}>Reply‑to:</span>{' '}
+              <span style={{ color: replyToAddress ? C.white : '#D46A6A' }}>
+                {replyToAddress || 'Add your email in Business settings'}
+              </span>
+            </div>
+          </div>
+
+          <div style={s.btnRow}>
+            <button
+              style={{ ...s.exportBtn, background: `${C.gold}20`, color: C.gold }}
+              onClick={() => navigate('/settings')}
+            >
+              Edit business details <ArrowRight size={14} />
+            </button>
+          </div>
+
+          <div style={{ fontSize: 12, color: C.steel, marginTop: 12, fontStyle: 'italic' }}>
+            Connect your own Gmail or SMTP account so emails come from your own address — coming soon.
+          </div>
+        </div>
+      </div>
+
+      {/* WhatsApp */}
+      <div style={s.card}>
+        <div style={{ ...s.iconBox, background: '#25D36615' }}>
+          <MessageCircle size={24} color="#25D366" />
+        </div>
+        <div style={s.cardContent}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+            <div style={s.cardTitle}>WhatsApp</div>
+            <span style={{ ...s.statusBadge, color: C.steel, background: `${C.steel}15` }}>
+              Manual send
+            </span>
+          </div>
+          <div style={s.cardDesc}>
+            When you choose WhatsApp on a quote, Varda opens WhatsApp Web with the message pre‑filled — you just hit
+            send. There's no public API for sending WhatsApp messages from a small business account directly.
+          </div>
+          <div style={{ fontSize: 12, color: C.steel, marginTop: 4, fontStyle: 'italic' }}>
+            Automatic sending via WhatsApp Business (Twilio) coming soon for higher‑volume users.
+          </div>
+        </div>
+      </div>
 
       {/* Xero */}
       <div style={s.card}>

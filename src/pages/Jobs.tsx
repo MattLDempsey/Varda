@@ -7,7 +7,7 @@ import { useData, type JobStatus, type Job, type InvoiceType } from '../data/Dat
 import { useAuth } from '../auth/AuthContext'
 import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { uploadJobFile, deleteJobFile, getJobAttachments, formatFileSize, type Attachment } from '../lib/file-upload'
-import { sendEmail } from '../lib/send-email'
+import { sendEmail, buildFromName } from '../lib/send-email'
 import { buildQuoteEmail, buildInvoiceEmail } from '../lib/email-templates'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { useUndo } from '../hooks/useUndo'
@@ -1823,6 +1823,7 @@ export default function Jobs() {
                                     htmlBody: quoteEmailData.html,
                                     textBody: quoteEmailData.text,
                                     replyTo: biz.email,
+                                    fromName: buildFromName(biz),
                                     orgId: user?.orgId || '',
                                     customerId: customer.id,
                                     templateName: 'Send Quote',
@@ -1947,6 +1948,7 @@ export default function Jobs() {
                                           htmlBody: invoiceEmailData.html,
                                           textBody: invoiceEmailData.text,
                                           replyTo: biz.email,
+                                          fromName: buildFromName(biz),
                                           orgId: user?.orgId || '',
                                           customerId: customer.id,
                                           templateName: 'Send Invoice',
