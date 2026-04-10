@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload, RefreshCw } from 'lucide-react'
+import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload, RefreshCw, CheckCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
@@ -9,7 +9,7 @@ import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '..
 import { uploadJobFile, deleteJobFile, getJobAttachments, formatFileSize, type Attachment } from '../lib/file-upload'
 import { sendEmail, buildFromName } from '../lib/send-email'
 import { buildQuoteEmail, buildInvoiceEmail, buildBookingConfirmationEmail } from '../lib/email-templates'
-import { generateICSEvent } from '../lib/calendar-export'
+import { generateICSCalendar } from '../lib/calendar-export'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { useUndo } from '../hooks/useUndo'
 import { LimitWarning } from '../components/FeatureGate'
@@ -62,7 +62,7 @@ const invoiceStatusColors: Record<string, string> = {
 
 export default function Jobs() {
   const { C } = useTheme()
-  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, deleteEvent, addComm, softDeleteJob, restoreJob, awaitRealId, isDataLoading } = useData()
+  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, updateEvent, deleteEvent, addComm, softDeleteJob, restoreJob, awaitRealId, isDataLoading } = useData()
   const { user } = useAuth()
   const { features, plan } = useSubscription()
   const { showUndo } = useUndo()
@@ -104,6 +104,11 @@ export default function Jobs() {
     d.setDate(d.getDate() + offsetToMon)
     return d.toISOString().split('T')[0]
   })
+  // Send-confirmation modal state — mirrors the QuickQuote send flow
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [confirmVia, setConfirmVia] = useState<{ email: boolean; whatsapp: boolean }>({ email: true, whatsapp: false })
+  const [confirmSending, setConfirmSending] = useState(false)
+  const [confirmSentMsg, setConfirmSentMsg] = useState('')
 
   // Add-invoice form state
   const [showAddInvoice, setShowAddInvoice] = useState(false)
@@ -138,6 +143,11 @@ export default function Jobs() {
     setRequoteSuccess(false)
     setUploadError('')
     setPreviewAttachment(null)
+    setShowConfirmModal(false)
+    setConfirmVia({ email: true, whatsapp: false })
+    setConfirmSending(false)
+    setConfirmSentMsg('')
+    setScheduleDate('')
     // Load attachments for this job
     setAttachmentsLoading(true)
     getJobAttachments(job.id)
@@ -1132,7 +1142,9 @@ export default function Jobs() {
                   {/* ── Schedule Job ── */}
                   {(selectedJob.status === 'Accepted' || selectedJob.status === 'Scheduled' || selectedJob.status === 'In Progress') && (() => {
                     const jobEvents = events.filter(e => e.jobId === selectedJob.id).sort((a, b) => a.date.localeCompare(b.date))
+                    const unconfirmedEvents = jobEvents.filter(e => !e.confirmationSentAt)
                     const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day' }
+                    const customer = customers.find(c => c.id === selectedJob.customerId)
 
                     // Build the 7-day strip from scheduleWeekStart
                     const weekDays: string[] = Array.from({ length: 7 }, (_, i) => {
@@ -1149,11 +1161,17 @@ export default function Jobs() {
                       return `${a.getDate()} ${months[a.getMonth()]} – ${b.getDate()} ${months[b.getMonth()]}`
                     })()
                     const dayHeaders = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-                    // Count existing events per day across the org so the user can route smartly
-                    const eventsPerDay: Record<string, number> = {}
+                    // For each day in the visible week, work out which AM / PM slots are
+                    // already taken across the whole org. Used to render the day-card pips
+                    // so the user can see at a glance which days they're already on site
+                    // and bundle jobs accordingly.
+                    const slotsPerDay: Record<string, { am: boolean; pm: boolean }> = {}
                     for (const ev of events) {
                       if (ev.date >= weekDays[0] && ev.date <= weekEndStr) {
-                        eventsPerDay[ev.date] = (eventsPerDay[ev.date] ?? 0) + 1
+                        const cur = slotsPerDay[ev.date] ?? { am: false, pm: false }
+                        if (ev.slot === 'morning' || ev.slot === 'full') cur.am = true
+                        if (ev.slot === 'afternoon' || ev.slot === 'full') cur.pm = true
+                        slotsPerDay[ev.date] = cur
                       }
                     }
                     const selectedDayContext = scheduleDate ? events.filter(e => e.date === scheduleDate && e.jobId !== selectedJob.id) : []
@@ -1177,12 +1195,13 @@ export default function Jobs() {
                       const isPast = date < todayStr
                       const isToday = date === todayStr
                       const isSelected = date === scheduleDate
-                      const count = eventsPerDay[date] ?? 0
+                      const slots = slotsPerDay[date]
+                      const hasAny = slots && (slots.am || slots.pm)
                       return {
                         flex: 1, minWidth: 0,
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                         padding: '8px 4px', borderRadius: 10,
-                        background: isSelected ? C.gold : (count > 0 ? `${C.gold}10` : C.black),
+                        background: isSelected ? C.gold : (hasAny ? `${C.gold}10` : C.black),
                         border: isSelected
                           ? `1px solid ${C.gold}`
                           : (isToday ? `1px solid ${C.gold}66` : `1px solid ${C.steel}22`),
@@ -1193,7 +1212,10 @@ export default function Jobs() {
                       }
                     }
 
-                    const handleSchedule = async () => {
+                    // Adding a day is now a purely local action — no email, no
+                    // column move. The user batches up days and only triggers the
+                    // customer email via the explicit "Send confirmation" modal.
+                    const handleAddDay = () => {
                       if (!scheduleDate) return
                       const jobType = selectedJob.jobType !== 'TBC'
                         ? selectedJob.jobType
@@ -1210,41 +1232,48 @@ export default function Jobs() {
                         notes: '',
                       })
 
-                      // Update job date to the earliest scheduled date
+                      // Update job's anchor date to the earliest scheduled date so
+                      // the kanban card shows the right day. We do NOT move the job
+                      // to the Scheduled column — that only happens once the
+                      // customer accepts (via Mark as confirmed or kanban drag).
                       const allDates = [...jobEvents.map(e => e.date), scheduleDate].sort()
                       updateJob(selectedJob.id, { date: allDates[0] })
-                      if (selectedJob.status === 'Accepted') {
-                        moveJob(selectedJob.id, 'Scheduled')
-                        setSelectedJob({ ...selectedJob, status: 'Scheduled', date: allDates[0] })
-                      }
-                      const pickedDate = scheduleDate
-                      const pickedSlot = scheduleSlot
+                      setSelectedJob({ ...selectedJob, date: allDates[0] })
                       setScheduleDate('')
+                    }
 
-                      // ── Confirmation email + .ics attachment (best-effort) ──
-                      const customer = customers.find(c => c.id === selectedJob.customerId)
-                      if (customer?.email && user?.orgId) {
+                    // Build the multi-event ICS payload + customer message body.
+                    // Used by both the Email and WhatsApp send paths.
+                    const buildScheduleSummary = () => {
+                      const lines = unconfirmedEvents.map(ev => `• ${fmtDate(ev.date)} — ${slotLabels[ev.slot]}`).join('\n')
+                      return lines
+                    }
+
+                    const handleSendConfirmation = async () => {
+                      if (unconfirmedEvents.length === 0) return
+                      if (!confirmVia.email && !confirmVia.whatsapp) return
+                      setConfirmSending(true)
+
+                      const biz = settings.business
+                      const jobType = selectedJob.jobType !== 'TBC'
+                        ? selectedJob.jobType
+                        : (selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId)?.jobTypeName || '' : '')
+                      const summary = buildScheduleSummary()
+
+                      // ── Email path ──
+                      if (confirmVia.email && customer?.email && user?.orgId) {
                         try {
-                          const biz = settings.business
-                          const customerAddress = customer
-                            ? [customer.address1, customer.address2, customer.city, customer.postcode].filter(Boolean).join(', ')
-                            : ''
-                          const ics = generateICSEvent({
-                            title: `${jobType} - ${customer.name}`,
-                            description: selectedJob.notes || '',
-                            date: pickedDate,
-                            slot: pickedSlot,
-                            customerName: customer.name,
-                            customerPhone: customer.phone,
-                            customerAddress: customerAddress || undefined,
-                            jobType,
-                          })
+                          // Generate one .ics file containing all unconfirmed events
+                          const ics = generateICSCalendar(unconfirmedEvents, customers)
+                          const firstEv = unconfirmedEvents[0]
                           const emailData = buildBookingConfirmationEmail({
                             customerName: customer.name,
                             businessName: biz.businessName,
-                            jobTitle: jobType,
-                            date: pickedDate,
-                            time: slotLabels[pickedSlot] || pickedSlot,
+                            jobTitle: unconfirmedEvents.length > 1 ? `${jobType} (${unconfirmedEvents.length} days)` : jobType,
+                            date: firstEv.date,
+                            time: unconfirmedEvents.length > 1
+                              ? `${unconfirmedEvents.length} days — see attached calendar`
+                              : (slotLabels[firstEv.slot] || firstEv.slot),
                             businessPhone: biz.phone,
                             businessEmail: biz.email,
                           })
@@ -1252,7 +1281,7 @@ export default function Jobs() {
                             to: customer.email,
                             subject: emailData.subject,
                             htmlBody: emailData.html,
-                            textBody: emailData.text,
+                            textBody: `${emailData.text}\n\nScheduled days:\n${summary}`,
                             replyTo: biz.email,
                             fromName: buildFromName(biz),
                             attachments: [{
@@ -1271,12 +1300,40 @@ export default function Jobs() {
                             channel: 'email',
                             status: 'Sent',
                             date: new Date().toISOString(),
-                            body: `Confirmed ${fmtDate(pickedDate)} (${slotLabels[pickedSlot]})`,
+                            body: `Confirmation for ${unconfirmedEvents.length} day${unconfirmedEvents.length > 1 ? 's' : ''}: ${unconfirmedEvents.map(e => fmtDate(e.date)).join(', ')}`,
                           })
                         } catch (err) {
-                          console.error('[Schedule] confirmation email failed', err)
+                          console.error('[Schedule] email confirmation failed', err)
                         }
                       }
+
+                      // ── WhatsApp path ──
+                      if (confirmVia.whatsapp && customer?.phone) {
+                        const phone = customer.phone.replace(/\s/g, '').replace(/^0/, '44')
+                        const text = `Hi ${customer.name}, just confirming your booking with ${biz.businessName} for:\n\n${summary}\n\nLet me know if there are any issues.`
+                        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank')
+                        if (customer.id) {
+                          addComm({
+                            customerId: customer.id,
+                            customerName: customer.name,
+                            templateName: 'Booking Confirmation',
+                            channel: 'whatsapp',
+                            status: 'Sent',
+                            date: new Date().toISOString(),
+                            body: `WhatsApp confirmation for ${unconfirmedEvents.length} day${unconfirmedEvents.length > 1 ? 's' : ''}`,
+                          })
+                        }
+                      }
+
+                      // Mark all sent events as confirmation_sent_at = now
+                      const ts = new Date().toISOString()
+                      for (const ev of unconfirmedEvents) {
+                        updateEvent(ev.id, { confirmationSentAt: ts })
+                      }
+
+                      const channels = [confirmVia.email && 'Email', confirmVia.whatsapp && 'WhatsApp'].filter(Boolean).join(' + ')
+                      setConfirmSentMsg(`Sent via ${channels}`)
+                      setConfirmSending(false)
                     }
 
                     return (
@@ -1302,33 +1359,180 @@ export default function Jobs() {
                         {/* Already-booked days for this job */}
                         {jobEvents.length > 0 && (
                           <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {jobEvents.map(ev => (
-                              <div key={ev.id} style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '8px 12px', background: C.black, borderRadius: 8,
-                                borderLeft: `3px solid ${C.blue}`,
-                              }}>
-                                <div>
-                                  <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{fmtDate(ev.date)}</span>
-                                  <span style={{ fontSize: 12, color: C.steel, marginLeft: 8 }}>{slotLabels[ev.slot]}</span>
+                            {jobEvents.map(ev => {
+                              const isPending = !ev.confirmationSentAt
+                              return (
+                                <div key={ev.id} style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '8px 12px', background: C.black, borderRadius: 8,
+                                  borderLeft: `3px solid ${isPending ? '#D46A6A' : C.blue}`,
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{fmtDate(ev.date)}</span>
+                                    <span style={{ fontSize: 12, color: C.steel }}>{slotLabels[ev.slot]}</span>
+                                    {isPending && (
+                                      <span style={{
+                                        fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 6,
+                                        color: '#D46A6A', background: '#D46A6A1A',
+                                        textTransform: 'uppercase', letterSpacing: 0.5,
+                                      }}>Unsent</span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const evData = { ...ev }
+                                      deleteEvent(ev.id)
+                                      showUndo({
+                                        message: `Event removed: ${ev.customerName}`,
+                                        undo: () => addEvent({ jobId: evData.jobId, customerId: evData.customerId, customerName: evData.customerName, jobType: evData.jobType, date: evData.date, slot: evData.slot, status: evData.status, notes: evData.notes }),
+                                      })
+                                    }}
+                                    style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
+                                    onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
+                                    onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
+                                  >
+                                    <X size={14} />
+                                  </button>
                                 </div>
-                                <button
-                                  onClick={() => {
-                                    const evData = { ...ev }
-                                    deleteEvent(ev.id)
-                                    showUndo({
-                                      message: `Event removed: ${ev.customerName}`,
-                                      undo: () => addEvent({ jobId: evData.jobId, customerId: evData.customerId, customerName: evData.customerName, jobType: evData.jobType, date: evData.date, slot: evData.slot, status: evData.status, notes: evData.notes }),
-                                    })
-                                  }}
-                                  style={{ background: 'transparent', border: 'none', color: C.steel, cursor: 'pointer', padding: 4, display: 'flex' }}
-                                  onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A' }}
-                                  onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
-                                >
-                                  <X size={14} />
-                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Send confirmation CTA — appears once one or more
+                            days are added but not yet sent to the customer.
+                            Tapping it opens the channel-picker modal below. */}
+                        {unconfirmedEvents.length > 0 && !showConfirmModal && !confirmSentMsg && (
+                          <button
+                            onClick={() => setShowConfirmModal(true)}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                              padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                              cursor: 'pointer', minHeight: 42, marginBottom: 12,
+                              background: `${C.gold}15`, border: `1px solid ${C.gold}66`, color: C.gold,
+                            }}
+                          >
+                            <Send size={14} />
+                            Send confirmation ({unconfirmedEvents.length} day{unconfirmedEvents.length > 1 ? 's' : ''})
+                          </button>
+                        )}
+
+                        {/* After-send: prompt the user to mark the customer as
+                            having accepted, which is what moves the job into
+                            the Scheduled column. Only relevant while the job
+                            is still sitting in Accepted. */}
+                        {confirmSentMsg && selectedJob.status === 'Accepted' && (
+                          <div style={{
+                            marginBottom: 12, padding: '12px 14px', borderRadius: 10,
+                            background: `${C.gold}08`, border: `1px solid ${C.gold}33`,
+                          }}>
+                            <div style={{ fontSize: 12, color: C.silver, marginBottom: 10, lineHeight: 1.5 }}>
+                              {confirmSentMsg}. Once {customer?.name || 'the customer'} replies to confirm, mark these dates as accepted to move the job into Scheduled.
+                            </div>
+                            <button
+                              onClick={() => {
+                                moveJob(selectedJob.id, 'Scheduled')
+                                setSelectedJob({ ...selectedJob, status: 'Scheduled' })
+                                setConfirmSentMsg('')
+                              }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                                cursor: 'pointer', minHeight: 40,
+                                background: `${C.gold}20`, border: `1px solid ${C.gold}66`, color: C.gold,
+                              }}
+                            >
+                              <CheckCircle size={14} /> Customer accepted — mark as scheduled
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Inline send modal — channel picker, mirrors QuickQuote send flow */}
+                        {showConfirmModal && (
+                          <div style={{
+                            marginBottom: 12, padding: '14px 16px', borderRadius: 10,
+                            background: C.charcoalLight, border: `1px solid ${C.steel}44`,
+                          }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.white, marginBottom: 4 }}>
+                              Send confirmation for {unconfirmedEvents.length} day{unconfirmedEvents.length > 1 ? 's' : ''}
+                            </div>
+                            <div style={{ fontSize: 11, color: C.steel, marginBottom: 12 }}>
+                              {unconfirmedEvents.map(e => `${fmtDate(e.date)} (${slotLabels[e.slot]})`).join(' · ')}
+                            </div>
+
+                            <label style={{
+                              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                              borderRadius: 8, marginBottom: 6, cursor: customer?.email ? 'pointer' : 'not-allowed',
+                              background: confirmVia.email ? `${C.gold}12` : C.black,
+                              border: `1px solid ${confirmVia.email ? C.gold : C.steel + '33'}`,
+                              opacity: customer?.email ? 1 : 0.5,
+                            }}>
+                              <input
+                                type="checkbox"
+                                checked={confirmVia.email}
+                                disabled={!customer?.email}
+                                onChange={e => setConfirmVia(p => ({ ...p, email: e.target.checked }))}
+                                style={{ accentColor: C.gold }}
+                              />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>Email</div>
+                                <div style={{ fontSize: 11, color: C.steel, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {customer?.email || 'No email on file'}
+                                </div>
                               </div>
-                            ))}
+                            </label>
+
+                            <label style={{
+                              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                              borderRadius: 8, marginBottom: 12, cursor: customer?.phone ? 'pointer' : 'not-allowed',
+                              background: confirmVia.whatsapp ? `${C.gold}12` : C.black,
+                              border: `1px solid ${confirmVia.whatsapp ? C.gold : C.steel + '33'}`,
+                              opacity: customer?.phone ? 1 : 0.5,
+                            }}>
+                              <input
+                                type="checkbox"
+                                checked={confirmVia.whatsapp}
+                                disabled={!customer?.phone}
+                                onChange={e => setConfirmVia(p => ({ ...p, whatsapp: e.target.checked }))}
+                                style={{ accentColor: C.gold }}
+                              />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>WhatsApp</div>
+                                <div style={{ fontSize: 11, color: C.steel }}>
+                                  {customer?.phone || 'No phone on file'}
+                                </div>
+                              </div>
+                            </label>
+
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                onClick={() => { setShowConfirmModal(false) }}
+                                style={{
+                                  flex: 1, padding: '10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                                  background: 'transparent', border: `1px solid ${C.steel}44`,
+                                  color: C.silver, cursor: 'pointer', minHeight: 38,
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  await handleSendConfirmation()
+                                  setShowConfirmModal(false)
+                                }}
+                                disabled={confirmSending || (!confirmVia.email && !confirmVia.whatsapp)}
+                                style={{
+                                  flex: 2, padding: '10px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                                  background: confirmSending || (!confirmVia.email && !confirmVia.whatsapp) ? C.black : C.gold,
+                                  border: `1px solid ${C.gold}`,
+                                  color: confirmSending || (!confirmVia.email && !confirmVia.whatsapp) ? C.steel : C.charcoal,
+                                  cursor: confirmSending || (!confirmVia.email && !confirmVia.whatsapp) ? 'not-allowed' : 'pointer',
+                                  minHeight: 38,
+                                }}
+                              >
+                                {confirmSending ? 'Sending…' : 'Send'}
+                              </button>
+                            </div>
                           </div>
                         )}
 
@@ -1363,12 +1567,17 @@ export default function Jobs() {
                           >›</button>
                         </div>
 
-                        {/* Day strip */}
+                        {/* Day strip — each card shows two pips for AM and PM
+                            slots so the user can see at a glance which days
+                            they're already on site. Filled = taken. */}
                         <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
                           {weekDays.map((d, i) => {
                             const dateObj = new Date(d)
                             const isPast = d < todayStr
-                            const count = eventsPerDay[d] ?? 0
+                            const slots = slotsPerDay[d] ?? { am: false, pm: false }
+                            const isSelected = d === scheduleDate
+                            const dotColor = isSelected ? C.charcoal : C.gold
+                            const emptyColor = isSelected ? `${C.charcoal}44` : `${C.steel}55`
                             return (
                               <button
                                 key={d}
@@ -1378,13 +1587,18 @@ export default function Jobs() {
                               >
                                 <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.7 }}>{dayHeaders[i]}</span>
                                 <span style={{ fontSize: 16, fontWeight: 700 }}>{dateObj.getDate()}</span>
-                                {count > 0 && (
-                                  <span style={{
-                                    fontSize: 9, fontWeight: 700,
-                                    color: d === scheduleDate ? C.charcoal : C.gold,
-                                  }}>{count} job{count > 1 ? 's' : ''}</span>
-                                )}
-                                {count === 0 && <span style={{ height: 11 }} />}
+                                <div style={{ display: 'flex', gap: 3, alignItems: 'center', marginTop: 1 }}>
+                                  <div style={{
+                                    width: 6, height: 6, borderRadius: '50%',
+                                    background: slots.am ? dotColor : 'transparent',
+                                    border: `1px solid ${slots.am ? dotColor : emptyColor}`,
+                                  }} />
+                                  <div style={{
+                                    width: 6, height: 6, borderRadius: '50%',
+                                    background: slots.pm ? dotColor : 'transparent',
+                                    border: `1px solid ${slots.pm ? dotColor : emptyColor}`,
+                                  }} />
+                                </div>
                               </button>
                             )
                           })}
@@ -1426,7 +1640,7 @@ export default function Jobs() {
                         )}
 
                         <button
-                          onClick={handleSchedule}
+                          onClick={handleAddDay}
                           disabled={!scheduleDate}
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -1438,14 +1652,16 @@ export default function Jobs() {
                             opacity: scheduleDate ? 1 : 0.5,
                           }}
                         >
-                          <CalendarDays size={14} />
+                          <Plus size={14} />
                           {scheduleDate
-                            ? `${jobEvents.length > 0 ? 'Add' : 'Confirm'} ${fmtDate(scheduleDate)} · ${slotLabels[scheduleSlot]}`
+                            ? `Add ${fmtDate(scheduleDate)} · ${slotLabels[scheduleSlot]}`
                             : 'Pick a day above'}
                         </button>
 
                         <div style={{ fontSize: 11, color: C.steel, marginTop: 6, textAlign: 'center' }}>
-                          Customer gets a confirmation email with a calendar invite.
+                          {unconfirmedEvents.length > 0
+                            ? 'Add all the days you need, then send a single confirmation.'
+                            : 'Add days here, then send the customer one confirmation when ready.'}
                         </div>
                       </div>
                     )

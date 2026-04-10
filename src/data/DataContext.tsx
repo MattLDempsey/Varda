@@ -192,6 +192,13 @@ export interface ScheduleEvent {
   slot: EventSlot
   status: EventStatus
   notes: string
+  /**
+   * ISO timestamp set when the customer was sent a booking confirmation for
+   * this slot. Null/undefined means the slot was added locally but the
+   * customer hasn't been notified yet — used to drive the "Send confirmation"
+   * prompt in the job panel and to batch multiple days into a single email.
+   */
+  confirmationSentAt?: string | null
 }
 
 export interface Invoice {
