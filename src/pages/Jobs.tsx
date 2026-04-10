@@ -3328,9 +3328,51 @@ export default function Jobs() {
                           onChange={e => setNewInvDueDate(e.target.value)}
                           style={{ ...inputStyle, marginBottom: 4, colorScheme: 'dark' }}
                         />
-                        <div style={{ fontSize: 10, color: C.steel, marginBottom: 14, fontStyle: 'italic' }}>
+                        <div style={{ fontSize: 10, color: C.steel, marginBottom: 6, fontStyle: 'italic' }}>
                           {dueDateHint[newInvType]}
                         </div>
+                        {/* Quick-pick shortcuts for deposit — relative to the
+                            scheduled start date so the user can see at a glance
+                            what they're choosing between. */}
+                        {newInvType === 'Deposit' && selectedJob.date && (() => {
+                          const startDate = new Date(selectedJob.date)
+                          const shortcuts = [
+                            { label: '1 day before', days: 1 },
+                            { label: '3 days before', days: 3 },
+                            { label: '7 days before', days: 7 },
+                            { label: '14 days before', days: 14 },
+                          ]
+                          return (
+                            <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+                              {shortcuts.map(sc => {
+                                const d = new Date(startDate)
+                                d.setDate(d.getDate() - sc.days)
+                                const val = d.toISOString().split('T')[0]
+                                const isPast = val < new Date().toISOString().split('T')[0]
+                                const isActive = newInvDueDate === val
+                                return (
+                                  <button
+                                    key={sc.days}
+                                    disabled={isPast}
+                                    onClick={() => setNewInvDueDate(val)}
+                                    style={{
+                                      flex: 1, padding: '6px 4px', borderRadius: 6, fontSize: 10, fontWeight: 600,
+                                      cursor: isPast ? 'not-allowed' : 'pointer',
+                                      border: `1px solid ${isActive ? C.gold + '66' : C.steel + '33'}`,
+                                      background: isActive ? `${C.gold}15` : 'transparent',
+                                      color: isPast ? C.steel : (isActive ? C.gold : C.silver),
+                                      opacity: isPast ? 0.4 : 1,
+                                      minWidth: 0,
+                                    }}
+                                    title={`Due ${fmtDate(val)} (${sc.label} start)`}
+                                  >
+                                    {sc.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )
+                        })()}
 
                         {/* Create */}
                         <button
