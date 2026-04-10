@@ -643,16 +643,18 @@ export default function Jobs() {
       <div style={s.header}>
         <h1 style={s.heading}>Jobs</h1>
         <div style={s.toggleWrap}>
-          <button
-            style={{
-              ...s.toggleBtn,
-              background: view === 'kanban' ? C.charcoalLight : 'transparent',
-              color: view === 'kanban' ? C.gold : C.steel,
-            }}
-            onClick={() => setView('kanban')}
-          >
-            <LayoutGrid size={16} /> Kanban
-          </button>
+          {!isMobile && (
+            <button
+              style={{
+                ...s.toggleBtn,
+                background: view === 'kanban' ? C.charcoalLight : 'transparent',
+                color: view === 'kanban' ? C.gold : C.steel,
+              }}
+              onClick={() => setView('kanban')}
+            >
+              <LayoutGrid size={16} /> Kanban
+            </button>
+          )}
           <button
             style={{
               ...s.toggleBtn,
