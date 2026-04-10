@@ -450,18 +450,23 @@ export default function Dashboard() {
       </div>
 
       {/* ── Row 2: Today's Schedule + Action Items ── */}
-      <div style={{ ...s.columns, alignItems: 'stretch' }}>
-        {/* Today's Schedule — conforms to the height set by Action
-            Items. If the schedule content exceeds it, the inner area
-            scrolls rather than stretching the row. */}
-        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Action Items drives the row height. Schedule adapts its
+          card format dynamically (expanded vs compact) rather than
+          scrolling, so both panels feel like peers on the same row
+          without either one pushing the layout. */}
+      <div style={{ ...s.columns, alignItems: 'start' }}>
+        {/* Today's Schedule — never scrolls. Dynamically switches
+            between expanded (address/phone/value) and compact
+            (single-line) card formats based on how many events
+            there are, so it naturally fits without overflowing. */}
+        <div style={s.panel}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
             <span style={s.panelLink} onClick={() => navigate('/calendar')}>
               View Calendar <ChevronRight size={14} />
             </span>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          <div>
           {todaysEvents.length === 0 && (
             <div style={s.empty}>Nothing scheduled today.</div>
           )}
@@ -471,9 +476,11 @@ export default function Dashboard() {
             const linkedCustomer = !isInternal && ev.customerId ? customers.find(c => c.id === ev.customerId) : undefined
             const canStart = !!linkedJob && linkedJob.status === 'Scheduled'
             const inProgress = !!linkedJob && linkedJob.status === 'In Progress'
-            // Expand cards when 3 or fewer events — show extra detail
-            // like address, phone, value, and time range
-            const expanded = todaysEvents.length <= 3
+            // Only expand cards when 1–2 events — this guarantees the
+            // schedule panel stays shorter than action items (which
+            // reserves 3 × 56px = 168px + header + pagination ≈ 280px).
+            // With 3+ events, compact mode keeps things tight.
+            const expanded = todaysEvents.length <= 2
             const handleStart = (e: React.MouseEvent) => {
               e.stopPropagation()
               if (!linkedJob) return
