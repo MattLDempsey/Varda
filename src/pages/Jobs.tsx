@@ -682,9 +682,21 @@ export default function Jobs() {
       <LimitWarning current={activeJobCount} max={features?.maxActiveJobs ?? null} label="active jobs" plan={plan} />
 
       {/* kanban view */}
-      {view === 'kanban' && (
-        <div style={s.kanban}>
-          {columns.map((col) => {
+      {view === 'kanban' && (() => {
+        // On narrower screens, collapse columns that have zero jobs so
+        // the occupied columns get more horizontal space. Empty columns
+        // can still receive drag-drops (they're just hidden visually).
+        const visibleColumns = window.innerWidth < 1200
+          ? columns.filter(col => jobs.some(j => j.status === col))
+          : columns
+        // If ALL columns are empty, show all so the board isn't blank
+        const effectiveColumns = visibleColumns.length > 0 ? visibleColumns : columns
+        return (
+        <div style={{
+          ...s.kanban,
+          gridTemplateColumns: `repeat(${effectiveColumns.length}, minmax(140px, 1fr))`,
+        }}>
+          {effectiveColumns.map((col) => {
             const colJobs = jobs.filter((j) => j.status === col)
             const isOver = dragOverCol === col
             return (
@@ -769,7 +781,8 @@ export default function Jobs() {
             )
           })}
         </div>
-      )}
+        )
+      })()}
 
       {/* table view */}
       {view === 'table' && !isMobile && (
@@ -1495,7 +1508,7 @@ export default function Jobs() {
                               min={0}
                               step={0.5}
                               value={selectedJob.actualHours ?? ''}
-                              placeholder="0"
+                              placeholder="—"
                               onChange={e => {
                                 const val = e.target.value === '' ? undefined : Number(e.target.value)
                                 updateJob(selectedJob.id, { actualHours: val })
@@ -1509,17 +1522,17 @@ export default function Jobs() {
                               }}
                             />
                           </div>
-                          <div>
-                            <span style={s.fieldLabel}>Variance</span>
-                            <div style={{
-                              fontSize: 14, fontWeight: 600, color: varianceColor,
-                              padding: '10px 0',
-                            }}>
-                              {variance != null
-                                ? `${variance > 0 ? '+' : ''}${variance.toFixed(1)}h ${variance <= 0 ? 'under' : 'over'}`
-                                : '-- not set --'}
+                          {variance != null && (
+                            <div>
+                              <span style={s.fieldLabel}>Variance</span>
+                              <div style={{
+                                fontSize: 14, fontWeight: 600, color: varianceColor,
+                                padding: '10px 0',
+                              }}>
+                                {`${variance > 0 ? '+' : ''}${variance.toFixed(1)}h ${variance <= 0 ? 'under' : 'over'}`}
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     )
@@ -1704,7 +1717,7 @@ export default function Jobs() {
                       const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
                       return `${a.getDate()} ${months[a.getMonth()]} – ${b.getDate()} ${months[b.getMonth()]}`
                     })()
-                    const dayHeaders = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+                    const dayHeaders = ['M','T','W','T','F','S','S']
                     // For each day in the visible week, work out which slots are taken.
                     // AM and PM are the half-day blocks (rendered as pips). 'quick' events
                     // are sub-1hr fit-ins that don't reserve a half-day, so they get their
@@ -1791,7 +1804,7 @@ export default function Jobs() {
                       return {
                         flex: 1, minWidth: 0,
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                        padding: '8px 4px', borderRadius: 10,
+                        padding: '6px 2px', borderRadius: 8,
                         background: isSelected ? C.gold : (hasAny ? `${C.gold}10` : C.black),
                         border: isSelected
                           ? `1px solid ${C.gold}`
@@ -2354,8 +2367,8 @@ export default function Jobs() {
                                 onClick={() => setScheduleDate(d)}
                                 style={dayBtnStyle(d)}
                               >
-                                <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.7 }}>{dayHeaders[i]}</span>
-                                <span style={{ fontSize: 16, fontWeight: 700 }}>{dateObj.getDate()}</span>
+                                <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.6 }}>{dayHeaders[i]}</span>
+                                <span style={{ fontSize: 14, fontWeight: 700 }}>{dateObj.getDate()}</span>
                                 <div style={{ display: 'flex', gap: 3, alignItems: 'center', marginTop: 1 }}>
                                   <div style={{
                                     width: 6, height: 6, borderRadius: '50%',

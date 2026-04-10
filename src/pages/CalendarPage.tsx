@@ -262,6 +262,14 @@ export default function CalendarPage() {
     const [h, m] = s.split(':').map(Number)
     return (h || 0) * 60 + (m || 0)
   }
+  // Current-time indicator position (red line on today's column)
+  const nowMinutes = (() => {
+    const n = new Date()
+    return n.getHours() * 60 + n.getMinutes()
+  })()
+  const nowInRange = nowMinutes >= DAY_START_HOUR * 60 && nowMinutes <= DAY_END_HOUR * 60
+  const nowTop = ((nowMinutes - DAY_START_HOUR * 60) / 60) * HOUR_HEIGHT
+
   const eventTimes = (ev: { slot: string; startTime?: string | null; endTime?: string | null }) => {
     const def = SLOT_DEFAULTS_HHMM[ev.slot] ?? SLOT_DEFAULTS_HHMM.morning
     const start = ev.startTime || def.start
@@ -824,6 +832,19 @@ export default function CalendarPage() {
                   />
                 ))}
 
+                {/* Current-time indicator — red line on today's column only */}
+                {isToday && nowInRange && (
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, top: nowTop,
+                    borderTop: '2px solid #D46A6A', zIndex: 5, pointerEvents: 'none',
+                  }}>
+                    <div style={{
+                      width: 6, height: 6, borderRadius: '50%', background: '#D46A6A',
+                      position: 'absolute', top: -4, left: -3,
+                    }} />
+                  </div>
+                )}
+
                 {/* Drag gap highlight on the column the drag is targeting */}
                 {dragState && dragState.previewDate === dateStr && (() => {
                   const top = ((dragState.gapFloorMin - DAY_START_HOUR * 60) / 60) * HOUR_HEIGHT
@@ -1008,6 +1029,19 @@ export default function CalendarPage() {
                   }}
                 />
               ))}
+
+              {/* Current-time indicator — red line across today's column */}
+              {nowInRange && (
+                <div style={{
+                  position: 'absolute', left: 0, right: 0, top: nowTop,
+                  borderTop: '2px solid #D46A6A', zIndex: 5, pointerEvents: 'none',
+                }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%', background: '#D46A6A',
+                    position: 'absolute', top: -5, left: -4,
+                  }} />
+                </div>
+              )}
 
               {/* Drag gap highlight — shows the free range the dragged
                   card is allowed to land in. Appears only on the day the
