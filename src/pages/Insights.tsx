@@ -351,7 +351,40 @@ export default function Insights() {
       }
     }
 
-    return alerts.slice(0, 4) // Cap at 4 alerts to avoid noise
+    // 6. Pricing intelligence — per-job-type win rate analysis
+    // An unusually high win rate signals underpricing (market would bear
+    // more). Low win rate signals overpricing or strong competition.
+    // Cross-referenced with margin for actionable advice.
+    const nonDraftQuotes = quotes.filter(q => q.status !== 'Draft')
+    const quotesByType: Record<string, { sent: number; won: number }> = {}
+    for (const q of nonDraftQuotes) {
+      const type = q.jobTypeName
+      if (!quotesByType[type]) quotesByType[type] = { sent: 0, won: 0 }
+      quotesByType[type].sent += 1
+      if (q.status === 'Accepted') quotesByType[type].won += 1
+    }
+    for (const [type, qd] of Object.entries(quotesByType)) {
+      if (qd.sent < 5) continue // need enough data to be meaningful
+      const winRate = (qd.won / qd.sent) * 100
+      const stats = typeStats[type]
+      const margin = stats && stats.revenue > 0 ? ((stats.revenue - stats.costs) / stats.revenue) * 100 : 50
+
+      if (winRate > 80 && margin < 40) {
+        // High win + low margin = definitely underpriced
+        alerts.push({ type: 'warning', message: `Winning ${Math.round(winRate)}% of ${type} quotes but margin is only ${Math.round(margin)}% — strongly consider raising your price` })
+      } else if (winRate > 80) {
+        // High win + decent margin = probably still underpriced
+        alerts.push({ type: 'info', message: `Winning ${Math.round(winRate)}% of ${type} quotes — you could likely charge more and still win most of them` })
+      } else if (winRate < 30 && margin > 60) {
+        // Low win + high margin = overpriced
+        alerts.push({ type: 'warning', message: `Only winning ${Math.round(winRate)}% of ${type} quotes — your pricing may be above market rate` })
+      } else if (winRate < 30) {
+        // Low win + low margin = competitors undercutting
+        alerts.push({ type: 'info', message: `${type} win rate is ${Math.round(winRate)}% — check if competitors are undercutting or if your follow-up timing needs adjusting` })
+      }
+    }
+
+    return alerts.slice(0, 5) // Cap at 5 alerts
   }, [periodJobs, paidJobs, quotes, invoices, getJobCost])
 
   /* ── repeat customers (filtered to period, top 5) ── */
