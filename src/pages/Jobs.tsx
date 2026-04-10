@@ -14,6 +14,7 @@ import { useSubscription } from '../subscription/SubscriptionContext'
 import { useUndo } from '../hooks/useUndo'
 import { LimitWarning } from '../components/FeatureGate'
 import { SkeletonKanban } from '../components/Skeleton'
+import ConflictResolverModal from '../components/ConflictResolverModal'
 
 /* ── helpers ── */
 
@@ -169,6 +170,9 @@ export default function Jobs() {
   // Ref to the schedule section so the panel-header warning banner can
   // scroll the user straight to it when they click "Open Schedule".
   const scheduleSectionRef = useRef<HTMLDivElement>(null)
+  // Whether the focused conflict-resolver modal is currently open. Lets
+  // the user fix calendar clashes without leaving the job panel.
+  const [showConflictResolver, setShowConflictResolver] = useState(false)
 
   // Attachments state
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -195,6 +199,7 @@ export default function Jobs() {
     setScheduleDate('')
     setQuickStartTime('08:00')
     setScheduleSlot('morning')
+    setShowConflictResolver(false)
     // Load attachments for this job
     setAttachmentsLoading(true)
     getJobAttachments(job.id)
@@ -1038,6 +1043,29 @@ export default function Jobs() {
                     </div>
                   </div>
 
+                  {/* Start job — visible only when the job is Scheduled.
+                      Mirrors the Start button on the Dashboard so the user
+                      can flip status without going back to the dashboard. */}
+                  {selectedJob.status === 'Scheduled' && (
+                    <button
+                      onClick={() => {
+                        const ts = new Date().toISOString()
+                        updateJob(selectedJob.id, { startedAt: ts })
+                        moveJob(selectedJob.id, 'In Progress')
+                        setSelectedJob({ ...selectedJob, status: 'In Progress', startedAt: ts })
+                      }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        padding: '12px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
+                        cursor: 'pointer', minHeight: 44, marginBottom: 16,
+                        background: `${C.gold}15`, border: `1px solid ${C.gold}66`, color: C.gold,
+                      }}
+                      title="Mark this job as started — moves it to In Progress and stamps the start time"
+                    >
+                      ▶ Start this job now
+                    </button>
+                  )}
+
                   {/* ── Actual Hours Tracking ── */}
                   {(['In Progress', 'Complete', 'Invoiced', 'Paid'] as JobStatus[]).includes(selectedJob.status) && (() => {
                     const variance = selectedJob.actualHours != null
@@ -1690,15 +1718,19 @@ export default function Jobs() {
                               })}
                             </div>
                             <button
-                              onClick={() => { setSelectedJob(null); navigate('/calendar') }}
+                              onClick={() => setShowConflictResolver(true)}
                               style={{
                                 marginTop: 10, marginLeft: 26,
-                                background: 'transparent', border: 'none', color: '#C6A86A',
-                                cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: 0,
-                                display: 'flex', alignItems: 'center', gap: 4,
+                                padding: '8px 14px', borderRadius: 8,
+                                background: '#C6A86A20', border: '1px solid #C6A86A66',
+                                color: '#C6A86A', cursor: 'pointer',
+                                fontSize: 12, fontWeight: 700, minHeight: 34,
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
                               }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#C6A86A30' }}
+                              onMouseLeave={e => { e.currentTarget.style.background = '#C6A86A20' }}
                             >
-                              Open calendar to resolve <ChevronRight size={11} />
+                              Resolve clashes <ChevronRight size={12} />
                             </button>
                           </div>
                         )}
@@ -2970,6 +3002,14 @@ export default function Jobs() {
           </>
         )
       })()}
+
+      {/* Conflict resolver — opens from the schedule clash banner */}
+      {showConflictResolver && selectedJob && (
+        <ConflictResolverModal
+          jobId={selectedJob.id}
+          onClose={() => setShowConflictResolver(false)}
+        />
+      )}
 
       {/* FAB */}
       <button
