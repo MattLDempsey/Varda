@@ -451,17 +451,17 @@ export default function Dashboard() {
 
       {/* ── Row 2: Today's Schedule + Action Items ── */}
       <div style={{ ...s.columns, alignItems: 'stretch' }}>
-        {/* Today's Schedule — expanded cards when few events,
-            compact when many. Fills available height alongside
-            Action Items using align-items: stretch. */}
-        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
+        {/* Today's Schedule — conforms to the height set by Action
+            Items. If the schedule content exceeds it, the inner area
+            scrolls rather than stretching the row. */}
+        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
             <span style={s.panelLink} onClick={() => navigate('/calendar')}>
               View Calendar <ChevronRight size={14} />
             </span>
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {todaysEvents.length === 0 && (
             <div style={s.empty}>Nothing scheduled today.</div>
           )}
@@ -633,7 +633,11 @@ export default function Dashboard() {
 
             return (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ flex: 1 }}>
+                {/* Fixed-height item area — always reserves space for
+                    ACTIONS_PER_PAGE items so the pagination dots stay
+                    in the same position regardless of how many items
+                    are on the current page. */}
+                <div style={{ flex: 1, minHeight: ACTIONS_PER_PAGE * 56 }}>
                   {visibleFollowUps.length === 0 && (
                     <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
                       <CheckCircle size={32} color={C.green} />
