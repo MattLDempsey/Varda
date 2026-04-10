@@ -1260,14 +1260,53 @@ export default function Jobs() {
                         slotsPerDay[ev.date] = cur
                       }
                     }
-                    const selectedDayContext = scheduleDate ? events.filter(e => e.date === scheduleDate && e.jobId !== selectedJob.id) : []
+                    const selectedDayContext = scheduleDate ? events.filter(e => e.date === scheduleDate && e.jobId !== selectedJob.id && !e.category) : []
                     // Which half-day slots are already taken on the picked day
-                    // (across all jobs in the org). Drives the slot disable
-                    // logic so the user can't double-book the same slot.
-                    const eventsOnPickedDay = scheduleDate ? events.filter(e => e.date === scheduleDate) : []
+                    // by other CUSTOMER jobs. Drives the slot disable logic so
+                    // the user can't double-book a customer slot. Internal
+                    // events (travel/admin/etc) don't block customer scheduling
+                    // — customer work takes precedence over the user's own
+                    // time blocks, and any overlap is surfaced as a soft
+                    // conflict warning instead.
+                    const eventsOnPickedDay = scheduleDate ? events.filter(e => e.date === scheduleDate && !e.category) : []
                     const morningTaken = eventsOnPickedDay.some(e => e.slot === 'morning' || e.slot === 'full')
                     const afternoonTaken = eventsOnPickedDay.some(e => e.slot === 'afternoon' || e.slot === 'full')
                     const fullTaken = eventsOnPickedDay.some(e => e.slot === 'morning' || e.slot === 'afternoon' || e.slot === 'full')
+
+                    // Internal events (travel/admin/etc) that overlap any of
+                    // this job's scheduled events. Surfaced as a soft conflict
+                    // warning — the user can still send the confirmation but
+                    // is nagged to review the overlap first.
+                    const SLOT_DEFAULT_TIMES: Record<string, { start: string; end: string }> = {
+                      morning:   { start: '08:00', end: '12:00' },
+                      afternoon: { start: '12:00', end: '17:00' },
+                      full:      { start: '08:00', end: '17:00' },
+                      quick:     { start: '08:00', end: '09:00' },
+                    }
+                    const eventMinutes = (ev: typeof jobEvents[number]) => {
+                      const def = SLOT_DEFAULT_TIMES[ev.slot] ?? SLOT_DEFAULT_TIMES.morning
+                      const parse = (s: string) => {
+                        const [h, m] = s.split(':').map(Number)
+                        return (h || 0) * 60 + (m || 0)
+                      }
+                      return {
+                        startMin: parse(ev.startTime || def.start),
+                        endMin: parse(ev.endTime || def.end),
+                      }
+                    }
+                    const internalConflicts: Array<{ jobEvent: typeof jobEvents[number]; internal: typeof jobEvents[number] }> = []
+                    for (const je of jobEvents) {
+                      const jeRange = eventMinutes(je)
+                      const overlapping = events.filter(other =>
+                        !!other.category
+                        && other.date === je.date
+                        && (() => {
+                          const r = eventMinutes(other)
+                          return r.startMin < jeRange.endMin && r.endMin > jeRange.startMin
+                        })()
+                      )
+                      for (const o of overlapping) internalConflicts.push({ jobEvent: je, internal: o })
+                    }
 
                     const shiftWeek = (delta: number) => {
                       const d = new Date(scheduleWeekStart)
@@ -1595,6 +1634,51 @@ export default function Jobs() {
                                 </div>
                               )
                             })}
+                          </div>
+                        )}
+
+                        {/* Soft-conflict warning — at least one of this job's
+                            scheduled events overlaps an internal event (stock
+                            check, admin, travel, etc.). Customer work takes
+                            precedence so the time is still available, but we
+                            nag the user to review the overlap before sending
+                            the customer their confirmation. */}
+                        {internalConflicts.length > 0 && (
+                          <div style={{
+                            marginBottom: 12, padding: '12px 14px', borderRadius: 10,
+                            background: '#C6A86A12', border: '1px solid #C6A86A55',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                              <AlertCircle size={16} color="#C6A86A" style={{ flexShrink: 0, marginTop: 1 }} />
+                              <div style={{ fontSize: 12, color: C.silver, lineHeight: 1.5 }}>
+                                <strong style={{ color: C.white }}>Schedule clash with your own diary</strong> — review before sending the customer their confirmation. Customer time takes precedence, so you'll need to move or delete the internal entries below if you want to keep them.
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginLeft: 26 }}>
+                              {internalConflicts.map((c, i) => {
+                                const r = eventMinutes(c.internal)
+                                const fmtMins = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+                                return (
+                                  <div
+                                    key={`${c.jobEvent.id}-${c.internal.id}-${i}`}
+                                    style={{ fontSize: 11, color: C.silver }}
+                                  >
+                                    • <strong style={{ color: C.white }}>{c.internal.customerName}</strong> on {fmtDate(c.internal.date)} at {fmtMins(r.startMin)}–{fmtMins(r.endMin)}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <button
+                              onClick={() => { setSelectedJob(null); navigate('/calendar') }}
+                              style={{
+                                marginTop: 10, marginLeft: 26,
+                                background: 'transparent', border: 'none', color: '#C6A86A',
+                                cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: 0,
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}
+                            >
+                              Open calendar to resolve <ChevronRight size={11} />
+                            </button>
                           </div>
                         )}
 

@@ -150,7 +150,16 @@ export default function CalendarPage() {
     { key: 'admin',       label: 'Admin',       durationMin: 60, color: '#C6A86A', icon: '📋' },
     { key: 'training',    label: 'Training',    durationMin: 90, color: '#D46A6A', icon: '🎓' },
     { key: 'break',       label: 'Break',       durationMin: 30, color: '#8A8F96', icon: '☕' },
+    { key: 'custom',      label: 'Custom',      durationMin: 60, color: '#9CA3AF', icon: '📌' },
   ]
+  // When the user picks the Custom preset we switch the modal to a name
+  // input. This holds whatever they're typing until they hit Create.
+  const [customName, setCustomName] = useState('')
+  // Internal event being edited via the click-to-edit modal. Customer
+  // events open the existing selectedEvent panel; internal events use
+  // this lighter sheet so they can be renamed or deleted in two taps.
+  const [editingInternal, setEditingInternal] = useState<ScheduleEvent | null>(null)
+  const [editingInternalName, setEditingInternalName] = useState('')
 
   // Convert a vertical pixel offset within a day column into a snapped
   // start time in minutes from midnight (relative to DAY_START_HOUR).
@@ -172,14 +181,17 @@ export default function CalendarPage() {
   }
 
   // Create an internal event from one of the presets at the picked time.
-  const createInternalEvent = (preset: InternalPreset) => {
+  // The Custom preset uses the user-typed `customName`; everything else
+  // uses the preset's own label.
+  const createInternalEvent = (preset: InternalPreset, overrideName?: string) => {
     if (!quickCreate) return
     const startMin = quickCreate.startMin
     const endMin = Math.min(startMin + preset.durationMin, DAY_END_HOUR * 60)
+    const displayName = overrideName?.trim() || preset.label
     addEvent({
       jobId: undefined,
       customerId: undefined,
-      customerName: preset.label,
+      customerName: displayName,
       jobType: 'Internal',
       date: quickCreate.date,
       slot: 'quick',
@@ -193,6 +205,7 @@ export default function CalendarPage() {
       confirmationSentAt: new Date().toISOString(),
     })
     setQuickCreate(null)
+    setCustomName('')
   }
 
   const weekDates = useMemo(() =>
@@ -270,11 +283,24 @@ export default function CalendarPage() {
   // gap" on the target day that the candidate position falls into. Returns
   // the floor (latest end of any event ending before the candidate window)
   // and ceiling (earliest start of any event starting after it). Drag/resize
-  // clamps within this gap so cards can never overlap.
+  // clamps within this gap so events of the same kind can never overlap.
+  //
+  // Cross-kind events (a customer job vs an internal event) are NOT blocked:
+  // customer-facing work always takes precedence over the user's own time
+  // blocks, but the conflict is surfaced as a warning in the job panel so the
+  // user reviews it before sending the customer their confirmation.
   const findGap = (excludeId: string, targetDate: string, candidateStart: number, candidateEnd: number): { floor: number; ceiling: number } => {
     let floor = DAY_START_HOUR * 60
     let ceiling = DAY_END_HOUR * 60
-    const others = events.filter(e => e.id !== excludeId && e.date === targetDate)
+    const dragging = events.find(e => e.id === excludeId)
+    const draggingIsInternal = !!dragging?.category
+    const others = events.filter(e =>
+      e.id !== excludeId
+      && e.date === targetDate
+      // Only same-kind events constrain the gap (customer↔customer or
+      // internal↔internal). Cross-kind events float through.
+      && !!e.category === draggingIsInternal
+    )
     // Use the midpoint of the candidate window to decide which gap we're in.
     // This gives sensible behaviour when the user drags through an existing
     // event — the active card moves to whichever side the cursor is closer to.
@@ -385,10 +411,18 @@ export default function CalendarPage() {
             date: drag.previewDate,
           })
         } else {
-          // No movement → treat as a click on the card and open the
-          // detail panel for the original event.
+          // No movement → treat as a click on the card. Internal events
+          // open the lightweight rename/delete sheet; customer events
+          // open the existing detail panel.
           const ev = events.find(e => e.id === drag.eventId)
-          if (ev) setSelectedEvent(ev)
+          if (ev) {
+            if (ev.category) {
+              setEditingInternal(ev)
+              setEditingInternalName(ev.customerName)
+            } else {
+              setSelectedEvent(ev)
+            }
+          }
         }
       }
       setDragState(null)
@@ -1132,11 +1166,14 @@ export default function CalendarPage() {
       </button>
 
       {/* Quick-create modal for internal events (travel, admin, etc.) */}
-      {quickCreate && (
+      {quickCreate && (() => {
+        const customPreset = INTERNAL_PRESETS.find(p => p.key === 'custom')!
+        const showingCustomInput = customName !== '' || (typeof window !== 'undefined' && (window as Window & { __qcCustom?: boolean }).__qcCustom)
+        return (
         <>
           <div
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 200 }}
-            onClick={() => setQuickCreate(null)}
+            onClick={() => { setQuickCreate(null); setCustomName('') }}
           />
           <div style={{
             position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
@@ -1158,7 +1195,7 @@ export default function CalendarPage() {
                 </div>
               </div>
               <button
-                onClick={() => setQuickCreate(null)}
+                onClick={() => { setQuickCreate(null); setCustomName('') }}
                 style={{
                   background: 'transparent', border: 'none', color: C.silver,
                   cursor: 'pointer', padding: 4, display: 'flex',
@@ -1168,39 +1205,212 @@ export default function CalendarPage() {
                 <X size={20} />
               </button>
             </div>
-            <div style={{
-              fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8,
-              fontWeight: 600, marginTop: 18, marginBottom: 10,
-            }}>
-              Pick a category
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {INTERNAL_PRESETS.map(preset => (
+            {!showingCustomInput && (
+              <>
+                <div style={{
+                  fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8,
+                  fontWeight: 600, marginTop: 18, marginBottom: 10,
+                }}>
+                  Pick a category
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {INTERNAL_PRESETS.filter(p => p.key !== 'custom').map(preset => (
+                    <button
+                      key={preset.key}
+                      onClick={() => createInternalEvent(preset)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '12px 14px', borderRadius: 10,
+                        background: preset.color + '12', border: `1px solid ${preset.color}55`,
+                        color: C.white, cursor: 'pointer', minHeight: 48,
+                        transition: 'background .15s',
+                        textAlign: 'left',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = preset.color + '24' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = preset.color + '12' }}
+                    >
+                      <span style={{ fontSize: 18, flexShrink: 0 }}>{preset.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{preset.label}</div>
+                        <div style={{ fontSize: 10, color: C.steel }}>{preset.durationMin} min</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {/* Custom — full-width separate row */}
                 <button
-                  key={preset.key}
-                  onClick={() => createInternalEvent(preset)}
+                  onClick={() => setCustomName(' ')}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '12px 14px', borderRadius: 10,
-                    background: preset.color + '12', border: `1px solid ${preset.color}55`,
-                    color: C.white, cursor: 'pointer', minHeight: 48,
-                    transition: 'background .15s, transform .1s',
-                    textAlign: 'left',
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '12px 14px', borderRadius: 10, marginTop: 8,
+                    background: 'transparent', border: `1px dashed ${C.steel}66`,
+                    color: C.silver, cursor: 'pointer', minHeight: 44,
+                    fontSize: 12, fontWeight: 600,
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = preset.color + '24' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = preset.color + '12' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.gold; e.currentTarget.style.color = C.gold }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = `${C.steel}66`; e.currentTarget.style.color = C.silver }}
                 >
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>{preset.icon}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{preset.label}</div>
-                    <div style={{ fontSize: 10, color: C.steel }}>{preset.durationMin} min</div>
-                  </div>
+                  📌 Custom — type your own name
                 </button>
-              ))}
-            </div>
+              </>
+            )}
+            {showingCustomInput && (
+              <>
+                <div style={{
+                  fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8,
+                  fontWeight: 600, marginTop: 18, marginBottom: 8,
+                }}>
+                  Custom entry name
+                </div>
+                <input
+                  type="text"
+                  autoFocus
+                  value={customName.trim()}
+                  onChange={e => setCustomName(e.target.value || ' ')}
+                  onKeyDown={e => { if (e.key === 'Enter' && customName.trim()) createInternalEvent(customPreset, customName.trim()) }}
+                  placeholder="e.g. Quote follow-up call"
+                  style={{
+                    width: '100%', padding: '12px 14px', borderRadius: 10,
+                    background: C.black, border: `1px solid ${C.steel}44`,
+                    color: C.white, fontSize: 14, outline: 'none', boxSizing: 'border-box',
+                    marginBottom: 12,
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => setCustomName('')}
+                    style={{
+                      flex: 1, padding: '10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      background: 'transparent', border: `1px solid ${C.steel}44`,
+                      color: C.silver, cursor: 'pointer', minHeight: 38,
+                    }}
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => createInternalEvent(customPreset, customName.trim())}
+                    disabled={!customName.trim()}
+                    style={{
+                      flex: 2, padding: '10px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                      background: customName.trim() ? C.gold : C.black,
+                      border: `1px solid ${C.gold}`,
+                      color: customName.trim() ? C.charcoal : C.steel,
+                      cursor: customName.trim() ? 'pointer' : 'not-allowed',
+                      minHeight: 38,
+                    }}
+                  >
+                    Create
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </>
-      )}
+        )
+      })()}
+
+      {/* Edit/delete modal for internal events */}
+      {editingInternal && (() => {
+        const preset = INTERNAL_PRESETS.find(p => p.key === editingInternal.category)
+        return (
+          <>
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 200 }}
+              onClick={() => setEditingInternal(null)}
+            />
+            <div style={{
+              position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+              background: C.charcoalLight, borderRadius: 16, padding: 'clamp(20px, 4vw, 28px)',
+              width: 'min(380px, calc(100vw - 24px))', maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto',
+              zIndex: 210, boxShadow: '0 16px 48px rgba(0,0,0,.5)',
+              border: `1px solid ${C.steel}44`,
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 12, marginBottom: 16,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 22 }}>{preset?.icon ?? '📌'}</span>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.white }}>
+                    Edit entry
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingInternal(null)}
+                  style={{
+                    background: 'transparent', border: 'none', color: C.silver,
+                    cursor: 'pointer', padding: 4, display: 'flex',
+                  }}
+                  aria-label="Close"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 600, marginBottom: 6 }}>
+                Name
+              </div>
+              <input
+                type="text"
+                value={editingInternalName}
+                onChange={e => setEditingInternalName(e.target.value)}
+                style={{
+                  width: '100%', padding: '12px 14px', borderRadius: 10,
+                  background: C.black, border: `1px solid ${C.steel}44`,
+                  color: C.white, fontSize: 14, outline: 'none', boxSizing: 'border-box',
+                  marginBottom: 14,
+                }}
+              />
+
+              <div style={{ fontSize: 11, color: C.steel, marginBottom: 16 }}>
+                {new Date(editingInternal.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                {editingInternal.startTime && editingInternal.endTime && ` · ${editingInternal.startTime}–${editingInternal.endTime}`}
+                <br />
+                Drag the card on the calendar to move it or change its duration.
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Delete "${editingInternal.customerName}" from your calendar?`)) {
+                      deleteEvent(editingInternal.id)
+                      setEditingInternal(null)
+                    }
+                  }}
+                  style={{
+                    flex: 1, padding: '10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    background: 'transparent', border: '1px solid #D46A6A66',
+                    color: '#D46A6A', cursor: 'pointer', minHeight: 40,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <X size={13} /> Delete
+                </button>
+                <button
+                  onClick={() => {
+                    const trimmed = editingInternalName.trim()
+                    if (trimmed && trimmed !== editingInternal.customerName) {
+                      updateEvent(editingInternal.id, { customerName: trimmed })
+                    }
+                    setEditingInternal(null)
+                  }}
+                  disabled={!editingInternalName.trim()}
+                  style={{
+                    flex: 2, padding: '10px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    background: editingInternalName.trim() ? C.gold : C.black,
+                    border: `1px solid ${C.gold}`,
+                    color: editingInternalName.trim() ? C.charcoal : C.steel,
+                    cursor: editingInternalName.trim() ? 'pointer' : 'not-allowed',
+                    minHeight: 40,
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </>
+        )
+      })()}
 
       {/* Event detail modal — shows all bookings for this job */}
       {selectedEvent && (() => {
