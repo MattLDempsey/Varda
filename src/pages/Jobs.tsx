@@ -1157,29 +1157,102 @@ export default function Jobs() {
                     </div>
                   </div>
 
-                  {/* Start job — only appears on or after the scheduled
-                      day so future jobs can't be accidentally started early.
-                      Mirrors the Start button on the Dashboard so the user
-                      can flip status without going back to the dashboard. */}
-                  {selectedJob.status === 'Scheduled' && selectedJob.date <= new Date().toISOString().split('T')[0] && (
-                    <button
-                      onClick={() => {
-                        const ts = new Date().toISOString()
-                        updateJob(selectedJob.id, { startedAt: ts })
-                        moveJob(selectedJob.id, 'In Progress')
-                        setSelectedJob({ ...selectedJob, status: 'In Progress', startedAt: ts })
-                      }}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        padding: '12px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
-                        cursor: 'pointer', minHeight: 44, marginBottom: 16,
-                        background: `${C.gold}15`, border: `1px solid ${C.gold}66`, color: C.gold,
-                      }}
-                      title="Mark this job as started — moves it to In Progress and stamps the start time"
-                    >
-                      ▶ Start this job now
-                    </button>
-                  )}
+                  {/* ── Workflow actions — guided forward/revert buttons ──
+                      These are the one-tap pipeline controls. The forward
+                      button is the primary "next step" action; the revert
+                      link goes one step back. The status dropdown above
+                      stays as a power-user escape hatch for jumping
+                      multiple steps or fixing data. */}
+                  {(() => {
+                    const todayStr = new Date().toISOString().split('T')[0]
+                    const st = selectedJob.status
+
+                    // ── Forward action for each status ──
+                    type FwdAction = { label: string; icon: string; action: () => void; gated?: boolean } | null
+                    let forward: FwdAction = null
+                    if (st === 'Lead') {
+                      forward = {
+                        label: 'Create Quote',
+                        icon: '📝',
+                        action: () => { setSelectedJob(null); navigate(selectedJob.quoteId ? `/quote?quoteId=${selectedJob.quoteId}` : '/quote') },
+                      }
+                    } else if (st === 'Scheduled' && selectedJob.date <= todayStr) {
+                      forward = {
+                        label: 'Start this job now',
+                        icon: '▶',
+                        action: () => {
+                          const ts = new Date().toISOString()
+                          updateJob(selectedJob.id, { startedAt: ts })
+                          moveJob(selectedJob.id, 'In Progress')
+                          setSelectedJob({ ...selectedJob, status: 'In Progress', startedAt: ts })
+                        },
+                      }
+                    } else if (st === 'In Progress') {
+                      forward = {
+                        label: 'Mark as complete',
+                        icon: '✓',
+                        action: () => {
+                          moveJob(selectedJob.id, 'Complete')
+                          setSelectedJob({ ...selectedJob, status: 'Complete' })
+                        },
+                      }
+                    } else if (st === 'Complete') {
+                      forward = {
+                        label: 'Create invoice',
+                        icon: '📄',
+                        action: () => setPanelTab('payments'),
+                      }
+                    }
+
+                    // ── Revert — one step back ──
+                    const revertMap: Partial<Record<JobStatus, { label: string; target: JobStatus }>> = {
+                      Quoted:        { label: 'Back to Lead',        target: 'Lead' },
+                      Accepted:      { label: 'Back to Quoted',      target: 'Quoted' },
+                      Scheduled:     { label: 'Back to Accepted',    target: 'Accepted' },
+                      'In Progress': { label: 'Back to Scheduled',   target: 'Scheduled' },
+                      Complete:      { label: 'Back to In Progress', target: 'In Progress' },
+                      Invoiced:      { label: 'Back to Complete',    target: 'Complete' },
+                    }
+                    const revert = revertMap[st]
+
+                    if (!forward && !revert) return null
+
+                    return (
+                      <div style={{ marginBottom: 16 }}>
+                        {forward && (
+                          <button
+                            onClick={forward.action}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                              padding: '12px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
+                              cursor: 'pointer', minHeight: 44,
+                              background: `${C.gold}15`, border: `1px solid ${C.gold}66`, color: C.gold,
+                            }}
+                          >
+                            {forward.icon} {forward.label}
+                          </button>
+                        )}
+                        {revert && (
+                          <button
+                            onClick={() => {
+                              moveJob(selectedJob.id, revert.target)
+                              setSelectedJob({ ...selectedJob, status: revert.target })
+                            }}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                              padding: '6px', borderRadius: 8, marginTop: forward ? 6 : 0,
+                              background: 'transparent', border: 'none',
+                              color: C.steel, cursor: 'pointer', fontSize: 11, fontWeight: 500,
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.color = C.silver }}
+                            onMouseLeave={e => { e.currentTarget.style.color = C.steel }}
+                          >
+                            ← {revert.label}
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   {/* ── Actual Hours Tracking ── */}
                   {(['In Progress', 'Complete', 'Invoiced', 'Paid'] as JobStatus[]).includes(selectedJob.status) && (() => {
