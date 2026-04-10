@@ -1039,6 +1039,116 @@ export default function Jobs() {
                 </button>
               </div>
 
+              {/* ── Job Paid celebration — replaces the normal panel
+                  content when the job reaches its final state so the
+                  transition feels like a milestone, not a disappearance. ── */}
+              {selectedJob.status === 'Paid' && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  padding: '40px 20px 32px', textAlign: 'center',
+                }}>
+                  {/* Animated checkmark ring */}
+                  <div style={{
+                    width: 80, height: 80, borderRadius: '50%',
+                    background: '#4CAF5015',
+                    border: '3px solid #4CAF50',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: 20,
+                    animation: 'paidPulse 1.5s ease-in-out',
+                  }}>
+                    <CheckCircle size={40} color="#4CAF50" />
+                  </div>
+                  <style>{`
+                    @keyframes paidPulse {
+                      0% { transform: scale(0.5); opacity: 0; }
+                      50% { transform: scale(1.1); }
+                      100% { transform: scale(1); opacity: 1; }
+                    }
+                    @keyframes paidFadeIn {
+                      0% { opacity: 0; transform: translateY(8px); }
+                      100% { opacity: 1; transform: translateY(0); }
+                    }
+                  `}</style>
+
+                  <div style={{
+                    fontSize: 22, fontWeight: 700, color: '#4CAF50', marginBottom: 6,
+                    animation: 'paidFadeIn .5s ease .3s both',
+                  }}>
+                    Job Paid
+                  </div>
+                  <div style={{
+                    fontSize: 14, color: C.silver, marginBottom: 24,
+                    animation: 'paidFadeIn .5s ease .5s both',
+                  }}>
+                    {selectedJob.customerName} — {selectedJob.jobType}
+                  </div>
+
+                  {/* Summary stats */}
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12,
+                    width: '100%', maxWidth: 280, marginBottom: 28,
+                    animation: 'paidFadeIn .5s ease .6s both',
+                  }}>
+                    <div style={{
+                      background: C.black, borderRadius: 10, padding: '14px 12px', textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: C.gold }}>
+                        {fmtCurrency(selectedJob.value)}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.steel }}>Total Value</div>
+                    </div>
+                    <div style={{
+                      background: C.black, borderRadius: 10, padding: '14px 12px', textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: C.gold }}>
+                        {selectedJob.estimatedHours}h
+                      </div>
+                      <div style={{ fontSize: 11, color: C.steel }}>
+                        {selectedJob.actualHours != null ? `Actual: ${selectedJob.actualHours}h` : 'Est. Hours'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    fontSize: 13, color: C.steel, marginBottom: 24,
+                    animation: 'paidFadeIn .5s ease .7s both',
+                  }}>
+                    This job has moved to History. You can find it under the History tab or in the customer's profile.
+                  </div>
+
+                  <div style={{
+                    display: 'flex', gap: 10, width: '100%', maxWidth: 300,
+                    animation: 'paidFadeIn .5s ease .8s both',
+                  }}>
+                    <button
+                      onClick={() => { setSelectedJob(null); setView('history') }}
+                      style={{
+                        flex: 1, padding: '12px', borderRadius: 10,
+                        background: 'transparent', border: `1px solid ${C.steel}66`,
+                        color: C.silver, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                        minHeight: 44,
+                      }}
+                    >
+                      View History
+                    </button>
+                    <button
+                      onClick={() => { setSelectedJob(null); navigate('/quote') }}
+                      style={{
+                        flex: 1, padding: '12px', borderRadius: 10,
+                        background: `${C.gold}15`, border: `1px solid ${C.gold}66`,
+                        color: C.gold, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                        minHeight: 44,
+                      }}
+                    >
+                      New Quote
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Normal panel content (hidden when Paid) ── */}
+              {selectedJob.status !== 'Paid' && <>
+
               {/* Actionable warning banner — names the issue and jumps to the
                   relevant tab so the user knows exactly what to do next. The
                   whole banner is the click target when an action is available. */}
@@ -3009,7 +3119,7 @@ export default function Jobs() {
                   )}
 
                   {/* Add Invoice button / form */}
-                  {selectedJob.status !== 'Paid' && !showAddInvoice && (
+                  {!showAddInvoice && (
                     <button
                       onClick={() => {
                         setShowAddInvoice(true)
@@ -3044,7 +3154,7 @@ export default function Jobs() {
                     </button>
                   )}
 
-                  {showAddInvoice && selectedJob.status !== 'Paid' && (() => {
+                  {showAddInvoice && (() => {
                     const inputStyle: CSSProperties = {
                       width: '100%', padding: '10px 12px', borderRadius: 10,
                       background: C.black, border: `1px solid ${C.steel}33`,
@@ -3186,6 +3296,8 @@ export default function Jobs() {
                   })()}
                 </div>
               )}
+
+              </>}
             </div>
           </>
         )
