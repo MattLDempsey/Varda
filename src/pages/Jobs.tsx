@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload, RefreshCw, CheckCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
-import { useData, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
+import { useData, isEventConfirmed, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
 import { useAuth } from '../auth/AuthContext'
 import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { uploadJobFile, deleteJobFile, getJobAttachments, formatFileSize, type Attachment } from '../lib/file-upload'
@@ -250,7 +250,7 @@ export default function Jobs() {
     // including Scheduled / In Progress — because a time change after the
     // customer accepted the original schedule needs an updated confirmation.
     const jobEvents = events.filter(e => e.jobId === job.id)
-    if (jobEvents.length > 0 && jobEvents.some(e => !e.confirmationSentAt)) {
+    if (jobEvents.length > 0 && jobEvents.some(e => !isEventConfirmed(e))) {
       return 'Schedule changed — customer needs new confirmation'
     }
 
@@ -1227,7 +1227,7 @@ export default function Jobs() {
                   {/* ── Schedule Job ── */}
                   {(selectedJob.status === 'Accepted' || selectedJob.status === 'Scheduled' || selectedJob.status === 'In Progress') && (() => {
                     const jobEvents = events.filter(e => e.jobId === selectedJob.id).sort((a, b) => a.date.localeCompare(b.date))
-                    const unconfirmedEvents = jobEvents.filter(e => !e.confirmationSentAt)
+                    const unconfirmedEvents = jobEvents.filter(e => !isEventConfirmed(e))
                     const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day', quick: 'Quick (<1h)' }
                     const customer = customers.find(c => c.id === selectedJob.customerId)
 
@@ -1481,13 +1481,19 @@ export default function Jobs() {
                         }
                       }
 
-                      // Stamp confirmation_sent_at on every event we just
-                      // dispatched. For a resend, this overwrites the previous
-                      // timestamp with the latest send time, which is what we
-                      // want for "last time the customer was reminded".
+                      // Stamp confirmation_sent_at + snapshot the live
+                      // date/start/end on every event we just dispatched. The
+                      // snapshot lets the warning logic detect later moves and
+                      // also detect if the user moves the card and then puts
+                      // it back to the originally-confirmed times.
                       const ts = new Date().toISOString()
                       for (const ev of eventsForSend) {
-                        updateEvent(ev.id, { confirmationSentAt: ts })
+                        updateEvent(ev.id, {
+                          confirmationSentAt: ts,
+                          confirmedDate: ev.date,
+                          confirmedStartTime: ev.startTime ?? null,
+                          confirmedEndTime: ev.endTime ?? null,
+                        })
                       }
 
                       // Implicit acceptance: silence is consent. The moment
@@ -1533,7 +1539,7 @@ export default function Jobs() {
                             sent before, which means a previously-confirmed
                             schedule has been changed (vs a brand-new addition
                             on a never-confirmed job, which uses softer copy). */}
-                        {unconfirmedEvents.length > 0 && jobEvents.some(e => e.confirmationSentAt) && (
+                        {unconfirmedEvents.length > 0 && jobEvents.some(e => isEventConfirmed(e) || e.confirmationSentAt) && (
                           <div style={{
                             marginBottom: 12, padding: '12px 14px', borderRadius: 10,
                             background: '#D46A6A10', border: '1px solid #D46A6A44',
@@ -1550,7 +1556,7 @@ export default function Jobs() {
                         {jobEvents.length > 0 && (
                           <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {jobEvents.map(ev => {
-                              const isPending = !ev.confirmationSentAt
+                              const isPending = !isEventConfirmed(ev)
                               const timeRange = fmtTimeRange(ev.startTime, ev.endTime)
                               return (
                                 <div key={ev.id} style={{

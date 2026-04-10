@@ -144,7 +144,8 @@ const INVOICE_COLS = new Set([
 ])
 const EVENT_COLS = new Set([
   'job_id', 'customer_id', 'customer_name', 'job_type', 'date', 'slot', 'status', 'notes',
-  'confirmation_sent_at', 'start_time', 'end_time',
+  'confirmation_sent_at', 'start_time', 'end_time', 'category',
+  'confirmed_date', 'confirmed_start_time', 'confirmed_end_time',
 ])
 const COMM_COLS = new Set([
   'customer_id', 'customer_name', 'template_name', 'channel', 'status', 'date', 'body',

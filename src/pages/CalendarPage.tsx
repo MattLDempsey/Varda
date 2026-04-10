@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Plus, Clock, X, Download, Calendar, Briefcase, AlertCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
-import { useData, type ScheduleEvent, type EventSlot } from '../data/DataContext'
+import { useData, isEventConfirmed, type ScheduleEvent, type EventSlot } from '../data/DataContext'
 import { exportWeekEvents, exportAllEvents, exportSingleEvent } from '../lib/calendar-export'
 import { useUndo } from '../hooks/useUndo'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -125,6 +125,75 @@ export default function CalendarPage() {
   const [dragState, setDragState] = useState<DragState | null>(null)
   const dragStateRef = useRef<DragState | null>(null)
   dragStateRef.current = dragState
+
+  // ── Quick-create internal events (travel, admin, supplies, etc.) ──
+  // When the user clicks an empty slot in the day or week view, this state
+  // tracks the picked time + day so the inline create modal knows what to
+  // pre-fill.
+  interface QuickCreateState {
+    date: string
+    startMin: number
+  }
+  const [quickCreate, setQuickCreate] = useState<QuickCreateState | null>(null)
+
+  interface InternalPreset {
+    key: string
+    label: string
+    durationMin: number
+    color: string
+    icon: string
+  }
+  const INTERNAL_PRESETS: InternalPreset[] = [
+    { key: 'travel',      label: 'Travelling',  durationMin: 30, color: '#5B9BD5', icon: '🚗' },
+    { key: 'supplies',    label: 'Supply Run',  durationMin: 60, color: '#9B7ED8', icon: '🧰' },
+    { key: 'stockcheck',  label: 'Stock Check', durationMin: 30, color: '#6ABF8A', icon: '📦' },
+    { key: 'admin',       label: 'Admin',       durationMin: 60, color: '#C6A86A', icon: '📋' },
+    { key: 'training',    label: 'Training',    durationMin: 90, color: '#D46A6A', icon: '🎓' },
+    { key: 'break',       label: 'Break',       durationMin: 30, color: '#8A8F96', icon: '☕' },
+  ]
+
+  // Convert a vertical pixel offset within a day column into a snapped
+  // start time in minutes from midnight (relative to DAY_START_HOUR).
+  const pixelYToMinutes = (offsetY: number): number => {
+    const mins = (offsetY / HOUR_HEIGHT) * 60 + DAY_START_HOUR * 60
+    return snap(mins)
+  }
+
+  // Click handler for empty space in a day column. Computes the start time
+  // from the click position and opens the quick-create modal.
+  const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, dateStr: string) => {
+    // Ignore clicks that originated on a card or its children.
+    if ((e.target as HTMLElement).closest('[data-event-card]')) return
+    if (dragStateRef.current) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const offsetY = e.clientY - rect.top
+    const startMin = pixelYToMinutes(offsetY)
+    setQuickCreate({ date: dateStr, startMin })
+  }
+
+  // Create an internal event from one of the presets at the picked time.
+  const createInternalEvent = (preset: InternalPreset) => {
+    if (!quickCreate) return
+    const startMin = quickCreate.startMin
+    const endMin = Math.min(startMin + preset.durationMin, DAY_END_HOUR * 60)
+    addEvent({
+      jobId: undefined,
+      customerId: undefined,
+      customerName: preset.label,
+      jobType: 'Internal',
+      date: quickCreate.date,
+      slot: 'quick',
+      status: 'Scheduled',
+      notes: '',
+      startTime: `${String(Math.floor(startMin / 60)).padStart(2, '0')}:${String(startMin % 60).padStart(2, '0')}`,
+      endTime: `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`,
+      category: preset.key,
+      // Internal events don't need customer confirmation — pre-stamp it
+      // so they don't trigger the "Unsent" badge.
+      confirmationSentAt: new Date().toISOString(),
+    })
+    setQuickCreate(null)
+  }
 
   const weekDates = useMemo(() =>
     Array.from({ length: 7 }, (_, i) => addDays(monday, i)),
@@ -699,11 +768,13 @@ export default function CalendarPage() {
               <div
                 key={`day-${i}`}
                 data-day-col={dateStr}
+                onClick={(e) => handleColumnClick(e, dateStr)}
                 style={{
                   position: 'relative',
                   background: isToday ? `${C.gold}08` : C.charcoal,
                   height: DAY_GRID_HEIGHT,
                   borderLeft: isToday ? `2px solid ${C.gold}44` : 'none',
+                  cursor: 'cell',
                 }}
               >
                 {/* Hour grid lines */}
@@ -755,20 +826,25 @@ export default function CalendarPage() {
                   const top = ((visibleStart - dayStartMin) / 60) * HOUR_HEIGHT
                   const height = Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT, 24)
                   const isQuick = ev.slot === 'quick'
+                  const isInternal = !!ev.category
+                  const internalPreset = isInternal ? INTERNAL_PRESETS.find(p => p.key === ev.category) : null
                   const isBeingDragged = !!drag
-                  const needsResend = !ev.confirmationSentAt
+                  const needsResend = !isEventConfirmed(ev) && !isInternal
+                  const accent = internalPreset?.color ?? statusColor[ev.status]
                   return (
                     <div
                       key={ev.id}
+                      data-event-card
                       onPointerDown={(e) => beginDrag(ev, 'move', e)}
+                      onClick={(e) => e.stopPropagation()}
                       title={needsResend ? 'Customer needs new confirmation — schedule changed' : undefined}
                       style={{
                         position: 'absolute',
                         top, height,
                         left: 4, right: 4,
-                        background: needsResend ? '#D46A6A18' : statusColor[ev.status] + (isQuick ? '22' : '15'),
-                        border: `1px solid ${needsResend ? '#D46A6A66' : statusColor[ev.status] + '55'}`,
-                        borderLeft: `3px solid ${needsResend ? '#D46A6A' : statusColor[ev.status]}`,
+                        background: needsResend ? '#D46A6A18' : accent + (isQuick || isInternal ? '22' : '15'),
+                        border: `1px solid ${needsResend ? '#D46A6A66' : accent + '55'}`,
+                        borderLeft: `3px solid ${needsResend ? '#D46A6A' : accent}`,
                         borderRadius: 6,
                         padding: '4px 6px',
                         cursor: isBeingDragged ? 'grabbing' : 'grab',
@@ -798,6 +874,7 @@ export default function CalendarPage() {
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         display: 'flex', alignItems: 'center', gap: 3, minWidth: 0,
                       }}>
+                        {internalPreset && <span style={{ flexShrink: 0, fontSize: 10 }}>{internalPreset.icon}</span>}
                         {needsResend && <AlertCircle size={10} color="#D46A6A" style={{ flexShrink: 0 }} />}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.customerName}</span>
                       </div>
@@ -806,10 +883,10 @@ export default function CalendarPage() {
                           fontSize: 10, color: C.silver,
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>
-                          {start}–{end}{isQuick ? ' · Quick' : ''}
+                          {start}–{end}{!isInternal && isQuick ? ' · Quick' : ''}
                         </div>
                       )}
-                      {height >= 56 && (
+                      {height >= 56 && !isInternal && (
                         <div style={{
                           fontSize: 10, color: C.steel,
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -876,10 +953,12 @@ export default function CalendarPage() {
             {/* Events column */}
             <div
               data-day-col={formatDate(currentDate)}
+              onClick={(e) => handleColumnClick(e, formatDate(currentDate))}
               style={{
                 position: 'relative',
                 background: C.charcoal,
                 height: DAY_GRID_HEIGHT,
+                cursor: 'cell',
               }}
             >
               {/* Hour grid lines */}
@@ -936,23 +1015,28 @@ export default function CalendarPage() {
                 const height = Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT, 28)
                 const val = getEventValue(ev)
                 const isQuick = ev.slot === 'quick'
+                const isInternal = !!ev.category
+                const internalPreset = isInternal ? INTERNAL_PRESETS.find(p => p.key === ev.category) : null
                 const isBeingDragged = !!drag
                 // Schedule has changed since the customer was last notified.
                 // Surface a red warning indicator on the card so the user
                 // sees it without opening the panel.
-                const needsResend = !ev.confirmationSentAt
+                const needsResend = !ev.confirmationSentAt && !isInternal
+                const accent = internalPreset?.color ?? statusColor[ev.status]
                 return (
                   <div
                     key={ev.id}
+                    data-event-card
                     onPointerDown={(e) => beginDrag(ev, 'move', e)}
+                    onClick={(e) => e.stopPropagation()}
                     title={needsResend ? 'Customer needs new confirmation — schedule changed' : undefined}
                     style={{
                       position: 'absolute',
                       top, height,
                       left: 8, right: 8,
-                      background: needsResend ? '#D46A6A18' : statusColor[ev.status] + (isQuick ? '22' : '15'),
-                      border: `1px solid ${needsResend ? '#D46A6A66' : statusColor[ev.status] + '55'}`,
-                      borderLeft: `3px solid ${needsResend ? '#D46A6A' : statusColor[ev.status]}`,
+                      background: needsResend ? '#D46A6A18' : accent + (isInternal ? '22' : isQuick ? '22' : '15'),
+                      border: `1px solid ${needsResend ? '#D46A6A66' : accent + '55'}`,
+                      borderLeft: `3px solid ${needsResend ? '#D46A6A' : accent}`,
                       borderRadius: 8,
                       padding: '6px 10px',
                       cursor: isBeingDragged ? 'grabbing' : 'grab',
@@ -983,6 +1067,7 @@ export default function CalendarPage() {
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         display: 'flex', alignItems: 'center', gap: 4, minWidth: 0,
                       }}>
+                        {internalPreset && <span style={{ flexShrink: 0 }}>{internalPreset.icon}</span>}
                         {needsResend && <AlertCircle size={11} color="#D46A6A" style={{ flexShrink: 0 }} />}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.customerName}</span>
                       </div>
@@ -990,7 +1075,7 @@ export default function CalendarPage() {
                         {start}–{end}
                       </div>
                     </div>
-                    {height >= 44 && (
+                    {height >= 44 && !isInternal && (
                       <div style={{
                         fontSize: 11, color: C.silver,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -998,7 +1083,7 @@ export default function CalendarPage() {
                         {ev.jobType}{isQuick ? ' · Quick' : ''}
                       </div>
                     )}
-                    {height >= 64 && val > 0 && (
+                    {height >= 64 && val > 0 && !isInternal && (
                       <div style={{ fontSize: 11, fontWeight: 600, color: C.gold }}>
                         {'\u00A3'}{val.toLocaleString('en-GB')}
                       </div>
@@ -1045,6 +1130,77 @@ export default function CalendarPage() {
       >
         <Plus size={26} strokeWidth={2.5} />
       </button>
+
+      {/* Quick-create modal for internal events (travel, admin, etc.) */}
+      {quickCreate && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 200 }}
+            onClick={() => setQuickCreate(null)}
+          />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            background: C.charcoalLight, borderRadius: 16, padding: 'clamp(20px, 4vw, 28px)',
+            width: 'min(400px, calc(100vw - 24px))', maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto',
+            zIndex: 210, boxShadow: '0 16px 48px rgba(0,0,0,.5)',
+            border: `1px solid ${C.steel}44`,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+              gap: 12, marginBottom: 4,
+            }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.white, marginBottom: 2 }}>
+                  New entry
+                </div>
+                <div style={{ fontSize: 12, color: C.silver }}>
+                  {new Date(quickCreate.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} at {String(Math.floor(quickCreate.startMin / 60)).padStart(2, '0')}:{String(quickCreate.startMin % 60).padStart(2, '0')}
+                </div>
+              </div>
+              <button
+                onClick={() => setQuickCreate(null)}
+                style={{
+                  background: 'transparent', border: 'none', color: C.silver,
+                  cursor: 'pointer', padding: 4, display: 'flex',
+                }}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{
+              fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.8,
+              fontWeight: 600, marginTop: 18, marginBottom: 10,
+            }}>
+              Pick a category
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {INTERNAL_PRESETS.map(preset => (
+                <button
+                  key={preset.key}
+                  onClick={() => createInternalEvent(preset)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '12px 14px', borderRadius: 10,
+                    background: preset.color + '12', border: `1px solid ${preset.color}55`,
+                    color: C.white, cursor: 'pointer', minHeight: 48,
+                    transition: 'background .15s, transform .1s',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = preset.color + '24' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = preset.color + '12' }}
+                >
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>{preset.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{preset.label}</div>
+                    <div style={{ fontSize: 10, color: C.steel }}>{preset.durationMin} min</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Event detail modal — shows all bookings for this job */}
       {selectedEvent && (() => {

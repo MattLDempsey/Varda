@@ -214,6 +214,41 @@ export interface ScheduleEvent {
    * (12:00 morning, 17:00 afternoon, 17:00 full, +1h after start for quick).
    */
   endTime?: string | null
+  /**
+   * Tag for internal (non-customer) calendar entries — 'travel', 'admin',
+   * 'supplies', 'training', 'maintenance', 'break', 'other'. NULL means
+   * this is a customer job (existing behaviour). When set, the event has
+   * no jobId/customerId and customerName carries the preset display name.
+   */
+  category?: string | null
+  /**
+   * Snapshot of date/startTime/endTime at the moment the customer was last
+   * sent a booking confirmation. Used by isEventConfirmed() to detect
+   * whether the schedule has been moved since the customer was notified —
+   * if the live values still match these, no resend is needed even if the
+   * card was temporarily dragged elsewhere and put back.
+   */
+  confirmedDate?: string | null
+  confirmedStartTime?: string | null
+  confirmedEndTime?: string | null
+}
+
+/**
+ * True if the customer has been told about this event AND its current
+ * date/start/end times still match what they were told. False for events
+ * never sent OR events that have been moved since.
+ */
+export function isEventConfirmed(ev: ScheduleEvent): boolean {
+  if (!ev.confirmationSentAt) return false
+  // Internal events have no customer to confirm with — always "confirmed".
+  if (ev.category) return true
+  // If the snapshot columns are missing (old data), fall back to the
+  // legacy behaviour where the timestamp alone meant confirmed.
+  if (ev.confirmedDate == null && ev.confirmedStartTime == null && ev.confirmedEndTime == null) return true
+  if (ev.confirmedDate && ev.confirmedDate !== ev.date) return false
+  if ((ev.confirmedStartTime || null) !== (ev.startTime || null)) return false
+  if ((ev.confirmedEndTime || null) !== (ev.endTime || null)) return false
+  return true
 }
 
 export interface Invoice {
@@ -671,29 +706,15 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
   }, [persist, bgCall])
 
   const updateEvent = useCallback((id: string, updates: Partial<ScheduleEvent>) => {
-    // If a meaningful time/date/slot field is being changed on an event that
-    // the customer has already been notified about, automatically clear the
-    // confirmation_sent_at stamp so the panel re-prompts the user to send an
-    // updated confirmation. Notes/status changes don't trigger this.
-    const touchesSchedule = (
-      updates.startTime !== undefined ||
-      updates.endTime !== undefined ||
-      updates.date !== undefined ||
-      updates.slot !== undefined
-    )
-    const callerIsManagingConfirmation = updates.confirmationSentAt !== undefined
-    let effectiveUpdates: Partial<ScheduleEvent> = updates
-    if (touchesSchedule && !callerIsManagingConfirmation) {
-      const existing = storeRef.current.events.find(e => e.id === id)
-      if (existing?.confirmationSentAt) {
-        effectiveUpdates = { ...updates, confirmationSentAt: null }
-      }
-    }
+    // We no longer clear confirmation_sent_at here — the warning logic
+    // compares the live date/start_time/end_time against confirmed_*
+    // snapshot fields instead, so dragging an event away and back again
+    // restores the "confirmed" state automatically.
     persist(s => ({
       ...s,
-      events: s.events.map(e => e.id === id ? { ...e, ...effectiveUpdates } : e),
+      events: s.events.map(e => e.id === id ? { ...e, ...updates } : e),
     }))
-    bgCall(() => svc.updateEvent(id, effectiveUpdates))
+    bgCall(() => svc.updateEvent(id, updates))
   }, [persist, bgCall])
 
   const deleteEvent = useCallback((id: string) => {
