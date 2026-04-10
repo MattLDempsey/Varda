@@ -454,19 +454,18 @@ export default function Dashboard() {
           card format dynamically (expanded vs compact) rather than
           scrolling, so both panels feel like peers on the same row
           without either one pushing the layout. */}
-      <div style={{ ...s.columns, alignItems: 'start' }}>
-        {/* Today's Schedule — never scrolls. Dynamically switches
-            between expanded (address/phone/value) and compact
-            (single-line) card formats based on how many events
-            there are, so it naturally fits without overflowing. */}
-        <div style={s.panel}>
+      <div style={{ ...s.columns, alignItems: 'stretch' }}>
+        {/* Today's Schedule — stretches to match Action Items height
+            via align-items: stretch. Content adapts its format
+            dynamically rather than scrolling. */}
+        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
             <span style={s.panelLink} onClick={() => navigate('/calendar')}>
               View Calendar <ChevronRight size={14} />
             </span>
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
           {todaysEvents.length === 0 && (
             <div style={s.empty}>Nothing scheduled today.</div>
           )}
