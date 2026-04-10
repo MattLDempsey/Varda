@@ -473,7 +473,7 @@ export default function QuickQuote() {
   // ── Voice Input ──
   const toggleVoice = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { alert('Speech recognition not supported.'); return }
+    if (!SR) { setSavedMsg('Voice input not supported in this browser'); setTimeout(() => setSavedMsg(''), 3000); return }
     if (isRecording && recognitionRef.current) { recognitionRef.current.stop(); setIsRecording(false); return }
     const recognition = new SR()
     recognition.lang = 'en-GB'; recognition.continuous = true; recognition.interimResults = false

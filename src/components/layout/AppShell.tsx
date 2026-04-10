@@ -25,10 +25,14 @@ import {
   Search,
   MoreHorizontal,
   Plug,
+  CreditCard,
+  User,
+  Pencil,
 } from 'lucide-react'
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useTheme } from '../../theme/ThemeContext'
 import { useAuth } from '../../auth/AuthContext'
+import { useSubscription } from '../../subscription/SubscriptionContext'
 import { useData } from '../../data/DataContext'
 import { useFollowUps } from '../FollowUpManager'
 import { supabase } from '../../lib/supabase'
@@ -93,6 +97,10 @@ const roleColors: Record<string, string> = {
 export default function AppShell() {
   const { mode, C, toggle } = useTheme()
   const { user, signOut } = useAuth()
+  const { plan, subscription, daysLeft, isActive } = useSubscription()
+  const [editingName, setEditingName] = useState(false)
+  const [profileName, setProfileName] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
   const { quotes, jobs, invoices, events, settings } = useData()
   const { activeCount: followUpCount } = useFollowUps(quotes, jobs, invoices, settings)
   const navigate = useNavigate()
@@ -384,7 +392,7 @@ export default function AppShell() {
             <NavLink
               to="/settings"
               className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link--active' : ''}`}
-              title="Settings"
+              title="Organisation Settings"
             >
               <Settings size={24} />
             </NavLink>
@@ -530,7 +538,119 @@ export default function AppShell() {
               </span>
             </div>
 
-            {/* organization */}
+            {/* ── Subscription Status ── */}
+            <div style={ps.section}>
+              <div style={ps.sectionTitle}>
+                <CreditCard size={16} color={C.gold} />
+                Subscription
+              </div>
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                background: C.black, border: `1px solid ${C.steel}33`,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.white, textTransform: 'capitalize' }}>
+                    {plan}
+                  </span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                    textTransform: 'uppercase', letterSpacing: 0.5,
+                    color: isActive ? '#6ABF8A' : '#D46A6A',
+                    background: isActive ? '#6ABF8A1A' : '#D46A6A1A',
+                  }}>
+                    {subscription?.status === 'trialing' ? 'Trial' : isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                {subscription?.status === 'trialing' && daysLeft !== null && (
+                  <div style={{ fontSize: 12, color: C.silver }}>
+                    {daysLeft > 0 ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} left on trial` : 'Trial expired'}
+                  </div>
+                )}
+                {subscription?.status === 'active' && subscription.currentPeriodEnd && (
+                  <div style={{ fontSize: 12, color: C.silver }}>
+                    Renews {new Date(subscription.currentPeriodEnd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                )}
+                <button
+                  onClick={() => { setShowProfile(false); navigate('/plans') }}
+                  style={{
+                    width: '100%', marginTop: 10, padding: '8px', borderRadius: 8,
+                    background: 'transparent', border: `1px solid ${C.gold}44`,
+                    color: C.gold, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  {plan === 'trial' ? 'Choose a Plan' : 'Manage Plan'}
+                </button>
+              </div>
+            </div>
+
+            {/* ── Personal Details ── */}
+            <div style={ps.section}>
+              <div style={ps.sectionTitle}>
+                <User size={16} color={C.gold} />
+                Personal Details
+              </div>
+              {editingName ? (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <input
+                    value={profileName}
+                    onChange={e => setProfileName(e.target.value)}
+                    placeholder="Display name"
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8,
+                      background: C.black, border: `1px solid ${C.steel}33`,
+                      color: C.white, fontSize: 13, outline: 'none',
+                    }}
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        setProfileSaving(true)
+                        supabase.from('profiles').update({ display_name: profileName.trim() }).eq('id', user?.id ?? '')
+                          .then(() => { setEditingName(false); setProfileSaving(false); window.location.reload() })
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      setProfileSaving(true)
+                      supabase.from('profiles').update({ display_name: profileName.trim() }).eq('id', user?.id ?? '')
+                        .then(() => { setEditingName(false); setProfileSaving(false); window.location.reload() })
+                    }}
+                    disabled={profileSaving}
+                    style={{
+                      padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      background: C.gold, border: 'none', color: C.charcoal, cursor: 'pointer',
+                    }}
+                  >
+                    {profileSaving ? '...' : 'Save'}
+                  </button>
+                </div>
+              ) : (
+                <div
+                  onClick={() => { setProfileName(user?.displayName ?? ''); setEditingName(true) }}
+                  style={{
+                    padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                    background: C.black, border: `1px solid ${C.steel}33`,
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Name</div>
+                  <div style={{ fontSize: 14, color: C.white, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {user?.displayName ?? '—'}
+                    <Pencil size={12} color={C.steel} />
+                  </div>
+                </div>
+              )}
+              <div style={{
+                padding: '10px 14px', borderRadius: 10,
+                background: C.black, border: `1px solid ${C.steel}33`,
+              }}>
+                <div style={{ fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Email</div>
+                <div style={{ fontSize: 14, color: C.silver }}>{user?.email ?? '—'}</div>
+              </div>
+            </div>
+
+            {/* ── Organization ── */}
             {user?.orgName && (
               <div style={ps.section}>
                 <div style={ps.sectionTitle}>

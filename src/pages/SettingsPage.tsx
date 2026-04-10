@@ -149,7 +149,7 @@ export default function SettingsPage() {
       <SettingsNav active="settings" />
       {/* header */}
       <div style={s.header}>
-        <h1 style={s.heading}>Settings</h1>
+        <h1 style={s.heading}>Organisation Settings</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {saved && <div style={s.saved}><Save size={14} /> Saved</div>}
           <button style={s.saveBtn} onClick={handleSave}>

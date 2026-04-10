@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
-import { Zap, Briefcase, Calendar, Receipt, BarChart3, Wallet, Check, Crown, ArrowRight, Star } from 'lucide-react'
+import { Zap, Briefcase, Calendar, Receipt, BarChart3, Wallet, Check, Crown, ArrowRight } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import type { CSSProperties } from 'react'
 
@@ -377,11 +377,6 @@ export default function Landing() {
       borderRadius: 16,
       padding: '28px 24px',
       border: `1px solid ${C.steel}33`,
-    },
-    stars: {
-      display: 'flex',
-      gap: 4,
-      marginBottom: 12,
     },
     testimonialText: {
       fontSize: 14,
