@@ -1278,12 +1278,20 @@ export default function Jobs() {
                             onChange={e => {
                               let newStatus = e.target.value as JobStatus
 
-                              // Auto-advance: if moving to Invoiced but all active
-                              // invoices are already Paid, skip straight to Paid so
-                              // the job doesn't get stuck in the Invoiced column.
+                              // Auto-advance: if moving to Invoiced (or Complete)
+                              // and all active invoices are already Paid, advance
+                              // to the next logical state so the job doesn't get
+                              // stuck. Only fires for billing-phase statuses —
+                              // pre-work statuses never auto-advance because
+                              // "paid" doesn't mean "work done".
                               if (newStatus === 'Invoiced' && activeInvoices.length > 0) {
                                 const allPaid = activeInvoices.every(i => i.status === 'Paid')
                                 if (allPaid) newStatus = 'Paid'
+                              }
+                              if (newStatus === 'Complete' && activeInvoices.length > 0) {
+                                const allPaid = activeInvoices.every(i => i.status === 'Paid')
+                                const totalInv = activeInvoices.reduce((s, i) => s + i.grandTotal, 0)
+                                if (allPaid && totalInv >= quotedTotal) newStatus = 'Paid'
                               }
 
                               moveJob(selectedJob.id, newStatus)
@@ -3139,20 +3147,24 @@ export default function Jobs() {
                                   <button
                                     onClick={() => {
                                       updateInvoice(inv.id, { status: 'Paid', paidAt: new Date().toISOString().split('T')[0] })
-                                      // Check if ALL active invoices are now paid
+                                      // Auto-advance ONLY kicks in when the work is
+                                      // already done (Complete or Invoiced). A deposit
+                                      // paid while the job is in Scheduled/In Progress
+                                      // does NOT move the job — the money is in but the
+                                      // work isn't finished, so the job stays in the
+                                      // active queue until the user marks it Complete.
+                                      const billingStatuses: JobStatus[] = ['Complete', 'Invoiced']
+                                      if (!billingStatuses.includes(selectedJob.status)) {
+                                        // Pre-work status — payment received, no column move
+                                        return
+                                      }
                                       const allPaidAfter = activeInvoices
                                         .filter(i => i.id !== inv.id)
                                         .every(i => i.status === 'Paid')
                                       if (allPaidAfter) {
-                                        // Auto-advance: Complete → Invoiced → Paid (skip
-                                        // Invoiced visually, go straight to Paid) OR
-                                        // Invoiced → Paid. This handles the case where
-                                        // invoices are paid before the job reaches Invoiced.
                                         moveJob(selectedJob.id, 'Paid')
                                         setSelectedJob({ ...selectedJob, status: 'Paid' })
                                       } else if (selectedJob.status === 'Complete') {
-                                        // Some invoices still unpaid but we just created a
-                                        // payment — advance from Complete to Invoiced
                                         moveJob(selectedJob.id, 'Invoiced')
                                         setSelectedJob({ ...selectedJob, status: 'Invoiced' })
                                       }
