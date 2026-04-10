@@ -44,7 +44,7 @@ export default function Integrations() {
   /* ── Styles ── */
   const s: Record<string, CSSProperties> = {
     page: { padding: '24px 28px 80px', maxWidth: 800, margin: '0 auto' },
-    title: { fontSize: 24, fontWeight: 700, color: C.white, fontFamily: "'Cinzel', serif", marginBottom: 6 },
+    title: { fontSize: 24, fontWeight: 700, color: C.white, marginBottom: 6 },
     subtitle: { fontSize: 14, color: C.silver, marginBottom: 28 },
     card: {
       background: C.charcoal, borderRadius: 14, border: `1px solid ${C.steel}22`,

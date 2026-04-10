@@ -820,25 +820,8 @@ export default function Insights() {
           </div>
         </div>
 
-        {/* smart alerts */}
-        {insightsView === 'detailed' && (
-        <div style={s.panel}>
-          <div style={s.panelTitle}>Smart Alerts</div>
-          {alerts.map((a, i) => (
-            <div
-              key={i}
-              style={{
-                ...s.alertCard,
-                background: a.type === 'warning' ? `${C.gold}15` : a.type === 'success' ? `${C.green}15` : `${C.blue}15`,
-                color: a.type === 'warning' ? C.gold : a.type === 'success' ? C.green : C.blue,
-              }}
-            >
-              {a.icon}
-              <span style={{ color: C.silver }}>{a.message}</span>
-            </div>
-          ))}
-        </div>
-        )}
+        {/* smart alerts — will be computed from real data once enough
+            history is accumulated. Hidden for now to avoid showing fake insights. */}
       </div>
 
       {/* Everything below is detailed view only */}

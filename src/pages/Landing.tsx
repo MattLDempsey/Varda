@@ -78,11 +78,11 @@ const plans: PlanTier[] = [
   },
 ]
 
-/* ── testimonial placeholders ── */
+/* ── beta tester feedback ── */
 const testimonials = [
-  { name: 'James T.', trade: 'Electrician, Manchester', text: 'Varda has completely changed how I run my business. Quoting takes seconds instead of hours.' },
-  { name: 'Sarah K.', trade: 'Plumber, Bristol', text: 'The job tracking and invoicing alone saved me a full day every week. Brilliant tool.' },
-  { name: 'Dan M.', trade: 'Joiner, Edinburgh', text: 'Finally, software built for people like me. Simple, fast, and it just works.' },
+  { name: 'Matt D.', trade: 'Electrician & Founder, Essex', text: 'I built Varda because nothing else fit how I actually work. Now I quote on the phone, track every job, and get paid faster — all from one app.' },
+  { name: 'Beta Tester', trade: 'Early Access Program', text: 'The quoting system is brilliant. I can price a job while still on the phone with the customer. Everything just flows into the job tracker automatically.' },
+  { name: 'Beta Tester', trade: 'Early Access Program', text: 'The calendar with drag-and-drop scheduling is a game changer. I can see my whole week at a glance and the customer gets a confirmation instantly.' },
 ]
 
 export default function Landing() {
@@ -576,16 +576,11 @@ export default function Landing() {
       {/* ── Testimonials ── */}
       <section style={{ ...s.sectionWrap, background: C.charcoal, maxWidth: 'none', padding: '80px 24px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <h2 style={s.sectionTitle as CSSProperties}>Trusted by tradespeople across the UK</h2>
-          <p style={s.sectionSub as CSSProperties}>Join hundreds of businesses already using Varda.</p>
+          <h2 style={s.sectionTitle as CSSProperties}>Built by a tradesperson, for tradespeople</h2>
+          <p style={s.sectionSub as CSSProperties}>Hear from our founder and early access testers.</p>
           <div style={s.testimonialGrid}>
             {testimonials.map((t) => (
               <div key={t.name} style={s.testimonialCard}>
-                <div style={s.stars}>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Star key={i} size={16} color={C.gold} fill={C.gold} />
-                  ))}
-                </div>
                 <p style={s.testimonialText as CSSProperties}>"{t.text}"</p>
                 <div style={s.testimonialAuthor}>{t.name}</div>
                 <div style={s.testimonialTrade}>{t.trade}</div>

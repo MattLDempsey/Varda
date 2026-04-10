@@ -223,14 +223,12 @@ export default function AppShell() {
     },
     avatarLg: {
       width: 72, height: 72, borderRadius: '50%',
-      background: `radial-gradient(circle at 30% 25%, ${C.gold} 0%, ${C.goldDark} 75%, #6B5526 100%)`,
-      color: C.black,
+      background: C.charcoalLight,
+      color: C.silver,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: 28, fontWeight: 700, margin: '0 auto 16px',
       letterSpacing: 0.5,
-      border: `1px solid ${C.gold}`,
-      boxShadow: `0 6px 20px rgba(198,168,106,0.35), inset 0 2px 4px rgba(255,255,255,0.35), inset 0 -3px 6px rgba(0,0,0,0.25)`,
-      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+      border: `1px solid ${C.steel}`,
     },
     userName: { textAlign: 'center', fontSize: 20, fontWeight: 600, color: C.white, marginBottom: 4 },
     userEmail: { textAlign: 'center', fontSize: 13, color: C.silver, marginBottom: 4 },
@@ -408,8 +406,8 @@ export default function AppShell() {
             onClick={() => setShowProfile(true)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowProfile(true) } }}
             style={{
-              background: `radial-gradient(circle at 30% 25%, ${C.gold} 0%, ${C.goldDark} 75%, #6B5526 100%)`,
-              color: C.black,
+              background: C.charcoalLight,
+              color: C.silver,
               fontWeight: 700,
               fontSize: 15,
             }}

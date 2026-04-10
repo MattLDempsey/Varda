@@ -231,9 +231,8 @@ function loadExpenses(): Expense[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed
     }
   } catch { /* ignore */ }
-  const seed = generateSeedExpenses()
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(seed))
-  return seed
+  // No seed data — start clean for real businesses
+  return []
 }
 
 function saveExpenses(expenses: Expense[]) {

@@ -253,7 +253,8 @@ export default function InvoiceView() {
                     const { data, error } = await supabase.functions.invoke('create-invoice-payment', {
                       body: {
                         invoiceId: invoice.id,
-                        orgId: invoice.customerId, // org_id resolved server-side from invoice lookup
+                        // The Edge Function resolves the org from the invoice
+                        // row server-side — no auth context on this public page.
                       },
                     })
                     if (error) throw error

@@ -72,6 +72,7 @@ export default function PricingPage() {
   const [billing, setBilling] = useState<'monthly' | 'annual'>('annual')
 
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
+  const [checkoutError, setCheckoutError] = useState('')
 
   async function handleChoose(planId: Plan) {
     if (planId === currentPlan) return
@@ -94,10 +95,10 @@ export default function PricingPage() {
       if (data.url) {
         window.location.href = data.url
       } else {
-        alert(data.error || 'Failed to create checkout session.')
+        setCheckoutError(data.error || 'Failed to create checkout session. Please try again.')
       }
     } catch {
-      alert('Failed to connect to payment system. Please try again.')
+      setCheckoutError('Failed to connect to payment system. Please try again.')
     }
     setCheckoutLoading(null)
   }
@@ -345,6 +346,11 @@ export default function PricingPage() {
               >
                 {isCurrent ? 'Current Plan' : checkoutLoading === plan.id ? 'Loading...' : 'Choose Plan'}
               </button>
+              {checkoutError && checkoutLoading === null && (
+                <div style={{ fontSize: 12, color: '#D46A6A', textAlign: 'center', marginTop: 8, padding: '6px 10px', borderRadius: 6, background: '#D46A6A15' }}>
+                  {checkoutError}
+                </div>
+              )}
             </div>
           )
         })}

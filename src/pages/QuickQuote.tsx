@@ -1437,6 +1437,12 @@ export default function QuickQuote() {
             onClick={() => {
               if (!hasLines) { setSavedMsg('Add at least one line item'); setTimeout(() => setSavedMsg(''), 2500); return }
               if (!customerName) { setSavedMsg('Enter a customer name first'); setTimeout(() => setSavedMsg(''), 2500); return }
+              // Warn if critical business details are still placeholder values
+              const biz = settings.business
+              if (!biz.businessName || biz.businessName === 'Grey Havens Electrical' || biz.phone === '07XXX XXX XXX' || !biz.email || biz.email === 'info@thegreyhavens.co.uk') {
+                const ok = window.confirm('Your business details look incomplete (name, phone, or email are still default values). The customer will see these on the quote.\n\nContinue anyway, or update in Settings first?')
+                if (!ok) return
+              }
               setShowSendModal(true)
             }}
           >
