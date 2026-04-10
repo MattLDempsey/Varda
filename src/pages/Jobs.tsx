@@ -245,6 +245,15 @@ export default function Jobs() {
       if (linkedQuote?.needsResend) return 'Quote updated — needs resending'
     }
 
+    // One or more scheduled events on this job have been added or modified
+    // since the customer was last notified. Triggered for any job status —
+    // including Scheduled / In Progress — because a time change after the
+    // customer accepted the original schedule needs an updated confirmation.
+    const jobEvents = events.filter(e => e.jobId === job.id)
+    if (jobEvents.length > 0 && jobEvents.some(e => !e.confirmationSentAt)) {
+      return 'Schedule changed — customer needs new confirmation'
+    }
+
     switch (job.status) {
       case 'Quoted':
       case 'Accepted':
@@ -908,8 +917,8 @@ export default function Jobs() {
                 let cta: { label: string; action: () => void } | null = null
                 if (warning.includes('Quote') || warning.includes('quote')) {
                   cta = { label: 'Open Quote', action: () => setPanelTab('quote') }
-                } else if (warning.includes('date') || warning.includes('Date')) {
-                  cta = { label: 'Schedule', action: () => setPanelTab('details') }
+                } else if (warning.includes('Schedule') || warning.includes('schedule') || warning.includes('date') || warning.includes('Date')) {
+                  cta = { label: 'Open Schedule', action: () => setPanelTab('details') }
                 } else if (warning.includes('invoice')) {
                   cta = { label: 'Open Payments', action: () => setPanelTab('payments') }
                 }
@@ -1517,6 +1526,25 @@ export default function Jobs() {
                             View calendar <ChevronRight size={12} />
                           </button>
                         </div>
+
+                        {/* Schedule needs-resend banner — mirrors the quote
+                            needs-resend banner. Shown when at least one event
+                            is unsent AND at least one other event has been
+                            sent before, which means a previously-confirmed
+                            schedule has been changed (vs a brand-new addition
+                            on a never-confirmed job, which uses softer copy). */}
+                        {unconfirmedEvents.length > 0 && jobEvents.some(e => e.confirmationSentAt) && (
+                          <div style={{
+                            marginBottom: 12, padding: '12px 14px', borderRadius: 10,
+                            background: '#D46A6A10', border: '1px solid #D46A6A44',
+                            display: 'flex', alignItems: 'flex-start', gap: 10,
+                          }}>
+                            <AlertCircle size={16} color="#D46A6A" style={{ flexShrink: 0, marginTop: 1 }} />
+                            <div style={{ fontSize: 12, color: C.silver, lineHeight: 1.5 }}>
+                              The schedule has changed since you last sent it. <strong style={{ color: C.white }}>Send an updated confirmation</strong> below so {customer?.name || 'the customer'} sees the new dates.
+                            </div>
+                          </div>
+                        )}
 
                         {/* Already-booked days for this job */}
                         {jobEvents.length > 0 && (

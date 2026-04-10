@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Plus, Clock, X, Download, Calendar, Briefcase } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Clock, X, Download, Calendar, Briefcase, AlertCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type ScheduleEvent, type EventSlot } from '../data/DataContext'
@@ -110,6 +110,14 @@ export default function CalendarPage() {
     previewStartMin: number
     previewEndMin: number
     previewDate: string
+    // The free-gap bounds the card is currently constrained to. Used to
+    // render the gold "you can drop me anywhere in here" highlight.
+    gapFloorMin: number
+    gapCeilingMin: number
+    // True if the user has bumped into a clamp this frame (drives a brief
+    // red flash on the offending boundary).
+    clampedTop: boolean
+    clampedBottom: boolean
     // Pixel position where the pointer first went down (for delta calc)
     pointerStartY: number
     pointerStartX: number
@@ -189,6 +197,27 @@ export default function CalendarPage() {
   const SNAP_MINUTES = 30
   const snap = (mins: number): number => Math.round(mins / SNAP_MINUTES) * SNAP_MINUTES
 
+  // For overlap prevention during drag/resize: find the contiguous "free
+  // gap" on the target day that the candidate position falls into. Returns
+  // the floor (latest end of any event ending before the candidate window)
+  // and ceiling (earliest start of any event starting after it). Drag/resize
+  // clamps within this gap so cards can never overlap.
+  const findGap = (excludeId: string, targetDate: string, candidateStart: number, candidateEnd: number): { floor: number; ceiling: number } => {
+    let floor = DAY_START_HOUR * 60
+    let ceiling = DAY_END_HOUR * 60
+    const others = events.filter(e => e.id !== excludeId && e.date === targetDate)
+    // Use the midpoint of the candidate window to decide which gap we're in.
+    // This gives sensible behaviour when the user drags through an existing
+    // event — the active card moves to whichever side the cursor is closer to.
+    const mid = (candidateStart + candidateEnd) / 2
+    for (const e of others) {
+      const t = eventTimes(e)
+      if (t.endMin <= mid && t.endMin > floor) floor = t.endMin
+      if (t.startMin >= mid && t.startMin < ceiling) ceiling = t.startMin
+    }
+    return { floor, ceiling }
+  }
+
   // ── Global pointer handlers for drag/resize ──
   // We attach these to the window so the drag continues even if the cursor
   // leaves the card. The dragStateRef holds the live state to avoid React
@@ -204,10 +233,8 @@ export default function CalendarPage() {
       // Horizontal drag → day column shift (only for the week view)
       let newDate = drag.origDate
       if (drag.mode === 'move' && view === 'week') {
-        const target = (e.target as HTMLElement | null)?.closest('[data-day-col]') as HTMLElement | null
         const overEl = document.elementFromPoint(e.clientX, e.clientY)
-        const dayCol = (overEl as HTMLElement | null)?.closest?.('[data-day-col]') as HTMLElement | null
-        const col = target || dayCol
+        const col = (overEl as HTMLElement | null)?.closest?.('[data-day-col]') as HTMLElement | null
         if (col?.dataset.dayCol) {
           newDate = col.dataset.dayCol
         }
@@ -238,11 +265,40 @@ export default function CalendarPage() {
         if (drag.mode === 'move') newStart -= shift
       }
 
+      // ── Overlap prevention ──
+      // Find the contiguous free gap on the target day around the candidate
+      // window and clamp our new times within it. This stops cards bleeding
+      // through other events on the same day, regardless of mode.
+      const gap = findGap(drag.eventId, newDate, newStart, newEnd)
+      let clampedTop = false
+      let clampedBottom = false
+      if (drag.mode === 'move') {
+        const duration = newEnd - newStart
+        if (newStart < gap.floor) { newStart = gap.floor; newEnd = newStart + duration; clampedTop = true }
+        if (newEnd > gap.ceiling) { newEnd = gap.ceiling; newStart = newEnd - duration; clampedBottom = true }
+        // If the gap can't fit the duration, don't move at all (stay where we
+        // were). This handles dragging into a gap that's too small.
+        if (newEnd - newStart > gap.ceiling - gap.floor) {
+          newStart = drag.previewStartMin
+          newEnd = drag.previewEndMin
+          newDate = drag.previewDate
+          clampedTop = true; clampedBottom = true
+        }
+      } else if (drag.mode === 'resize-top') {
+        if (newStart < gap.floor) { newStart = gap.floor; clampedTop = true }
+      } else if (drag.mode === 'resize-bottom') {
+        if (newEnd > gap.ceiling) { newEnd = gap.ceiling; clampedBottom = true }
+      }
+
       setDragState(prev => prev ? {
         ...prev,
         previewStartMin: newStart,
         previewEndMin: newEnd,
         previewDate: newDate,
+        gapFloorMin: gap.floor,
+        gapCeilingMin: gap.ceiling,
+        clampedTop,
+        clampedBottom,
       } : prev)
     }
     const onUp = () => {
@@ -283,6 +339,7 @@ export default function CalendarPage() {
     e.stopPropagation()
     e.preventDefault()
     const { startMin, endMin } = eventTimes(ev)
+    const gap = findGap(ev.id, ev.date, startMin, endMin)
     setDragState({
       eventId: ev.id,
       mode,
@@ -292,6 +349,10 @@ export default function CalendarPage() {
       previewStartMin: startMin,
       previewEndMin: endMin,
       previewDate: ev.date,
+      gapFloorMin: gap.floor,
+      gapCeilingMin: gap.ceiling,
+      clampedTop: false,
+      clampedBottom: false,
       pointerStartY: e.clientY,
       pointerStartX: e.clientX,
     })
@@ -658,6 +719,23 @@ export default function CalendarPage() {
                   />
                 ))}
 
+                {/* Drag gap highlight on the column the drag is targeting */}
+                {dragState && dragState.previewDate === dateStr && (() => {
+                  const top = ((dragState.gapFloorMin - DAY_START_HOUR * 60) / 60) * HOUR_HEIGHT
+                  const height = ((dragState.gapCeilingMin - dragState.gapFloorMin) / 60) * HOUR_HEIGHT
+                  return (
+                    <div style={{
+                      position: 'absolute', left: 2, right: 2,
+                      top, height,
+                      background: `${C.gold}10`,
+                      border: `1px dashed ${C.gold}55`,
+                      borderRadius: 4,
+                      pointerEvents: 'none',
+                      zIndex: 0,
+                    }} />
+                  )
+                })()}
+
                 {/* Time-positioned event cards */}
                 {dayEvts.map(ev => {
                   const drag = dragState && dragState.eventId === ev.id ? dragState : null
@@ -678,17 +756,19 @@ export default function CalendarPage() {
                   const height = Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT, 24)
                   const isQuick = ev.slot === 'quick'
                   const isBeingDragged = !!drag
+                  const needsResend = !ev.confirmationSentAt
                   return (
                     <div
                       key={ev.id}
                       onPointerDown={(e) => beginDrag(ev, 'move', e)}
+                      title={needsResend ? 'Customer needs new confirmation — schedule changed' : undefined}
                       style={{
                         position: 'absolute',
                         top, height,
                         left: 4, right: 4,
-                        background: statusColor[ev.status] + (isQuick ? '22' : '15'),
-                        border: `1px solid ${statusColor[ev.status]}55`,
-                        borderLeft: `3px solid ${statusColor[ev.status]}`,
+                        background: needsResend ? '#D46A6A18' : statusColor[ev.status] + (isQuick ? '22' : '15'),
+                        border: `1px solid ${needsResend ? '#D46A6A66' : statusColor[ev.status] + '55'}`,
+                        borderLeft: `3px solid ${needsResend ? '#D46A6A' : statusColor[ev.status]}`,
                         borderRadius: 6,
                         padding: '4px 6px',
                         cursor: isBeingDragged ? 'grabbing' : 'grab',
@@ -703,18 +783,24 @@ export default function CalendarPage() {
                         userSelect: 'none',
                       }}
                     >
-                      {/* Top resize handle */}
+                      {/* Top resize handle — flashes red when clamped against another event */}
                       <div
                         onPointerDown={(e) => beginDrag(ev, 'resize-top', e)}
                         style={{
                           position: 'absolute', top: 0, left: 0, right: 0, height: 5,
                           cursor: 'ns-resize', touchAction: 'none',
+                          background: drag?.clampedTop ? '#D46A6A88' : 'transparent',
+                          transition: 'background .15s',
                         }}
                       />
                       <div style={{
                         fontSize: 11, fontWeight: 700, color: C.white,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>{ev.customerName}</div>
+                        display: 'flex', alignItems: 'center', gap: 3, minWidth: 0,
+                      }}>
+                        {needsResend && <AlertCircle size={10} color="#D46A6A" style={{ flexShrink: 0 }} />}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.customerName}</span>
+                      </div>
                       {height >= 36 && (
                         <div style={{
                           fontSize: 10, color: C.silver,
@@ -729,12 +815,14 @@ export default function CalendarPage() {
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>{ev.jobType}</div>
                       )}
-                      {/* Bottom resize handle */}
+                      {/* Bottom resize handle — flashes red when clamped */}
                       <div
                         onPointerDown={(e) => beginDrag(ev, 'resize-bottom', e)}
                         style={{
                           position: 'absolute', bottom: 0, left: 0, right: 0, height: 5,
                           cursor: 'ns-resize', touchAction: 'none',
+                          background: drag?.clampedBottom ? '#D46A6A88' : 'transparent',
+                          transition: 'background .15s',
                         }}
                       />
                     </div>
@@ -745,7 +833,7 @@ export default function CalendarPage() {
           })}
         </div>
         <div style={{ fontSize: 11, color: C.steel, marginTop: 8, textAlign: 'center' }}>
-          Drag a card to reschedule, or drag the top/bottom edge to resize. Snaps to 30-minute increments.
+          Drag a card to reschedule, or the top/bottom edge to resize. Snaps to 30-minute increments. Cards stop at neighbouring jobs — free up time by adjusting the neighbour first.
         </div>
         </>
       )}
@@ -808,6 +896,25 @@ export default function CalendarPage() {
                 />
               ))}
 
+              {/* Drag gap highlight — shows the free range the dragged
+                  card is allowed to land in. Appears only on the day the
+                  drag is currently targeting. */}
+              {dragState && dragState.previewDate === formatDate(currentDate) && (() => {
+                const top = ((dragState.gapFloorMin - DAY_START_HOUR * 60) / 60) * HOUR_HEIGHT
+                const height = ((dragState.gapCeilingMin - dragState.gapFloorMin) / 60) * HOUR_HEIGHT
+                return (
+                  <div style={{
+                    position: 'absolute', left: 4, right: 4,
+                    top, height,
+                    background: `${C.gold}10`,
+                    border: `1px dashed ${C.gold}55`,
+                    borderRadius: 6,
+                    pointerEvents: 'none',
+                    zIndex: 0,
+                  }} />
+                )
+              })()}
+
               {/* Event cards positioned by their actual times */}
               {dayEvents.map(ev => {
                 const drag = dragState && dragState.eventId === ev.id ? dragState : null
@@ -830,17 +937,22 @@ export default function CalendarPage() {
                 const val = getEventValue(ev)
                 const isQuick = ev.slot === 'quick'
                 const isBeingDragged = !!drag
+                // Schedule has changed since the customer was last notified.
+                // Surface a red warning indicator on the card so the user
+                // sees it without opening the panel.
+                const needsResend = !ev.confirmationSentAt
                 return (
                   <div
                     key={ev.id}
                     onPointerDown={(e) => beginDrag(ev, 'move', e)}
+                    title={needsResend ? 'Customer needs new confirmation — schedule changed' : undefined}
                     style={{
                       position: 'absolute',
                       top, height,
                       left: 8, right: 8,
-                      background: statusColor[ev.status] + (isQuick ? '22' : '15'),
-                      border: `1px solid ${statusColor[ev.status]}55`,
-                      borderLeft: `3px solid ${statusColor[ev.status]}`,
+                      background: needsResend ? '#D46A6A18' : statusColor[ev.status] + (isQuick ? '22' : '15'),
+                      border: `1px solid ${needsResend ? '#D46A6A66' : statusColor[ev.status] + '55'}`,
+                      borderLeft: `3px solid ${needsResend ? '#D46A6A' : statusColor[ev.status]}`,
                       borderRadius: 8,
                       padding: '6px 10px',
                       cursor: isBeingDragged ? 'grabbing' : 'grab',
@@ -855,19 +967,25 @@ export default function CalendarPage() {
                       userSelect: 'none',
                     }}
                   >
-                    {/* Top resize handle */}
+                    {/* Top resize handle — flashes red when clamped */}
                     <div
                       onPointerDown={(e) => beginDrag(ev, 'resize-top', e)}
                       style={{
                         position: 'absolute', top: 0, left: 0, right: 0, height: 6,
                         cursor: 'ns-resize', touchAction: 'none',
+                        background: drag?.clampedTop ? '#D46A6A88' : 'transparent',
+                        transition: 'background .15s',
                       }}
                     />
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                       <div style={{
                         fontSize: 12, fontWeight: 700, color: C.white,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>{ev.customerName}</div>
+                        display: 'flex', alignItems: 'center', gap: 4, minWidth: 0,
+                      }}>
+                        {needsResend && <AlertCircle size={11} color="#D46A6A" style={{ flexShrink: 0 }} />}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.customerName}</span>
+                      </div>
                       <div style={{ fontSize: 10, color: C.silver, fontWeight: 500, flexShrink: 0 }}>
                         {start}–{end}
                       </div>
@@ -885,12 +1003,14 @@ export default function CalendarPage() {
                         {'\u00A3'}{val.toLocaleString('en-GB')}
                       </div>
                     )}
-                    {/* Bottom resize handle */}
+                    {/* Bottom resize handle — flashes red when clamped */}
                     <div
                       onPointerDown={(e) => beginDrag(ev, 'resize-bottom', e)}
                       style={{
                         position: 'absolute', bottom: 0, left: 0, right: 0, height: 6,
                         cursor: 'ns-resize', touchAction: 'none',
+                        background: drag?.clampedBottom ? '#D46A6A88' : 'transparent',
+                        transition: 'background .15s',
                       }}
                     />
                   </div>
@@ -910,7 +1030,7 @@ export default function CalendarPage() {
             </div>
           </div>
           <div style={{ fontSize: 11, color: C.steel, marginTop: 8, textAlign: 'center' }}>
-            Drag a card to reschedule, or drag the top/bottom edge to resize. Snaps to 30-minute increments.
+            Drag a card to reschedule, or the top/bottom edge to resize. Snaps to 30-minute increments. Cards stop at neighbouring jobs — free up time by adjusting the neighbour first.
           </div>
         </>
       )}
