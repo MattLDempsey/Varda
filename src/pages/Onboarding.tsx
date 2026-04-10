@@ -3,6 +3,7 @@ import { Building2, ChevronRight, Sparkles } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../theme/ThemeContext'
 import { validateRequired } from '../lib/validation'
+import { supabase } from '../lib/supabase'
 import type { CSSProperties } from 'react'
 
 type Step = 'setup' | 'success'
@@ -23,6 +24,7 @@ export default function Onboarding() {
   const [businessName, setBusinessName] = useState('')
   const [tradeType, setTradeType] = useState('')
   const [phone, setPhone] = useState('')
+  const [hourlyRate, setHourlyRate] = useState('55')
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
@@ -45,6 +47,22 @@ export default function Onboarding() {
     if (result.error) {
       setError(result.error)
     } else {
+      // Save the hourly rate to pricing config so quotes use it
+      // immediately. The DataProvider isn't mounted during onboarding
+      // so we write directly to Supabase.
+      const rate = Number(hourlyRate) || 55
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', session.user.id).single()
+          if (profile?.org_id) {
+            await supabase.from('pricing_config').upsert({
+              org_id: profile.org_id,
+              config_json: { labourRate: rate, emergencyMult: 1.5, outOfHoursMult: 1.3, wastePct: 0.05, certFee: 85, emergencyMinCharge: 150 },
+            }, { onConflict: 'org_id' })
+          }
+        }
+      } catch { /* best-effort */ }
       setStep('success')
     }
   }
@@ -187,10 +205,28 @@ export default function Onboarding() {
             <input
               style={s.input}
               type="tel"
+              inputMode="tel"
               value={phone}
               onChange={e => setPhone(e.target.value)}
               placeholder="07XXX XXX XXX"
             />
+          </div>
+
+          <div style={s.field}>
+            <label style={s.label}>Your Hourly Rate (£)</label>
+            <input
+              style={s.input}
+              type="number"
+              inputMode="decimal"
+              min={10}
+              step={5}
+              value={hourlyRate}
+              onChange={e => setHourlyRate(e.target.value)}
+              placeholder="55"
+            />
+            <div style={{ fontSize: 11, color: C.steel, marginTop: 4 }}>
+              Used to calculate labour costs in quotes. You can change this later in Settings → Pricing Rules.
+            </div>
           </div>
 
           {error && <div style={s.error as CSSProperties}>{error}</div>}

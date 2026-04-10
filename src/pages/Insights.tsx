@@ -808,6 +808,23 @@ export default function Insights() {
         </div>
       </div>
 
+      {/* Empty state for new users */}
+      {periodJobs.length === 0 && (
+        <div style={{
+          textAlign: 'center', padding: '32px 20px', marginBottom: 24,
+          background: C.charcoalLight, borderRadius: 12,
+          border: `1px dashed ${C.gold}44`,
+        }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: C.white, marginBottom: 6 }}>
+            No completed jobs in this period yet
+          </div>
+          <div style={{ fontSize: 13, color: C.silver, lineHeight: 1.5 }}>
+            Your insights will build automatically as you complete and get paid for jobs.
+            Try switching to "Overall" to see all your data, or create your first quote to get started.
+          </div>
+        </div>
+      )}
+
       {/* KPIs */}
       <div style={s.kpiRow}>
         {kpis.map(k => (

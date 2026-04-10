@@ -323,7 +323,9 @@ export default function Dashboard() {
 
   const onboardingComplete = onboardingItems.filter(i => i.done).length
   const allOnboardingDone = onboardingComplete === onboardingItems.length
-  const showOnboarding = jobs.length < 3 && !onboardingDismissed
+  // Show onboarding until the user has completed at least one full
+  // cycle OR has 5+ jobs OR has explicitly dismissed it.
+  const showOnboarding = jobs.length < 5 && !onboardingDismissed
 
   const dismissOnboarding = useCallback(() => {
     setOnboardingDismissed(true)

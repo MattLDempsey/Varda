@@ -134,12 +134,18 @@ export function customerDisplayName(c: Customer): string {
 
 /**
  * Returns the greeting name for customer-facing comms (emails, WhatsApp):
- *   - Business: contactName (or businessName as fallback)
+ *   - Business: contactName's first name (or businessName as fallback)
  *   - Individual: first name from name
+ * Handles "Surname, First" format by checking for commas.
  */
 export function customerGreetingName(c: Customer): string {
-  if (c.isBusiness && c.contactName) return c.contactName.split(' ')[0]
-  return c.name.split(' ')[0]
+  const raw = c.isBusiness && c.contactName ? c.contactName : c.name
+  // Handle "Surname, First" format
+  if (raw.includes(',')) {
+    const parts = raw.split(',').map(s => s.trim())
+    return parts[1]?.split(' ')[0] || parts[0]
+  }
+  return raw.split(' ')[0]
 }
 
 export interface Quote {

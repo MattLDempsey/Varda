@@ -1491,10 +1491,40 @@ export default function Jobs() {
                         },
                       }
                     } else if (st === 'Complete') {
-                      forward = {
-                        label: 'Create invoice',
-                        icon: '📄',
-                        action: () => setPanelTab('payments'),
+                      const existingInvs = getInvoicesForJob(selectedJob.id).filter(i => i.status !== 'Voided')
+                      if (existingInvs.length === 0 && linkedQuote) {
+                        // One-click: auto-create a Final invoice from the quote total
+                        forward = {
+                          label: 'Invoice this job',
+                          icon: '📄',
+                          action: () => {
+                            const amount = linkedQuote.grandTotal
+                            const vatRate = 0.20
+                            const net = amount / (1 + vatRate)
+                            const vat = amount - net
+                            const payTerms = settings.quoteConfig.paymentTerms || 14
+                            const dueDate = new Date(Date.now() + payTerms * 86400000).toISOString().split('T')[0]
+                            const jobTypeName = selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (linkedQuote.jobTypeName || 'Works')
+                            addInvoice({
+                              jobId: selectedJob.id, quoteId: linkedQuote.id,
+                              customerId: selectedJob.customerId, customerName: selectedJob.customerName,
+                              jobTypeName, description: `Final payment — ${jobTypeName}`,
+                              type: 'Final', netTotal: Math.round(net * 100) / 100,
+                              vat: Math.round(vat * 100) / 100, grandTotal: Math.round(amount * 100) / 100,
+                              status: 'Draft', dueDate,
+                            })
+                            if (user?.orgId) logActivity({ orgId: user.orgId, userId: user.id, userName: user.displayName, action: 'invoice.created', entityType: 'invoice', entityId: selectedJob.id, details: { type: 'Final', amount } })
+                            moveJob(selectedJob.id, 'Invoiced')
+                            setSelectedJob({ ...selectedJob, status: 'Invoiced' })
+                            setPanelTab('payments')
+                          },
+                        }
+                      } else {
+                        forward = {
+                          label: 'Create invoice',
+                          icon: '📄',
+                          action: () => setPanelTab('payments'),
+                        }
                       }
                     }
 

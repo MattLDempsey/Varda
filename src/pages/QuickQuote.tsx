@@ -550,7 +550,7 @@ export default function QuickQuote() {
             customerId: data.customerId,
             customerName: data.customerName,
             jobType: data.jobTypeName || 'TBC',
-            value: Math.round(data.netTotal),
+            value: Math.round(data.grandTotal),
             estimatedHours: data.estHours,
             notes: data.description,
           })
@@ -564,7 +564,7 @@ export default function QuickQuote() {
             customerName: data.customerName || 'Unknown',
             quoteId: q.id,
             jobType: data.jobTypeName || 'TBC',
-            value: Math.round(data.netTotal),
+            value: Math.round(data.grandTotal),
             estimatedHours: data.estHours,
             status: 'Lead',
             date: new Date().toISOString().split('T')[0],
