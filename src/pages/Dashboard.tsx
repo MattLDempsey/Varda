@@ -67,6 +67,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { C } = useTheme()
   const { quotes, jobs, events, invoices, settings, customers, addComm, updateJob, moveJob, isDataLoading } = useData()
+  const [showAllActions, setShowAllActions] = useState(false)
   const { user } = useAuth()
   const isMobile = useIsMobile()
   const today = todayStr()
@@ -448,24 +449,30 @@ export default function Dashboard() {
       </div>
 
       {/* ── Row 2: Today's Schedule + Action Items ── */}
-      <div style={s.columns}>
-        {/* Today's Schedule */}
-        <div style={s.panel}>
+      <div style={{ ...s.columns, alignItems: 'stretch' }}>
+        {/* Today's Schedule — expanded cards when few events,
+            compact when many. Fills available height alongside
+            Action Items using align-items: stretch. */}
+        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
             <span style={s.panelLink} onClick={() => navigate('/calendar')}>
               View Calendar <ChevronRight size={14} />
             </span>
           </div>
+          <div style={{ flex: 1 }}>
           {todaysEvents.length === 0 && (
             <div style={s.empty}>Nothing scheduled today.</div>
           )}
           {todaysEvents.map((ev) => {
-            // Internal events (travel/admin/etc) skip the Start button.
             const isInternal = !!ev.category
             const linkedJob = !isInternal && ev.jobId ? jobs.find(j => j.id === ev.jobId) : undefined
+            const linkedCustomer = !isInternal && ev.customerId ? customers.find(c => c.id === ev.customerId) : undefined
             const canStart = !!linkedJob && linkedJob.status === 'Scheduled'
             const inProgress = !!linkedJob && linkedJob.status === 'In Progress'
+            // Expand cards when 3 or fewer events — show extra detail
+            // like address, phone, value, and time range
+            const expanded = todaysEvents.length <= 3
             const handleStart = (e: React.MouseEvent) => {
               e.stopPropagation()
               if (!linkedJob) return
@@ -473,6 +480,81 @@ export default function Dashboard() {
               updateJob(linkedJob.id, { startedAt: ts })
               moveJob(linkedJob.id, 'In Progress')
             }
+
+            if (expanded) {
+              // Expanded card — more detail, fills the space
+              const SLOT_DEFAULTS_HHMM: Record<string, { start: string; end: string }> = {
+                morning: { start: '08:00', end: '12:00' },
+                afternoon: { start: '12:00', end: '17:00' },
+                full: { start: '08:00', end: '17:00' },
+                quick: { start: '08:00', end: '09:00' },
+              }
+              const def = SLOT_DEFAULTS_HHMM[ev.slot] ?? SLOT_DEFAULTS_HHMM.morning
+              const startTime = ev.startTime || def.start
+              const endTime = ev.endTime || def.end
+              const address = linkedCustomer
+                ? [linkedCustomer.address1, linkedCustomer.city, linkedCustomer.postcode].filter(Boolean).join(', ')
+                : ''
+              return (
+                <div
+                  key={ev.id}
+                  onClick={() => navigate('/calendar')}
+                  style={{
+                    padding: '14px 16px', borderRadius: 10, marginBottom: 8,
+                    background: C.black, cursor: 'pointer',
+                    borderLeft: `3px solid ${inProgress ? C.gold : statusColor[ev.status]}`,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '22')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = C.black)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: C.white }}>{ev.customerName}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {canStart && (
+                        <button onClick={handleStart} style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          padding: '6px 10px', borderRadius: 8,
+                          background: `${C.gold}15`, border: `1px solid ${C.gold}66`,
+                          color: C.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer', minHeight: 30,
+                        }}>
+                          <Play size={11} fill="currentColor" /> Start
+                        </button>
+                      )}
+                      <span style={{
+                        ...s.badge,
+                        color: inProgress ? C.gold : statusColor[ev.status],
+                        background: (inProgress ? C.gold : statusColor[ev.status]) + '1A',
+                      }}>
+                        {linkedJob?.status ?? ev.status}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.silver, marginBottom: 4 }}>
+                    <Clock size={12} color={C.steel} />
+                    <span>{startTime}–{endTime}</span>
+                    <span style={{ color: C.steel }}>·</span>
+                    <span>{isInternal ? 'Internal' : ev.jobType}</span>
+                  </div>
+                  {address && (
+                    <div style={{ fontSize: 11, color: C.steel, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      📍 {address}
+                    </div>
+                  )}
+                  {linkedCustomer?.phone && (
+                    <div style={{ fontSize: 11, color: C.steel }}>
+                      📱 {linkedCustomer.phone}
+                    </div>
+                  )}
+                  {linkedJob && linkedJob.value > 0 && (
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, marginTop: 6 }}>
+                      {fmtCurrency(linkedJob.value)}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            // Compact card — current behaviour for busy days
             return (
               <div
                 key={ev.id}
@@ -490,17 +572,12 @@ export default function Dashboard() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {canStart && (
-                    <button
-                      onClick={handleStart}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 4,
-                        padding: '6px 10px', borderRadius: 8,
-                        background: `${C.gold}15`, border: `1px solid ${C.gold}66`,
-                        color: C.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                        minHeight: 30,
-                      }}
-                      title="Mark this job as started — moves it to In Progress"
-                    >
+                    <button onClick={handleStart} style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '6px 10px', borderRadius: 8,
+                      background: `${C.gold}15`, border: `1px solid ${C.gold}66`,
+                      color: C.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer', minHeight: 30,
+                    }}>
                       <Play size={11} fill="currentColor" /> Start
                     </button>
                   )}
@@ -515,10 +592,12 @@ export default function Dashboard() {
               </div>
             )
           })}
+          </div>
         </div>
 
-        {/* Action Items — powered by FollowUpManager */}
-        <div style={s.panel}>
+        {/* Action Items — shows top 3, expand to see all.
+            Powered by FollowUpManager. */}
+        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
           <div style={s.panelHeader}>
             <h2 style={{ ...s.panelTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Bell size={18} /> Action Items
@@ -544,13 +623,14 @@ export default function Dashboard() {
               </button>
             )}
           </div>
+          <div style={{ flex: 1 }}>
           {visibleFollowUps.length === 0 && (
             <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
               <CheckCircle size={32} color={C.green} />
               <span>All clear — nothing needs attention</span>
             </div>
           )}
-          {visibleFollowUps.slice(0, 8).map((item) => {
+          {visibleFollowUps.slice(0, showAllActions ? undefined : 3).map((item) => {
             const color = priorityColor(item.priority)
             const icon = item.priority === 'high'
               ? <AlertTriangle size={16} />
@@ -599,6 +679,22 @@ export default function Dashboard() {
               </div>
             )
           })}
+          {visibleFollowUps.length > 3 && (
+            <button
+              onClick={() => setShowAllActions(!showAllActions)}
+              style={{
+                width: '100%', padding: '8px', borderRadius: 8, marginTop: 4,
+                background: 'transparent', border: `1px solid ${C.steel}33`,
+                color: C.silver, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = C.gold; e.currentTarget.style.borderColor = `${C.gold}44` }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = C.silver; e.currentTarget.style.borderColor = `${C.steel}33` }}
+            >
+              {showAllActions ? 'Show less' : `Show ${visibleFollowUps.length - 3} more`}
+            </button>
+          )}
+          </div>
         </div>
       </div>
 
