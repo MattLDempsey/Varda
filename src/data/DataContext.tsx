@@ -82,7 +82,7 @@ export const DEFAULT_JOB_TYPE_CONFIGS: JobTypeConfig[] = [
 
 export type JobStatus = 'Lead' | 'Quoted' | 'Accepted' | 'Scheduled' | 'In Progress' | 'Complete' | 'Invoiced' | 'Paid'
 export type QuoteStatus = 'Draft' | 'Sent' | 'Viewed' | 'Accepted' | 'Expired' | 'Declined'
-export type InvoiceStatus = 'Draft' | 'Sent' | 'Viewed' | 'Paid' | 'Overdue'
+export type InvoiceStatus = 'Draft' | 'Sent' | 'Viewed' | 'Paid' | 'Overdue' | 'Voided'
 export type InvoiceType = 'Deposit' | 'Progress' | 'Final' | 'Custom'
 export type CommChannel = 'email' | 'whatsapp' | 'sms'
 export type CommStatus = 'Sent' | 'Delivered' | 'Read' | 'Failed'

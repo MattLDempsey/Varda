@@ -94,6 +94,7 @@ const invoiceStatusColors: Record<string, string> = {
   Viewed: '#5B9BD5',
   Paid: '#4CAF50',
   Overdue: '#D46A6A',
+  Voided: '#8A8F96',
 }
 
 export default function Jobs() {
@@ -1020,10 +1021,17 @@ export default function Jobs() {
       {selectedJob && (() => {
         const linkedQuote = selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId) : undefined
         const jobInvoices = invoices.filter(i => i.jobId === selectedJob.id)
+        const activeInvoices = jobInvoices.filter(i => i.status !== 'Voided')
+        const voidedPaidInvoices = jobInvoices.filter(i => i.status === 'Voided' && i.paidAt)
         const quotedTotal = linkedQuote?.grandTotal ?? selectedJob.value
-        const totalInvoiced = jobInvoices.reduce((sum, i) => sum + i.grandTotal, 0)
-        const totalPaid = jobInvoices.filter(i => i.status === 'Paid').reduce((sum, i) => sum + i.grandTotal, 0)
-        const remaining = Math.max(0, quotedTotal - totalInvoiced)
+        // Active totals — voided invoices don't count toward invoiced/paid
+        const totalInvoiced = activeInvoices.reduce((sum, i) => sum + i.grandTotal, 0)
+        const totalPaid = activeInvoices.filter(i => i.status === 'Paid').reduce((sum, i) => sum + i.grandTotal, 0)
+        // Customer credit from voided invoices that were already paid —
+        // this money is in the bank and needs to be offset against the next
+        // invoice or refunded.
+        const customerCredit = voidedPaidInvoices.reduce((sum, i) => sum + i.grandTotal, 0)
+        const remaining = Math.max(0, quotedTotal - totalInvoiced - customerCredit)
 
         const tabBtnStyle = (active: boolean): CSSProperties => ({
           padding: '7px 14px',
@@ -3016,25 +3024,32 @@ export default function Jobs() {
                   {jobInvoices.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
                       {jobInvoices.map(inv => {
+                        const isVoided = inv.status === 'Voided'
                         const invTypeColor = inv.type ? invoiceTypeColors[inv.type] : C.steel
-                        const invStatusColor = invoiceStatusColors[inv.status] ?? C.steel
+                        const invStatusColor = isVoided ? '#8A8F96' : (invoiceStatusColors[inv.status] ?? C.steel)
                         return (
                           <div key={inv.id} style={{
                             background: C.black, borderRadius: 10, padding: '10px 14px',
-                            borderLeft: `3px solid ${invTypeColor}`,
+                            borderLeft: `3px solid ${isVoided ? '#8A8F96' : invTypeColor}`,
+                            opacity: isVoided ? 0.55 : 1,
                           }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 {inv.type && (
                                   <span style={{
                                     fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                                    color: invTypeColor, background: invTypeColor + '1A',
+                                    color: isVoided ? '#8A8F96' : invTypeColor,
+                                    background: (isVoided ? '#8A8F96' : invTypeColor) + '1A',
                                     textTransform: 'uppercase', letterSpacing: 0.5,
+                                    textDecoration: isVoided ? 'line-through' : 'none',
                                   }}>
                                     {inv.type}
                                   </span>
                                 )}
-                                <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{inv.ref}</span>
+                                <span style={{
+                                  fontSize: 13, fontWeight: 600, color: C.white,
+                                  textDecoration: isVoided ? 'line-through' : 'none',
+                                }}>{inv.ref}</span>
                               </div>
                               <span style={{
                                 fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
@@ -3130,56 +3145,73 @@ export default function Jobs() {
                                     <Receipt size={12} /> Paid
                                   </button>
                                 )}
-                                {/* Delete invoice — warns if already sent or paid */}
-                                <button
-                                  onClick={() => {
-                                    let msg = `Delete invoice ${inv.ref} (${fmtCurrencyDecimals(inv.grandTotal)})?`
-                                    if (inv.status === 'Paid') {
-                                      msg += '\n\nThis invoice has already been marked as paid. Deleting it will affect your revenue records.'
-                                    } else if (inv.status === 'Sent' || inv.status === 'Viewed') {
-                                      msg += '\n\nThis invoice has already been sent to the customer. They may still have the link.'
-                                    }
-                                    if (!window.confirm(msg)) return
-                                    const invData = { ...inv }
-                                    deleteInvoice(inv.id)
-                                    // If deleting drops us below the invoiced threshold, revert
-                                    // the job from Invoiced/Paid back to Complete.
-                                    if (['Invoiced', 'Paid'].includes(selectedJob.status)) {
-                                      const remainingInvoices = jobInvoices.filter(i => i.id !== inv.id)
-                                      if (remainingInvoices.length === 0) {
-                                        moveJob(selectedJob.id, 'Complete')
-                                        setSelectedJob({ ...selectedJob, status: 'Complete' })
+                                {/* Delete / Void invoice. Paid invoices can only
+                                    be voided (never hard-deleted) because the
+                                    money has been received — voiding creates a
+                                    customer credit instead. Draft/Sent/Viewed
+                                    invoices can be fully deleted. */}
+                                {inv.status !== 'Voided' && (
+                                  <button
+                                    onClick={() => {
+                                      if (inv.status === 'Paid') {
+                                        // Void — don't delete
+                                        const ok = window.confirm(
+                                          `Void invoice ${inv.ref} (${fmtCurrencyDecimals(inv.grandTotal)})?\n\n` +
+                                          `This invoice has been paid — it can't be deleted. Voiding it will:\n` +
+                                          `• Keep the record for your accounting history\n` +
+                                          `• Create a customer credit of ${fmtCurrencyDecimals(inv.grandTotal)}\n` +
+                                          `• Auto-deduct the credit from the next invoice on this job`
+                                        )
+                                        if (!ok) return
+                                        updateInvoice(inv.id, { status: 'Voided' })
+                                        // Revert job from Paid back to Invoiced/Complete
+                                        if (selectedJob.status === 'Paid') {
+                                          const stillActive = activeInvoices.filter(i => i.id !== inv.id && i.status !== 'Voided')
+                                          const target = stillActive.length > 0 ? 'Invoiced' : 'Complete'
+                                          moveJob(selectedJob.id, target)
+                                          setSelectedJob({ ...selectedJob, status: target })
+                                        }
+                                      } else {
+                                        // Hard delete
+                                        let msg = `Delete invoice ${inv.ref} (${fmtCurrencyDecimals(inv.grandTotal)})?`
+                                        if (inv.status === 'Sent' || inv.status === 'Viewed') {
+                                          msg += '\n\nThis invoice has been sent to the customer. They may still have the link.'
+                                        }
+                                        if (!window.confirm(msg)) return
+                                        const invData = { ...inv }
+                                        deleteInvoice(inv.id)
+                                        if (['Invoiced', 'Paid'].includes(selectedJob.status)) {
+                                          const rem = activeInvoices.filter(i => i.id !== inv.id && i.status !== 'Voided')
+                                          if (rem.length === 0) {
+                                            moveJob(selectedJob.id, 'Complete')
+                                            setSelectedJob({ ...selectedJob, status: 'Complete' })
+                                          }
+                                        }
+                                        showUndo({
+                                          message: `Invoice ${invData.ref} deleted`,
+                                          undo: () => addInvoice({
+                                            jobId: invData.jobId, quoteId: invData.quoteId,
+                                            customerId: invData.customerId, customerName: invData.customerName,
+                                            jobTypeName: invData.jobTypeName, description: invData.description,
+                                            type: invData.type, netTotal: invData.netTotal,
+                                            vat: invData.vat, grandTotal: invData.grandTotal,
+                                            status: invData.status, dueDate: invData.dueDate,
+                                          }),
+                                        })
                                       }
-                                    }
-                                    showUndo({
-                                      message: `Invoice ${invData.ref} deleted`,
-                                      undo: () => addInvoice({
-                                        jobId: invData.jobId,
-                                        quoteId: invData.quoteId,
-                                        customerId: invData.customerId,
-                                        customerName: invData.customerName,
-                                        jobTypeName: invData.jobTypeName,
-                                        description: invData.description,
-                                        type: invData.type,
-                                        netTotal: invData.netTotal,
-                                        vat: invData.vat,
-                                        grandTotal: invData.grandTotal,
-                                        status: invData.status,
-                                        dueDate: invData.dueDate,
-                                      }),
-                                    })
-                                  }}
-                                  style={{
-                                    background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 6,
-                                    color: C.steel, cursor: 'pointer', padding: '4px 6px', fontSize: 11,
-                                    display: 'flex', alignItems: 'center', minHeight: 30,
-                                  }}
-                                  onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A'; e.currentTarget.style.borderColor = '#D46A6A66' }}
-                                  onMouseLeave={e => { e.currentTarget.style.color = C.steel; e.currentTarget.style.borderColor = `${C.steel}33` }}
-                                  title="Delete this invoice"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
+                                    }}
+                                    style={{
+                                      background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 6,
+                                      color: C.steel, cursor: 'pointer', padding: '4px 6px', fontSize: 11,
+                                      display: 'flex', alignItems: 'center', gap: 4, minHeight: 30,
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A'; e.currentTarget.style.borderColor = '#D46A6A66' }}
+                                    onMouseLeave={e => { e.currentTarget.style.color = C.steel; e.currentTarget.style.borderColor = `${C.steel}33` }}
+                                    title={inv.status === 'Paid' ? 'Void this invoice (creates a customer credit)' : 'Delete this invoice'}
+                                  >
+                                    <Trash2 size={12} /> {inv.status === 'Paid' ? 'Void' : ''}
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -3199,6 +3231,12 @@ export default function Jobs() {
                         <span>Total Paid</span>
                         <span style={{ fontWeight: 600 }}>{fmtCurrencyDecimals(totalPaid)}</span>
                       </div>
+                      {customerCredit > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#5BBFD4' }}>
+                          <span>Customer Credit</span>
+                          <span style={{ fontWeight: 600 }}>−{fmtCurrencyDecimals(customerCredit)}</span>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: remaining > 0 ? C.gold : C.steel }}>
                         <span>Remaining</span>
                         <span style={{ fontWeight: 600 }}>{fmtCurrencyDecimals(remaining)}</span>
