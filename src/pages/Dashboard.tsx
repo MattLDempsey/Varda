@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useRef, useLayoutEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FileText, Briefcase, PoundSterling, Clock, TrendingUp,
@@ -69,6 +69,20 @@ export default function Dashboard() {
   const { quotes, jobs, events, invoices, settings, customers, addComm, updateJob, moveJob, isDataLoading } = useData()
   const [actionPage, setActionPage] = useState(0)
   const ACTIONS_PER_PAGE = 3
+  // Measure the Action Items panel height and apply it to Schedule
+  // so Action Items is always the height driver.
+  const actionPanelRef = useRef<HTMLDivElement>(null)
+  const [actionPanelHeight, setActionPanelHeight] = useState<number>(0)
+  useLayoutEffect(() => {
+    if (!actionPanelRef.current) return
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setActionPanelHeight(entry.contentRect.height + 40) // +padding
+      }
+    })
+    ro.observe(actionPanelRef.current)
+    return () => ro.disconnect()
+  }, [])
   const { user } = useAuth()
   const isMobile = useIsMobile()
   const today = todayStr()
@@ -454,11 +468,15 @@ export default function Dashboard() {
           card format dynamically (expanded vs compact) rather than
           scrolling, so both panels feel like peers on the same row
           without either one pushing the layout. */}
-      <div style={{ ...s.columns, alignItems: 'stretch' }}>
-        {/* Today's Schedule — stretches to match Action Items height
-            via align-items: stretch. Content adapts its format
-            dynamically rather than scrolling. */}
-        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
+      <div style={s.columns}>
+        {/* Today's Schedule — height is constrained to match Action
+            Items via a measured ref. Content adapts its format
+            dynamically: expanded for 1–2 events, compact for 3+. */}
+        <div style={{
+          ...s.panel,
+          ...(actionPanelHeight > 0 ? { height: actionPanelHeight, overflow: 'hidden' } : {}),
+          display: 'flex', flexDirection: 'column',
+        }}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
             <span style={s.panelLink} onClick={() => navigate('/calendar')}>
@@ -602,9 +620,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Action Items — shows top 3, expand to see all.
-            Powered by FollowUpManager. */}
-        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
+        {/* Action Items — shows top 3 per page with pagination.
+            This panel's measured height drives the Schedule panel's
+            height constraint. */}
+        <div ref={actionPanelRef} style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
           <div style={s.panelHeader}>
             <h2 style={{ ...s.panelTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Bell size={18} /> Action Items
