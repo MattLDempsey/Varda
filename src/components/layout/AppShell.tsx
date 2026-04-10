@@ -101,6 +101,9 @@ export default function AppShell() {
   const [editingName, setEditingName] = useState(false)
   const [profileName, setProfileName] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
+  const [editingOrgName, setEditingOrgName] = useState(false)
+  const [orgNameValue, setOrgNameValue] = useState('')
+  const [orgSaving, setOrgSaving] = useState(false)
   const { quotes, jobs, invoices, events, settings } = useData()
   const { activeCount: followUpCount } = useFollowUps(quotes, jobs, invoices, settings)
   const navigate = useNavigate()
@@ -230,13 +233,13 @@ export default function AppShell() {
       padding: 8, minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
     },
     avatarLg: {
-      width: 72, height: 72, borderRadius: '50%',
+      width: 80, height: 80, borderRadius: '50%',
       background: C.charcoalLight,
-      color: C.silver,
+      color: C.gold,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 28, fontWeight: 700, margin: '0 auto 16px',
+      fontSize: 30, fontWeight: 800, margin: '0 auto 16px',
       letterSpacing: 0.5,
-      border: `1px solid ${C.steel}`,
+      border: `2px solid ${C.steel}`,
     },
     userName: { textAlign: 'center', fontSize: 20, fontWeight: 600, color: C.white, marginBottom: 4 },
     userEmail: { textAlign: 'center', fontSize: 13, color: C.silver, marginBottom: 4 },
@@ -285,8 +288,8 @@ export default function AppShell() {
     },
     roleSelect: {
       fontSize: 12, padding: '4px 8px', borderRadius: 6,
-      background: `${C.steel}22`, color: C.white, border: `1px solid ${C.steel}44`,
-      cursor: 'pointer', outline: 'none',
+      background: C.black, color: C.white, border: `1px solid ${C.steel}44`,
+      cursor: 'pointer', outline: 'none', colorScheme: 'dark' as const,
     },
     removeBtn: {
       background: 'transparent', border: 'none', color: '#D46A6A', cursor: 'pointer',
@@ -306,8 +309,9 @@ export default function AppShell() {
     },
     select: {
       fontSize: 14, padding: '10px 12px', borderRadius: 8,
-      background: `${C.steel}11`, color: C.white, border: `1px solid ${C.steel}33`,
+      background: C.black, color: C.white, border: `1px solid ${C.steel}33`,
       cursor: 'pointer', outline: 'none',
+      colorScheme: 'dark',
     },
     inviteBtn: {
       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -414,10 +418,8 @@ export default function AppShell() {
             onClick={() => setShowProfile(true)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowProfile(true) } }}
             style={{
-              background: C.charcoalLight,
-              color: C.silver,
-              fontWeight: 700,
-              fontSize: 15,
+              fontWeight: 800,
+              fontSize: 16,
             }}
           >
             {initials}
@@ -603,18 +605,19 @@ export default function AppShell() {
                     }}
                     autoFocus
                     onKeyDown={e => {
-                      if (e.key === 'Enter') {
+                      if (e.key === 'Enter' && profileName.trim()) {
                         setProfileSaving(true)
                         supabase.from('profiles').update({ display_name: profileName.trim() }).eq('id', user?.id ?? '')
-                          .then(() => { setEditingName(false); setProfileSaving(false); window.location.reload() })
+                          .then(() => { setEditingName(false); setProfileSaving(false) })
                       }
                     }}
                   />
                   <button
                     onClick={() => {
+                      if (!profileName.trim()) return
                       setProfileSaving(true)
                       supabase.from('profiles').update({ display_name: profileName.trim() }).eq('id', user?.id ?? '')
-                        .then(() => { setEditingName(false); setProfileSaving(false); window.location.reload() })
+                        .then(() => { setEditingName(false); setProfileSaving(false) })
                     }}
                     disabled={profileSaving}
                     style={{
@@ -650,7 +653,7 @@ export default function AppShell() {
               </div>
             </div>
 
-            {/* ── Organization ── */}
+            {/* ── Organisation ── */}
             {user?.orgName && (
               <div style={ps.section}>
                 <div style={ps.sectionTitle}>
@@ -662,7 +665,49 @@ export default function AppShell() {
                     <Building2 size={20} color={C.gold} />
                   </div>
                   <div>
-                    <div style={ps.orgName}>{user.orgName}</div>
+                    {editingOrgName ? (
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input
+                          value={orgNameValue}
+                          onChange={e => setOrgNameValue(e.target.value)}
+                          autoFocus
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && orgNameValue.trim()) {
+                              setOrgSaving(true)
+                              supabase.from('organizations').update({ name: orgNameValue.trim() }).eq('id', user.orgId)
+                                .then(() => { setEditingOrgName(false); setOrgSaving(false) })
+                            }
+                            if (e.key === 'Escape') setEditingOrgName(false)
+                          }}
+                          style={{
+                            flex: 1, padding: '4px 8px', borderRadius: 6,
+                            background: C.black, border: `1px solid ${C.steel}44`,
+                            color: C.white, fontSize: 14, fontWeight: 600, outline: 'none',
+                          }}
+                        />
+                        <button
+                          onClick={() => {
+                            if (!orgNameValue.trim()) return
+                            setOrgSaving(true)
+                            supabase.from('organizations').update({ name: orgNameValue.trim() }).eq('id', user.orgId)
+                              .then(() => { setEditingOrgName(false); setOrgSaving(false) })
+                          }}
+                          disabled={orgSaving}
+                          style={{
+                            padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                            background: C.gold, border: 'none', color: C.charcoal, cursor: 'pointer',
+                          }}
+                        >{orgSaving ? '...' : 'Save'}</button>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => { if (isOwner) { setOrgNameValue(user.orgName || ''); setEditingOrgName(true) } }}
+                        style={{ cursor: isOwner ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <div style={ps.orgName}>{user.orgName}</div>
+                        {isOwner && <Pencil size={11} color={C.steel} />}
+                      </div>
+                    )}
                     <div style={ps.orgSub}>{teamMembers.length > 0 ? `${teamMembers.length} team member${teamMembers.length === 1 ? '' : 's'}` : ''}</div>
                   </div>
                 </div>

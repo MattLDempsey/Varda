@@ -110,22 +110,23 @@
   min-width: 44px;
   min-height: 44px;
   border-radius: 50%;
-  border: 1px solid var(--color-steel);
+  border: 2px solid var(--color-steel);
   background-color: var(--color-charcoal-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.3px;
-  color: var(--color-silver);
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  color: var(--color-gold);
   cursor: pointer;
-  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), transform var(--transition-fast);
 }
 
 .sidebar-avatar:hover {
   border-color: var(--color-gold);
   background-color: var(--color-steel);
+  transform: scale(1.05);
 }
 
 .sidebar-avatar {
