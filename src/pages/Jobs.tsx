@@ -1455,9 +1455,9 @@ export default function Jobs() {
                       if (confirmVia.whatsapp && customer?.phone) {
                         const phone = customer.phone.replace(/\s/g, '').replace(/^0/, '44')
                         const intro = confirmMode === 'resend'
-                          ? `Hi ${customer.name}, just resending the booking details from ${biz.businessName}:`
-                          : `Hi ${customer.name}, just confirming your booking with ${biz.businessName} for:`
-                        const text = `${intro}\n\n${sendSummary}\n\nLet me know if there are any issues.`
+                          ? `Hi ${customer.name}, resending the booking details from ${biz.businessName}. We've got you down for:`
+                          : `Hi ${customer.name}, ${biz.businessName} here. I've got you booked in for:`
+                        const text = `${intro}\n\n${sendSummary}\n\nPlease let me know if any of these don't work and I'll find another time. Otherwise see you then!`
                         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank')
                         if (customer.id) {
                           addComm({
@@ -1479,6 +1479,16 @@ export default function Jobs() {
                       const ts = new Date().toISOString()
                       for (const ev of eventsForSend) {
                         updateEvent(ev.id, { confirmationSentAt: ts })
+                      }
+
+                      // Implicit acceptance: silence is consent. The moment
+                      // we tell the customer their dates, the job moves to
+                      // Scheduled. If they push back, the user reschedules
+                      // and the job stays in Scheduled either way. Only on
+                      // initial send — resends are no-ops here.
+                      if (confirmMode === 'initial' && selectedJob.status === 'Accepted') {
+                        moveJob(selectedJob.id, 'Scheduled')
+                        setSelectedJob({ ...selectedJob, status: 'Scheduled' })
                       }
 
                       const channels = [confirmVia.email && 'Email', confirmVia.whatsapp && 'WhatsApp'].filter(Boolean).join(' + ')
@@ -1593,33 +1603,20 @@ export default function Jobs() {
                           </button>
                         )}
 
-                        {/* After-send: prompt the user to mark the customer as
-                            having accepted, which is what moves the job into
-                            the Scheduled column. Only relevant while the job
-                            is still sitting in Accepted. */}
-                        {confirmSentMsg && selectedJob.status === 'Accepted' && (
+                        {/* After-send confirmation note. The job has already
+                            been moved to Scheduled by handleSendConfirmation —
+                            silence is consent. The user only needs to act if
+                            the customer pushes back. */}
+                        {confirmSentMsg && (
                           <div style={{
-                            marginBottom: 12, padding: '12px 14px', borderRadius: 10,
-                            background: `${C.gold}08`, border: `1px solid ${C.gold}33`,
+                            marginBottom: 12, padding: '10px 14px', borderRadius: 10,
+                            background: '#6ABF8A12', border: '1px solid #6ABF8A44',
+                            display: 'flex', alignItems: 'flex-start', gap: 10,
                           }}>
-                            <div style={{ fontSize: 12, color: C.silver, marginBottom: 10, lineHeight: 1.5 }}>
-                              {confirmSentMsg}. Once {customer?.name || 'the customer'} replies to confirm, mark these dates as accepted to move the job into Scheduled.
+                            <CheckCircle size={14} color="#6ABF8A" style={{ flexShrink: 0, marginTop: 2 }} />
+                            <div style={{ fontSize: 12, color: C.silver, lineHeight: 1.5 }}>
+                              {confirmSentMsg}. {customer?.name || 'The customer'} will reply if they need to reschedule.
                             </div>
-                            <button
-                              onClick={() => {
-                                moveJob(selectedJob.id, 'Scheduled')
-                                setSelectedJob({ ...selectedJob, status: 'Scheduled' })
-                                setConfirmSentMsg('')
-                              }}
-                              style={{
-                                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                cursor: 'pointer', minHeight: 40,
-                                background: `${C.gold}20`, border: `1px solid ${C.gold}66`, color: C.gold,
-                              }}
-                            >
-                              <CheckCircle size={14} /> Customer accepted — mark as scheduled
-                            </button>
                           </div>
                         )}
 

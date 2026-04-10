@@ -230,14 +230,14 @@ export interface BookingConfirmationEmailParams {
 
 export function buildBookingConfirmationEmail(params: BookingConfirmationEmailParams): { subject: string; html: string; text: string } {
   const { customerName, businessName, jobTitle, date, time, address, bookingUrl, businessPhone, businessEmail } = params
-  const subject = `Booking confirmed — ${jobTitle}`
+  const subject = `Your booking with ${businessName} — ${jobTitle}`
 
   const bodyRows = `
   <tr>
     <td style="padding: 24px 40px 0 40px;">
       <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(customerName)},</h2>
       <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: ${COLORS.silver};">
-        Your booking with ${esc(businessName)} has been confirmed. Here are the details:
+        I've got you booked in with ${esc(businessName)} for the work below. <strong style="color: ${COLORS.white};">Please reply to this email or give me a call if any of these dates don't work</strong> — otherwise I'll see you then.
       </p>
     </td>
   </tr>
@@ -259,14 +259,14 @@ export function buildBookingConfirmationEmail(params: BookingConfirmationEmailPa
   <tr>
     <td style="padding: 20px 40px 0 40px;">
       <p style="margin: 0; font-size: 13px; line-height: 1.5; color: ${COLORS.muted};">
-        Need to reschedule? Call ${esc(businessPhone)} or reply to this email.
+        Need to change anything? Call ${esc(businessPhone)} or reply to this email and I'll sort it out.
       </p>
     </td>
   </tr>`
 
   const text = `Hi ${customerName},
 
-Your booking with ${businessName} has been confirmed.
+I've got you booked in with ${businessName} for the work below. Please reply or give me a call if any of these dates don't work — otherwise I'll see you then.
 
 Job: ${jobTitle}
 Date: ${date}
@@ -274,7 +274,7 @@ ${time ? `Time: ${time}` : ''}
 ${address ? `Address: ${address}` : ''}
 ${bookingUrl ? `\nView booking: ${bookingUrl}` : ''}
 
-Need to reschedule? Call ${businessPhone} or email ${businessEmail}.
+Need to change anything? Call ${businessPhone} or email ${businessEmail}.
 
 ${businessName}`
 

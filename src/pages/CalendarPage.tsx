@@ -126,7 +126,34 @@ export default function CalendarPage() {
 
   const monthLabel = `${MONTHS_FULL[currentDate.getMonth()]} ${currentDate.getFullYear()}`
 
-  const dayHours = Array.from({ length: 12 }, (_, i) => i + 7) // 7am-6pm
+  // ── Day view time-grid constants ──
+  // Pixel height for each hour row in the day view. Used to position event
+  // cards by their actual start time and stretch them to their duration.
+  const HOUR_HEIGHT = 64
+  const DAY_START_HOUR = 6  // 06:00
+  const DAY_END_HOUR = 20   // 20:00 (8pm)
+  const DAY_GRID_HEIGHT = (DAY_END_HOUR - DAY_START_HOUR) * HOUR_HEIGHT
+  const dayGridHours = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => DAY_START_HOUR + i)
+
+  // Resolve an event's effective time range, falling back to slot defaults
+  // when explicit start_time/end_time aren't set (legacy events or untouched
+  // half-day blocks).
+  const SLOT_DEFAULTS_HHMM: Record<string, { start: string; end: string }> = {
+    morning:   { start: '08:00', end: '12:00' },
+    afternoon: { start: '12:00', end: '17:00' },
+    full:      { start: '08:00', end: '17:00' },
+    quick:     { start: '08:00', end: '09:00' },
+  }
+  const parseHHMM = (s: string): number => {
+    const [h, m] = s.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+  const eventTimes = (ev: { slot: string; startTime?: string | null; endTime?: string | null }) => {
+    const def = SLOT_DEFAULTS_HHMM[ev.slot] ?? SLOT_DEFAULTS_HHMM.morning
+    const start = ev.startTime || def.start
+    const end = ev.endTime || def.end
+    return { start, end, startMin: parseHHMM(start), endMin: parseHHMM(end) }
+  }
 
   const dayEvents = events.filter(e => e.date === formatDate(currentDate))
 
@@ -447,7 +474,13 @@ export default function CalendarPage() {
                     {val > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: C.gold, marginTop: 1 }}>{'\u00A3'}{val.toLocaleString('en-GB')}</div>}
                     <div style={s.eventSlot as CSSProperties}>
                       <Clock size={10} />
-                      {ev.slot === 'full' ? 'Full day' : ev.slot === 'morning' ? 'AM' : 'PM'}
+                      {ev.slot === 'full'
+                        ? 'Full day'
+                        : ev.slot === 'morning'
+                          ? 'AM'
+                          : ev.slot === 'afternoon'
+                            ? 'PM'
+                            : (ev.startTime || 'Quick')}
                     </div>
                   </div>
                   )
@@ -458,58 +491,134 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* day view */}
+      {/* day view — proper time-positioned grid. Each event card sits at
+          its actual start time and stretches to its duration, so a Quick
+          fit-in at 11:00–12:00 visibly slots in next to (or shrinks)
+          the morning block. */}
       {view === 'day' && (
         <>
-          <div style={s.dayGrid}>
-            {dayHours.map(hour => {
-              const slotEvents = dayEvents.filter(e => {
-                if (e.slot === 'full') return true
-                if (e.slot === 'morning' && hour >= 7 && hour < 12) return true
-                if (e.slot === 'afternoon' && hour >= 12 && hour <= 18) return true
-                return false
-              })
-              const isFirstSlot = hour === 7 || hour === 12
-              const showEvents = slotEvents.length > 0 && isFirstSlot
+          <div style={{
+            position: 'relative',
+            display: 'grid',
+            gridTemplateColumns: '64px 1fr',
+            background: `${C.steel}22`,
+            borderRadius: 12,
+            overflow: 'hidden',
+            gap: 1,
+          }}>
+            {/* Hour labels column */}
+            <div style={{ background: C.charcoalLight, position: 'relative', height: DAY_GRID_HEIGHT }}>
+              {dayGridHours.map(hour => (
+                <div
+                  key={`label-${hour}`}
+                  style={{
+                    position: 'absolute',
+                    top: (hour - DAY_START_HOUR) * HOUR_HEIGHT,
+                    right: 8,
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: C.steel,
+                    transform: 'translateY(-6px)',
+                  }}
+                >
+                  {String(hour).padStart(2, '0')}:00
+                </div>
+              ))}
+            </div>
 
-              return [
-                <div key={`t-${hour}`} style={s.timeLabel}>
-                  {hour <= 12 ? `${hour}:00` : `${hour}:00`}
-                </div>,
-                <div key={`s-${hour}`} style={s.timeSlot}>
-                  {showEvents && slotEvents.map(ev => {
-                    const val = getEventValue(ev)
-                    return (
-                    <div
-                      key={ev.id}
-                      style={{
-                        ...s.eventCard,
-                        borderLeftColor: statusColor[ev.status],
-                        background: statusColor[ev.status] + '15',
-                        flex: 1,
-                      }}
-                      onClick={() => setSelectedEvent(ev)}
-                    >
-                      <div style={s.eventCustomer}>{ev.customerName}</div>
-                      <div style={s.eventJob}>{ev.jobType}</div>
-                      {val > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: C.gold, marginTop: 1 }}>{'\u00A3'}{val.toLocaleString('en-GB')}</div>}
-                      <div style={s.eventSlot as CSSProperties}>
-                        <Clock size={10} />
-                        {ev.slot === 'full' ? 'Full day' : ev.slot === 'morning' ? '7:00–12:00' : '12:00–18:00'}
+            {/* Events column */}
+            <div style={{
+              position: 'relative',
+              background: C.charcoal,
+              height: DAY_GRID_HEIGHT,
+            }}>
+              {/* Hour grid lines */}
+              {dayGridHours.map(hour => (
+                <div
+                  key={`line-${hour}`}
+                  style={{
+                    position: 'absolute',
+                    left: 0, right: 0,
+                    top: (hour - DAY_START_HOUR) * HOUR_HEIGHT,
+                    borderTop: `1px solid ${C.steel}22`,
+                    pointerEvents: 'none',
+                  }}
+                />
+              ))}
+
+              {/* Event cards positioned by their actual times */}
+              {dayEvents.map(ev => {
+                const { startMin, endMin, start, end } = eventTimes(ev)
+                const dayStartMin = DAY_START_HOUR * 60
+                const dayEndMin = DAY_END_HOUR * 60
+                // Clamp to visible range so anything before/after still shows
+                // a partial card at the edge.
+                const visibleStart = Math.max(startMin, dayStartMin)
+                const visibleEnd = Math.min(endMin, dayEndMin)
+                if (visibleEnd <= visibleStart) return null
+                const top = ((visibleStart - dayStartMin) / 60) * HOUR_HEIGHT
+                const height = Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT, 28)
+                const val = getEventValue(ev)
+                const isQuick = ev.slot === 'quick'
+                return (
+                  <div
+                    key={ev.id}
+                    onClick={() => setSelectedEvent(ev)}
+                    style={{
+                      position: 'absolute',
+                      top, height,
+                      left: 8, right: 8,
+                      background: statusColor[ev.status] + (isQuick ? '22' : '15'),
+                      border: `1px solid ${statusColor[ev.status]}55`,
+                      borderLeft: `3px solid ${statusColor[ev.status]}`,
+                      borderRadius: 8,
+                      padding: '6px 10px',
+                      cursor: 'pointer',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                      transition: 'transform .12s, box-shadow .12s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.3)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                      <div style={{
+                        fontSize: 12, fontWeight: 700, color: C.white,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>{ev.customerName}</div>
+                      <div style={{ fontSize: 10, color: C.silver, fontWeight: 500, flexShrink: 0 }}>
+                        {start}–{end}
                       </div>
                     </div>
-                    )
-                  })}
-                </div>,
-              ]
-            })}
-          </div>
+                    {height >= 44 && (
+                      <div style={{
+                        fontSize: 11, color: C.silver,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {ev.jobType}{isQuick ? ' · Quick' : ''}
+                      </div>
+                    )}
+                    {height >= 64 && val > 0 && (
+                      <div style={{ fontSize: 11, fontWeight: 600, color: C.gold }}>
+                        {'\u00A3'}{val.toLocaleString('en-GB')}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
 
-          {/* quick book */}
-          <div style={s.quickBook}>
-            <button style={s.quickBtn} onClick={() => alert('Book Morning — coming soon with Supabase integration')}><Clock size={16} /> Book Morning</button>
-            <button style={s.quickBtn} onClick={() => alert('Book Afternoon — coming soon with Supabase integration')}><Clock size={16} /> Book Afternoon</button>
-            <button style={s.quickBtn} onClick={() => alert('Book Full Day — coming soon with Supabase integration')}><Clock size={16} /> Book Full Day</button>
+              {dayEvents.length === 0 && (
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: C.steel, fontSize: 13, fontStyle: 'italic',
+                }}>
+                  No jobs scheduled for this day
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}
