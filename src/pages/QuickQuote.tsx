@@ -143,6 +143,8 @@ export default function QuickQuote() {
   const [newCustEmail, setNewCustEmail] = useState('')
   const [newCustPostcode, setNewCustPostcode] = useState('')
   const [newCustErrors, setNewCustErrors] = useState<Record<string, string>>({})
+  const [newCustIsBusiness, setNewCustIsBusiness] = useState(false)
+  const [newCustContactName, setNewCustContactName] = useState('')
   // Collapsible sections — customer collapses once selected, notes starts collapsed
   const [sectionsOpen, setSectionsOpen] = useState({ customer: true, notes: false })
 
@@ -537,6 +539,8 @@ export default function QuickQuote() {
     const term = customerName.toLowerCase()
     return customers.filter(c =>
       c.name.toLowerCase().includes(term) ||
+      (c.businessName && c.businessName.toLowerCase().includes(term)) ||
+      (c.contactName && c.contactName.toLowerCase().includes(term)) ||
       c.postcode.toLowerCase().includes(term) ||
       c.phone.includes(term)
     ).slice(0, 6)
@@ -608,8 +612,12 @@ export default function QuickQuote() {
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-charcoal-light)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                 >
-                  <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-white)' }}>{c.name}</span>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-white)' }}>
+                    {c.isBusiness && c.businessName ? c.businessName : c.name}
+                    {c.isBusiness && <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.6 }}>🏢</span>}
+                  </span>
                   <span style={{ fontSize: 12, color: 'var(--color-steel-light)' }}>
+                    {c.isBusiness && c.contactName ? `${c.contactName} · ` : ''}
                     {c.postcode}{c.city ? ` · ${c.city}` : ''}{c.phone ? ` · ${c.phone}` : ''}
                   </span>
                 </button>
@@ -668,6 +676,27 @@ export default function QuickQuote() {
               marginTop: 6, padding: '14px', background: 'var(--color-black)',
               borderRadius: 'var(--radius-md)', border: '1px solid var(--color-steel)',
             }}>
+              {/* Individual / Business toggle */}
+              <div style={{ display: 'flex', gap: 4, marginBottom: 10, background: 'var(--color-charcoal)', borderRadius: 16, padding: 2 }}>
+                <button type="button" onClick={() => setNewCustIsBusiness(false)} style={{
+                  flex: 1, padding: '5px', borderRadius: 14, border: 'none',
+                  background: !newCustIsBusiness ? 'var(--color-charcoal-light)' : 'transparent',
+                  color: !newCustIsBusiness ? 'var(--color-white)' : 'var(--color-steel)',
+                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                }}>👤 Individual</button>
+                <button type="button" onClick={() => setNewCustIsBusiness(true)} style={{
+                  flex: 1, padding: '5px', borderRadius: 14, border: 'none',
+                  background: newCustIsBusiness ? 'var(--color-charcoal-light)' : 'transparent',
+                  color: newCustIsBusiness ? 'var(--color-white)' : 'var(--color-steel)',
+                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                }}>🏢 Business</button>
+              </div>
+              {newCustIsBusiness && (
+                <div style={{ marginBottom: 10 }}>
+                  <span className="qq-label">Point of Contact</span>
+                  <input className="qq-input" placeholder="e.g. Sarah Jones" value={newCustContactName} onChange={e => setNewCustContactName(e.target.value)} />
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
                 <div>
                   <span className="qq-label">Phone</span>
@@ -709,6 +738,9 @@ export default function QuickQuote() {
                     city: '',
                     postcode: newCustPostcode.trim().toUpperCase(),
                     notes: '',
+                    isBusiness: newCustIsBusiness,
+                    businessName: newCustIsBusiness ? customerName.trim() : undefined,
+                    contactName: newCustIsBusiness ? newCustContactName.trim() || undefined : undefined,
                   })
                   setSelectedCustomerId(c.id)
                   setShowNewCustomer(false)
@@ -716,6 +748,8 @@ export default function QuickQuote() {
                   setNewCustEmail('')
                   setNewCustPostcode('')
                   setNewCustErrors({})
+                  setNewCustIsBusiness(false)
+                  setNewCustContactName('')
                   setSavedMsg('✓ Customer saved')
                   setTimeout(() => setSavedMsg(''), 2500)
                 }}

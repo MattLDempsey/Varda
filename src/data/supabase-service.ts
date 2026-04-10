@@ -155,6 +155,7 @@ const EXPENSE_COLS = new Set([
 ])
 const CUSTOMER_COLS = new Set([
   'name', 'phone', 'email', 'address1', 'address2', 'city', 'postcode', 'notes',
+  'is_business', 'business_name', 'contact_name',
 ])
 
 function pickCols(row: Record<string, unknown>, allowed: Set<string>): Record<string, unknown> {

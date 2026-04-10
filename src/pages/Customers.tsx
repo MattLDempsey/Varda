@@ -13,6 +13,7 @@ import type { Customer } from '../data/DataContext'
 
 const emptyForm = {
   name: '', phone: '', email: '', address1: '', address2: '', city: '', postcode: '', notes: '',
+  isBusiness: false, businessName: '', contactName: '',
 }
 
 function CommRow({ cm, channelIcon, statusColors, C }: {
@@ -430,7 +431,11 @@ export default function Customers() {
                 onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '22')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <td style={{ ...s.td, fontWeight: 500 }}>{c.name}</td>
+                <td style={{ ...s.td, fontWeight: 500 }}>
+                  {c.isBusiness && c.businessName ? c.businessName : c.name}
+                  {c.isBusiness && <span style={{ fontSize: 10, color: C.steel, marginLeft: 6 }}>🏢</span>}
+                  {c.isBusiness && c.contactName && <span style={{ fontSize: 11, color: C.steel, marginLeft: 6 }}>{c.contactName}</span>}
+                </td>
                 <td style={{ ...s.td, color: C.silver }}>{c.phone}</td>
                 <td style={{ ...s.td, color: C.silver }}>{c.email}</td>
                 <td style={s.td}>{c.postcode}</td>
@@ -459,8 +464,13 @@ export default function Customers() {
           <div style={s.panel}>
             <div style={s.panelHeader}>
               <span style={s.panelTitle}>
-                {showForm ? 'Add Customer' : selected?.name}
+                {showForm ? 'Add Customer' : (selected?.isBusiness && selected?.businessName ? selected.businessName : selected?.name)}
               </span>
+              {!showForm && selected?.isBusiness && selected?.contactName && (
+                <div style={{ fontSize: 12, color: C.silver, marginTop: 2 }}>
+                  c/o {selected.contactName}
+                </div>
+              )}
               <button style={s.closeBtn} onClick={closePanel}>
                 <X size={22} />
               </button>
@@ -695,9 +705,55 @@ export default function Customers() {
             {/* add form */}
             {showForm && (
               <form onSubmit={handleAddCustomer}>
-                <label style={s.fieldLabel}>Name</label>
-                <input style={{ ...s.input, ...(formErrors.name ? { borderColor: '#D46A6A' } : {}) }} value={form.name} onChange={(e) => handleFormChange('name', e.target.value)} />
-                {formErrors.name && <div style={s.fieldError}>{formErrors.name}</div>}
+                {/* Individual / Business toggle */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: 14, background: C.black, borderRadius: 20, padding: 3 }}>
+                  {([false, true] as const).map(isBiz => (
+                    <button
+                      key={String(isBiz)}
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, isBusiness: isBiz }))}
+                      style={{
+                        flex: 1, padding: '8px', borderRadius: 18, border: 'none',
+                        background: form.isBusiness === isBiz ? C.charcoalLight : 'transparent',
+                        color: form.isBusiness === isBiz ? C.white : C.steel,
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}
+                    >
+                      {isBiz ? '🏢 Business' : '👤 Individual'}
+                    </button>
+                  ))}
+                </div>
+
+                {form.isBusiness ? (
+                  <>
+                    <label style={s.fieldLabel}>Business Name</label>
+                    <input
+                      style={{ ...s.input, ...(formErrors.name ? { borderColor: '#D46A6A' } : {}) }}
+                      value={form.businessName}
+                      onChange={(e) => {
+                        handleFormChange('businessName', e.target.value)
+                        // Auto-sync name field so the existing system has a display name
+                        handleFormChange('name', e.target.value)
+                      }}
+                      placeholder="e.g. Acme Property Management"
+                    />
+                    {formErrors.name && <div style={s.fieldError}>{formErrors.name}</div>}
+
+                    <label style={s.fieldLabel}>Point of Contact</label>
+                    <input
+                      style={s.input}
+                      value={form.contactName}
+                      onChange={(e) => handleFormChange('contactName', e.target.value)}
+                      placeholder="e.g. Sarah Jones"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label style={s.fieldLabel}>Name</label>
+                    <input style={{ ...s.input, ...(formErrors.name ? { borderColor: '#D46A6A' } : {}) }} value={form.name} onChange={(e) => handleFormChange('name', e.target.value)} />
+                    {formErrors.name && <div style={s.fieldError}>{formErrors.name}</div>}
+                  </>
+                )}
 
                 <div style={s.detailRow}>
                   <div>

@@ -114,6 +114,32 @@ export interface Customer {
   postcode: string
   notes: string
   createdAt: string
+  /** True if this customer is a company rather than an individual */
+  isBusiness?: boolean
+  /** Company name (only when isBusiness is true) */
+  businessName?: string
+  /** Point of contact at the company (only when isBusiness is true) */
+  contactName?: string
+}
+
+/**
+ * Returns the best display name for a customer:
+ *   - Business: businessName (or name as fallback)
+ *   - Individual: name
+ */
+export function customerDisplayName(c: Customer): string {
+  if (c.isBusiness && c.businessName) return c.businessName
+  return c.name
+}
+
+/**
+ * Returns the greeting name for customer-facing comms (emails, WhatsApp):
+ *   - Business: contactName (or businessName as fallback)
+ *   - Individual: first name from name
+ */
+export function customerGreetingName(c: Customer): string {
+  if (c.isBusiness && c.contactName) return c.contactName.split(' ')[0]
+  return c.name.split(' ')[0]
 }
 
 export interface Quote {
