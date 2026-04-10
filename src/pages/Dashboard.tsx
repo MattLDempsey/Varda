@@ -241,12 +241,22 @@ export default function Dashboard() {
   /* ── styles ── */
   const s: Record<string, CSSProperties> = {
     page: { padding: 'clamp(16px, 4vw, 32px)', maxWidth: 1200, margin: '0 auto' },
-    heading: { fontSize: 'clamp(22px, 5vw, 28px)' as any, fontWeight: 600, color: C.white, marginBottom: 8 },
-    subheading: { fontSize: 14, color: C.silver, marginBottom: 28 },
-    statsRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 28 },
-    statCard: { background: C.charcoalLight, borderRadius: 12, padding: '20px 20px 16px', borderLeft: `4px solid ${C.gold}`, display: 'flex', flexDirection: 'column', gap: 6 },
-    statValue: { fontSize: 28, fontWeight: 700, color: C.white, lineHeight: 1 },
-    statLabel: { fontSize: 12, color: C.silver, display: 'flex', alignItems: 'center', gap: 6 },
+    heading: { fontSize: 'clamp(22px, 5vw, 28px)' as any, fontWeight: 600, color: C.white, marginBottom: isMobile ? 2 : 8 },
+    subheading: { fontSize: isMobile ? 12 : 14, color: C.silver, marginBottom: isMobile ? 12 : 28 },
+    statsRow: {
+      display: 'grid',
+      gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fit, minmax(140px, 1fr))',
+      gap: isMobile ? 8 : 12,
+      marginBottom: isMobile ? 16 : 28,
+    },
+    statCard: {
+      background: C.charcoalLight, borderRadius: isMobile ? 10 : 12,
+      padding: isMobile ? '12px 10px 10px' : '20px 20px 16px',
+      borderLeft: `${isMobile ? 3 : 4}px solid ${C.gold}`,
+      display: 'flex', flexDirection: 'column', gap: isMobile ? 3 : 6,
+    },
+    statValue: { fontSize: isMobile ? 18 : 28, fontWeight: 700, color: C.white, lineHeight: 1 },
+    statLabel: { fontSize: isMobile ? 10 : 12, color: C.silver, display: 'flex', alignItems: 'center', gap: 4 },
     columns: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 24, marginBottom: 28 },
     panel: { background: C.charcoalLight, borderRadius: 12, padding: '20px 24px' },
     panelHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
@@ -308,29 +318,35 @@ export default function Dashboard() {
 
       {/* ── Quick Actions (only when onboarding is not showing) ── */}
       {!showOnboarding && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: isMobile ? 6 : 10,
+          marginBottom: isMobile ? 16 : 24,
+        }}>
           {([
-            { label: 'Quick Quote', icon: <PenLine size={15} />, route: '/quote' },
-            { label: 'Add Customer', icon: <UserPlus size={15} />, route: '/customers' },
-            { label: 'View Jobs', icon: <ClipboardList size={15} />, route: '/jobs' },
-            { label: 'Calendar', icon: <Calendar size={15} />, route: '/calendar' },
+            { label: 'Quote', fullLabel: 'Quick Quote', icon: <PenLine size={isMobile ? 14 : 15} />, route: '/quote' },
+            { label: 'Customer', fullLabel: 'Add Customer', icon: <UserPlus size={isMobile ? 14 : 15} />, route: '/customers' },
+            { label: 'Jobs', fullLabel: 'View Jobs', icon: <ClipboardList size={isMobile ? 14 : 15} />, route: '/jobs' },
+            { label: 'Calendar', fullLabel: 'Calendar', icon: <Calendar size={isMobile ? 14 : 15} />, route: '/calendar' },
           ] as const).map(action => (
             <button
               key={action.label}
               onClick={() => navigate(action.route)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                padding: '8px 16px', borderRadius: 10,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 4 : 7,
+                padding: isMobile ? '6px 4px' : '8px 16px', borderRadius: isMobile ? 8 : 10,
                 background: 'transparent',
                 border: `1px solid ${C.steel}66`,
-                color: C.silver, fontSize: 13, fontWeight: 500,
+                color: C.silver, fontSize: isMobile ? 11 : 13, fontWeight: 500,
                 cursor: 'pointer', transition: 'all .15s',
-                minHeight: 38,
+                minHeight: isMobile ? 34 : 38,
+                whiteSpace: 'nowrap',
               }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = C.gold; e.currentTarget.style.color = C.gold }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = C.steel + '66'; e.currentTarget.style.color = C.silver }}
             >
-              {action.icon} {action.label}
+              {action.icon} {isMobile ? action.label : action.fullLabel}
             </button>
           ))}
         </div>
