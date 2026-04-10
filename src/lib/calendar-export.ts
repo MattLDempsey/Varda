@@ -10,6 +10,10 @@ const SLOT_TIMES: Record<string, { start: string; end: string }> = {
   morning:   { start: '080000', end: '120000' },
   afternoon: { start: '120000', end: '170000' },
   full:      { start: '080000', end: '170000' },
+  // Quick (sub-1hr) jobs default to 7am–8am so they sit clearly before the
+  // main morning block in the customer's calendar. The tradesperson can adjust
+  // in their own calendar afterwards if needed.
+  quick:     { start: '070000', end: '080000' },
 }
 
 /** Format a date string (YYYY-MM-DD) + time (HHMMSS) into ICS datetime */
@@ -53,7 +57,7 @@ export function generateICSEvent(event: {
   title: string
   description: string
   date: string // YYYY-MM-DD
-  slot: 'morning' | 'afternoon' | 'full'
+  slot: 'morning' | 'afternoon' | 'full' | 'quick'
   customerName: string
   customerPhone?: string
   customerAddress?: string

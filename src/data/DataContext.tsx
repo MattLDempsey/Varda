@@ -86,7 +86,7 @@ export type InvoiceStatus = 'Draft' | 'Sent' | 'Viewed' | 'Paid' | 'Overdue'
 export type InvoiceType = 'Deposit' | 'Progress' | 'Final' | 'Custom'
 export type CommChannel = 'email' | 'whatsapp' | 'sms'
 export type CommStatus = 'Sent' | 'Delivered' | 'Read' | 'Failed'
-export type EventSlot = 'morning' | 'afternoon' | 'full'
+export type EventSlot = 'morning' | 'afternoon' | 'full' | 'quick'
 export type EventStatus = 'Scheduled' | 'In Progress' | 'Complete'
 export type ExpenseCategory = 'Materials' | 'Tools & Equipment' | 'Vehicle' | 'Insurance' | 'Subscriptions' | 'Training' | 'Other'
 

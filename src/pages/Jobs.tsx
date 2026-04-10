@@ -94,7 +94,7 @@ export default function Jobs() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [dragOverCol, setDragOverCol] = useState<JobStatus | null>(null)
   const [scheduleDate, setScheduleDate] = useState('')
-  const [scheduleSlot, setScheduleSlot] = useState<'morning' | 'afternoon' | 'full'>('morning')
+  const [scheduleSlot, setScheduleSlot] = useState<'morning' | 'afternoon' | 'full' | 'quick'>('morning')
   // Week-strip picker — anchor day of the 7-day window currently shown
   const [scheduleWeekStart, setScheduleWeekStart] = useState<string>(() => {
     const d = new Date()
@@ -849,17 +849,7 @@ export default function Jobs() {
             <div style={s.panel}>
               <div style={s.panelHeader}>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={s.panelTitle}>
-                    {selectedJob.customerName}
-                    {linkedQuote?.needsResend && (
-                      <span
-                        title="Quote updated — needs resending"
-                        style={{ marginLeft: 8, display: 'inline-flex', verticalAlign: -2 }}
-                      >
-                        <AlertCircle size={16} color="#D46A6A" />
-                      </span>
-                    )}
-                  </div>
+                  <div style={s.panelTitle}>{selectedJob.customerName}</div>
                   <div style={s.panelSubtitle}>
                     <span>{selectedJob.jobType}</span>
                     <span style={s.panelRef}>#{selectedJob.id.slice(-6).toUpperCase()}</span>
@@ -869,6 +859,46 @@ export default function Jobs() {
                   <X size={22} />
                 </button>
               </div>
+
+              {/* Actionable warning banner — names the issue and jumps to the
+                  relevant tab so the user knows exactly what to do next. */}
+              {(() => {
+                const warning = getJobWarning(selectedJob)
+                if (!warning) return null
+                let cta: { label: string; action: () => void } | null = null
+                if (warning.includes('Quote') || warning.includes('quote')) {
+                  cta = { label: 'Open Quote', action: () => setPanelTab('quote') }
+                } else if (warning.includes('date') || warning.includes('Date')) {
+                  cta = { label: 'Schedule', action: () => setPanelTab('details') }
+                } else if (warning.includes('invoice')) {
+                  cta = { label: 'Open Payments', action: () => setPanelTab('payments') }
+                }
+                return (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 14px', borderRadius: 10, marginBottom: 16,
+                    background: '#D46A6A12', border: '1px solid #D46A6A44',
+                  }}>
+                    <AlertCircle size={16} color="#D46A6A" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: 12, color: C.silver, flex: 1, lineHeight: 1.4 }}>
+                      {warning}
+                    </div>
+                    {cta && (
+                      <button
+                        onClick={cta.action}
+                        style={{
+                          background: '#D46A6A22', border: '1px solid #D46A6A66',
+                          color: '#D46A6A', borderRadius: 6, padding: '4px 10px',
+                          fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                          whiteSpace: 'nowrap', flexShrink: 0, minHeight: 28,
+                        }}
+                      >
+                        {cta.label} →
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* ── Tab Bar ── */}
               <div style={{ display: 'flex', gap: 4, background: C.black, borderRadius: 24, padding: 4, marginBottom: 20 }}>
@@ -1148,7 +1178,7 @@ export default function Jobs() {
                   {(selectedJob.status === 'Accepted' || selectedJob.status === 'Scheduled' || selectedJob.status === 'In Progress') && (() => {
                     const jobEvents = events.filter(e => e.jobId === selectedJob.id).sort((a, b) => a.date.localeCompare(b.date))
                     const unconfirmedEvents = jobEvents.filter(e => !e.confirmationSentAt)
-                    const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day' }
+                    const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day', quick: 'Quick (<1h)' }
                     const customer = customers.find(c => c.id === selectedJob.customerId)
 
                     // Build the 7-day strip from scheduleWeekStart
@@ -1166,16 +1196,17 @@ export default function Jobs() {
                       return `${a.getDate()} ${months[a.getMonth()]} – ${b.getDate()} ${months[b.getMonth()]}`
                     })()
                     const dayHeaders = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-                    // For each day in the visible week, work out which AM / PM slots are
-                    // already taken across the whole org. Used to render the day-card pips
-                    // so the user can see at a glance which days they're already on site
-                    // and bundle jobs accordingly.
-                    const slotsPerDay: Record<string, { am: boolean; pm: boolean }> = {}
+                    // For each day in the visible week, work out which slots are taken.
+                    // AM and PM are the half-day blocks (rendered as pips). 'quick' events
+                    // are sub-1hr fit-ins that don't reserve a half-day, so they get their
+                    // own count rendered as a small "+N" badge alongside the pips.
+                    const slotsPerDay: Record<string, { am: boolean; pm: boolean; quick: number }> = {}
                     for (const ev of events) {
                       if (ev.date >= weekDays[0] && ev.date <= weekEndStr) {
-                        const cur = slotsPerDay[ev.date] ?? { am: false, pm: false }
+                        const cur = slotsPerDay[ev.date] ?? { am: false, pm: false, quick: 0 }
                         if (ev.slot === 'morning' || ev.slot === 'full') cur.am = true
                         if (ev.slot === 'afternoon' || ev.slot === 'full') cur.pm = true
+                        if (ev.slot === 'quick') cur.quick += 1
                         slotsPerDay[ev.date] = cur
                       }
                     }
@@ -1201,7 +1232,7 @@ export default function Jobs() {
                       const isToday = date === todayStr
                       const isSelected = date === scheduleDate
                       const slots = slotsPerDay[date]
-                      const hasAny = slots && (slots.am || slots.pm)
+                      const hasAny = slots && (slots.am || slots.pm || slots.quick > 0)
                       return {
                         flex: 1, minWidth: 0,
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
@@ -1609,14 +1640,14 @@ export default function Jobs() {
                           >›</button>
                         </div>
 
-                        {/* Day strip — each card shows two pips for AM and PM
-                            slots so the user can see at a glance which days
-                            they're already on site. Filled = taken. */}
+                        {/* Day strip — each card shows two pips (AM, PM) plus
+                            a small "+N" badge for any sub-1hr quick jobs that
+                            don't reserve a half-day. Filled pip = taken. */}
                         <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
                           {weekDays.map((d, i) => {
                             const dateObj = new Date(d)
                             const isPast = d < todayStr
-                            const slots = slotsPerDay[d] ?? { am: false, pm: false }
+                            const slots = slotsPerDay[d] ?? { am: false, pm: false, quick: 0 }
                             const isSelected = d === scheduleDate
                             const dotColor = isSelected ? C.charcoal : C.gold
                             const emptyColor = isSelected ? `${C.charcoal}44` : `${C.steel}55`
@@ -1640,6 +1671,13 @@ export default function Jobs() {
                                     background: slots.pm ? dotColor : 'transparent',
                                     border: `1px solid ${slots.pm ? dotColor : emptyColor}`,
                                   }} />
+                                  {slots.quick > 0 && (
+                                    <span style={{
+                                      fontSize: 8, fontWeight: 700,
+                                      color: dotColor,
+                                      marginLeft: 1,
+                                    }}>+{slots.quick}</span>
+                                  )}
                                 </div>
                               </button>
                             )
@@ -1657,7 +1695,12 @@ export default function Jobs() {
                                 Already on {fmtDate(scheduleDate)}: {selectedDayContext.map(e => `${e.customerName} (${slotLabels[e.slot]})`).join(', ')}
                               </div>
                             )}
-                            <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 1fr 1fr',
+                              gap: 4,
+                              marginBottom: 6,
+                            }}>
                               {(['morning','afternoon','full'] as const).map(slot => {
                                 const active = scheduleSlot === slot
                                 return (
@@ -1665,7 +1708,7 @@ export default function Jobs() {
                                     key={slot}
                                     onClick={() => setScheduleSlot(slot)}
                                     style={{
-                                      flex: 1, padding: '10px 8px', borderRadius: 10,
+                                      padding: '10px 8px', borderRadius: 10,
                                       background: active ? C.gold : C.black,
                                       border: `1px solid ${active ? C.gold : C.steel + '33'}`,
                                       color: active ? C.charcoal : C.white,
@@ -1678,6 +1721,22 @@ export default function Jobs() {
                                 )
                               })}
                             </div>
+                            {/* Quick fit-in — full-width separate row so it's
+                                visually distinct from the half-day blocks. */}
+                            <button
+                              onClick={() => setScheduleSlot('quick')}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                padding: '8px', borderRadius: 10, marginBottom: 12,
+                                background: scheduleSlot === 'quick' ? C.gold : C.black,
+                                border: `1px dashed ${scheduleSlot === 'quick' ? C.gold : C.steel + '55'}`,
+                                color: scheduleSlot === 'quick' ? C.charcoal : C.silver,
+                                fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                                minHeight: 32,
+                              }}
+                            >
+                              <Clock size={11} /> Quick fit-in (under 1 hour) — won't block the day
+                            </button>
                           </>
                         )}
 

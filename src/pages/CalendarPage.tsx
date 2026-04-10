@@ -38,9 +38,10 @@ function addDays(d: Date, n: number): Date {
   return r
 }
 
-function slotLabel(slot: 'morning' | 'afternoon' | 'full'): string {
+function slotLabel(slot: 'morning' | 'afternoon' | 'full' | 'quick'): string {
   if (slot === 'morning') return 'Morning'
   if (slot === 'afternoon') return 'Afternoon'
+  if (slot === 'quick') return 'Quick (<1h)'
   return 'Full Day'
 }
 

@@ -178,7 +178,9 @@ export default function Dashboard() {
     events
       .filter(e => e.date === today)
       .sort((a, b) => {
-        const order = { morning: 0, afternoon: 1, full: 2 }
+        // Quick fit-ins come first (they're typically before the morning block),
+        // then morning, afternoon, full.
+        const order: Record<string, number> = { quick: -1, morning: 0, afternoon: 1, full: 2 }
         return (order[a.slot] ?? 2) - (order[b.slot] ?? 2)
       }),
     [events, today],
