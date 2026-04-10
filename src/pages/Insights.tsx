@@ -387,29 +387,35 @@ export default function Insights() {
     return alerts.slice(0, 5) // Cap at 5 alerts
   }, [periodJobs, paidJobs, quotes, invoices, getJobCost])
 
-  /* ── repeat customers (filtered to period, top 5) ── */
+  /* ── repeat customers (filtered to period, top 5) with margin ── */
   const repeatCustomers = useMemo(() => {
-    const byCustomer: Record<string, { name: string; jobs: number; totalSpend: number; lastDate: string }> = {}
+    const byCustomer: Record<string, { name: string; jobs: number; totalSpend: number; totalCost: number; lastDate: string }> = {}
     for (const j of periodJobs) {
       if (!byCustomer[j.customerId]) {
         const cust = customers.find(c => c.id === j.customerId)
-        byCustomer[j.customerId] = { name: cust?.name || j.customerName, jobs: 0, totalSpend: 0, lastDate: j.date }
+        byCustomer[j.customerId] = { name: cust?.name || j.customerName, jobs: 0, totalSpend: 0, totalCost: 0, lastDate: j.date }
       }
       const entry = byCustomer[j.customerId]
       entry.jobs += 1
       entry.totalSpend += j.value
+      entry.totalCost += getJobCost(j)
       if (j.date > entry.lastDate) entry.lastDate = j.date
     }
     return Object.values(byCustomer)
       .sort((a, b) => b.jobs - a.jobs)
       .slice(0, 5)
-      .map(c => ({
-        name: c.name,
-        jobs: c.jobs,
-        totalSpend: fmtCurrency(c.totalSpend),
-        lastJob: new Date(c.lastDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
-      }))
-  }, [periodJobs, customers])
+      .map(c => {
+        const margin = c.totalSpend > 0 ? Math.round(((c.totalSpend - c.totalCost) / c.totalSpend) * 100) : 0
+        return {
+          name: c.name,
+          jobs: c.jobs,
+          totalSpend: fmtCurrency(c.totalSpend),
+          margin,
+          marginColor: margin >= 50 ? '#6ABF8A' : margin >= 30 ? '#C6A86A' : '#D46A6A',
+          lastJob: new Date(c.lastDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+        }
+      })
+  }, [periodJobs, customers, getJobCost])
 
   /* ── Financial Summary ── */
   const financials = useMemo(() => {
@@ -529,8 +535,9 @@ export default function Insights() {
 
     // YoY growth rate
     const completedMonths = actual.filter(m => m.revenue > 0)
+    const hasLastYearData = lastYear.some(m => m.revenue > 0)
     let growthRate = 1
-    if (completedMonths.length >= 2) {
+    if (completedMonths.length >= 2 && hasLastYearData) {
       const lyTotal = completedMonths.reduce((s, m) => s + (lastYear.find(l => l.month === m.month)?.revenue || 0), 0)
       const tyTotal = completedMonths.reduce((s, m) => s + m.revenue, 0)
       growthRate = lyTotal > 0 ? tyTotal / lyTotal : 1
@@ -541,20 +548,56 @@ export default function Insights() {
     const pipelineStatuses = ['Quoted', 'Accepted', 'Scheduled', 'In Progress']
     const pipelineValue = jobs.filter(j => pipelineStatuses.includes(j.status)).reduce((s, j) => s + j.value, 0)
 
+    // ── Seasonal adjustment factors (UK trades — relative to annual average)
+    // Derived from typical patterns: spring/summer busy, winter quiet, Jan quiet.
+    // Month 0 = Jan ... 11 = Dec
+    const SEASONAL: Record<number, number> = {
+      0: 0.7, 1: 0.75, 2: 0.9, 3: 1.05, 4: 1.15, 5: 1.2,
+      6: 1.15, 7: 1.1, 8: 1.05, 9: 1.0, 10: 0.85, 11: 0.7,
+    }
+
+    // When no prior-year data exists, build a baseline from the months
+    // we DO have. Average monthly revenue × seasonal factor for each
+    // future month. This gives a sensible forecast from day one instead
+    // of dropping to £0.
+    const avgMonthlyRevenue = completedMonths.length > 0
+      ? completedMonths.reduce((s, m) => s + m.revenue, 0) / completedMonths.length
+      : 0
+    const avgMonthlyCost = completedMonths.length > 0
+      ? completedMonths.reduce((s, m) => s + (actual.find(a => a.month === m.month && !a.isFuture)?.costs ?? 0), 0) / completedMonths.length
+      : 0
+
     // Forecast future months — revenue, costs, profit
     const forecast: MonthData[] = []
     const futureMonths = actual.filter(m => m.isFuture)
     for (const fm of futureMonths) {
       const ly = lastYear.find(l => l.month === fm.month)
       const tya = twoYearsAgo.find(t => t.month === fm.month)
-      const weightedRev = weightedAvg(ly?.revenue || 0, tya?.revenue || 0)
-      const weightedCost = weightedAvg(ly?.costs || 0, tya?.costs || 0)
-      const fcRev = Math.round(weightedRev * growthRate + pipelineValue / Math.max(futureMonths.length, 1))
-      const fcCost = Math.round(weightedCost * growthRate)
+
+      let fcRev: number
+      let fcCost: number
+
+      if (hasLastYearData) {
+        // We have prior-year data — use weighted average × growth
+        const weightedRev = weightedAvg(ly?.revenue || 0, tya?.revenue || 0)
+        const weightedCost = weightedAvg(ly?.costs || 0, tya?.costs || 0)
+        fcRev = Math.round(weightedRev * growthRate + pipelineValue / Math.max(futureMonths.length, 1))
+        fcCost = Math.round(weightedCost * growthRate)
+      } else if (avgMonthlyRevenue > 0) {
+        // No prior year — extrapolate from completed months + seasonal curve
+        const seasonal = SEASONAL[fm.month] ?? 1
+        fcRev = Math.round(avgMonthlyRevenue * seasonal + pipelineValue / Math.max(futureMonths.length, 1))
+        fcCost = Math.round(avgMonthlyCost * seasonal)
+      } else {
+        // No data at all — just spread pipeline
+        fcRev = Math.round(pipelineValue / Math.max(futureMonths.length, 1))
+        fcCost = 0
+      }
+
       forecast.push({ label: fm.label, revenue: fcRev, costs: fcCost, profit: fcRev - fcCost, month: fm.month })
     }
 
-    return { actual, lastYear, forecast, growthRate }
+    return { actual, lastYear, forecast, growthRate, hasLastYearData }
   }, [paidJobs, jobs, getJobCost])
 
   // Weighted average: 2× recent + 1× older
@@ -1027,7 +1070,6 @@ export default function Insights() {
                 padding: '12px 8px', borderRadius: 8, cursor: 'pointer',
                 borderBottom: i < repeatCustomers.length - 1 ? `1px solid ${C.steel}1A` : 'none',
               }}
-              onClick={() => alert(`View customer: ${c.name}`)}
               onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}22` }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
             >
@@ -1035,7 +1077,12 @@ export default function Insights() {
                 <div style={{ fontSize: 14, fontWeight: 500, color: C.white }}>{c.name}</div>
                 <div style={{ fontSize: 12, color: C.silver }}>{c.jobs} jobs · Last: {c.lastJob}</div>
               </div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: C.gold }}>{c.totalSpend}</div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.gold }}>{c.totalSpend}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: c.marginColor }}>
+                  {c.margin}% margin
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -1049,7 +1096,7 @@ export default function Insights() {
             { label: 'Revenue', value: fmtCurrency(Math.round(financials.revenue)), color: C.gold },
             { label: 'Costs', value: fmtCurrency(Math.round(financials.costs)), color: C.red },
             { label: 'Gross Profit', value: fmtCurrency(Math.round(financials.grossProfit)), color: C.green },
-            { label: 'Estimated Tax (est.)', value: `${fmtCurrency(Math.round(financials.estimatedTax))}/yr`, color: C.silver },
+            { label: 'Income Tax + NI (est.)', value: `${fmtCurrency(Math.round(financials.estimatedTax))}/yr`, color: C.silver },
           ].map(item => (
             <div key={item.label} style={{
               background: C.black, borderRadius: 10, padding: '16px 20px',
@@ -1059,6 +1106,9 @@ export default function Insights() {
               <div style={{ fontSize: 24, fontWeight: 700, color: item.color }}>{item.value}</div>
             </div>
           ))}
+        </div>
+        <div style={{ fontSize: 11, color: C.steel, marginTop: 8, fontStyle: 'italic' }}>
+          Income Tax + NI estimate includes Income Tax (20%/40% bands), Class 2 NI, and Class 4 NI based on 2025/26 HMRC rates. This is a rough estimate — consult your accountant for actual figures.
         </div>
       </div>
 
@@ -1079,9 +1129,14 @@ export default function Insights() {
                 </button>
               ))}
             </div>
-            {forecastData.growthRate !== 1 && (
+            {forecastData.growthRate !== 1 && forecastData.hasLastYearData && (
               <span style={{ fontSize: 11, color: forecastData.growthRate > 1 ? C.green : C.red, fontWeight: 600 }}>
-                {forecastData.growthRate > 1 ? '↑' : '↓'} {Math.round((forecastData.growthRate - 1) * 100)}%
+                {forecastData.growthRate > 1 ? '↑' : '↓'} {Math.round((forecastData.growthRate - 1) * 100)}% YoY
+              </span>
+            )}
+            {!forecastData.hasLastYearData && (
+              <span style={{ fontSize: 11, color: C.steel }}>
+                Forecast based on your recent months + seasonal trends
               </span>
             )}
           </div>
