@@ -671,11 +671,29 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
   }, [persist, bgCall])
 
   const updateEvent = useCallback((id: string, updates: Partial<ScheduleEvent>) => {
+    // If a meaningful time/date/slot field is being changed on an event that
+    // the customer has already been notified about, automatically clear the
+    // confirmation_sent_at stamp so the panel re-prompts the user to send an
+    // updated confirmation. Notes/status changes don't trigger this.
+    const touchesSchedule = (
+      updates.startTime !== undefined ||
+      updates.endTime !== undefined ||
+      updates.date !== undefined ||
+      updates.slot !== undefined
+    )
+    const callerIsManagingConfirmation = updates.confirmationSentAt !== undefined
+    let effectiveUpdates: Partial<ScheduleEvent> = updates
+    if (touchesSchedule && !callerIsManagingConfirmation) {
+      const existing = storeRef.current.events.find(e => e.id === id)
+      if (existing?.confirmationSentAt) {
+        effectiveUpdates = { ...updates, confirmationSentAt: null }
+      }
+    }
     persist(s => ({
       ...s,
-      events: s.events.map(e => e.id === id ? { ...e, ...updates } : e),
+      events: s.events.map(e => e.id === id ? { ...e, ...effectiveUpdates } : e),
     }))
-    bgCall(() => svc.updateEvent(id, updates))
+    bgCall(() => svc.updateEvent(id, effectiveUpdates))
   }, [persist, bgCall])
 
   const deleteEvent = useCallback((id: string) => {

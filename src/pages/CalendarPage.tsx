@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Plus, Clock, X, Download, Calendar, Briefcase } from 'lucide-react'
 import type { CSSProperties } from 'react'
@@ -94,6 +94,30 @@ export default function CalendarPage() {
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const monday = getMonday(currentDate)
 
+  // ── Drag / resize state for the time-grid views ──
+  // Tracks an in-flight drag or resize operation. While active, the
+  // affected card renders at the dragState position instead of its
+  // committed times, so the user gets live visual feedback.
+  type DragMode = 'move' | 'resize-top' | 'resize-bottom'
+  interface DragState {
+    eventId: string
+    mode: DragMode
+    // Original times (in minutes from midnight) and date when drag started
+    origStartMin: number
+    origEndMin: number
+    origDate: string
+    // Current preview times (recomputed on every pointermove)
+    previewStartMin: number
+    previewEndMin: number
+    previewDate: string
+    // Pixel position where the pointer first went down (for delta calc)
+    pointerStartY: number
+    pointerStartX: number
+  }
+  const [dragState, setDragState] = useState<DragState | null>(null)
+  const dragStateRef = useRef<DragState | null>(null)
+  dragStateRef.current = dragState
+
   const weekDates = useMemo(() =>
     Array.from({ length: 7 }, (_, i) => addDays(monday, i)),
     [monday.getTime()]
@@ -153,6 +177,124 @@ export default function CalendarPage() {
     const start = ev.startTime || def.start
     const end = ev.endTime || def.end
     return { start, end, startMin: parseHHMM(start), endMin: parseHHMM(end) }
+  }
+  const formatHHMM = (mins: number): string => {
+    const clamped = Math.max(0, Math.min(24 * 60 - 1, mins))
+    const h = Math.floor(clamped / 60)
+    const m = clamped % 60
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+  // 30-minute snap — coarse enough that the user doesn't end up with awkward
+  // 08:23–09:23 windows but precise enough for a tradesperson's day.
+  const SNAP_MINUTES = 30
+  const snap = (mins: number): number => Math.round(mins / SNAP_MINUTES) * SNAP_MINUTES
+
+  // ── Global pointer handlers for drag/resize ──
+  // We attach these to the window so the drag continues even if the cursor
+  // leaves the card. The dragStateRef holds the live state to avoid React
+  // batching issues during high-frequency pointer moves.
+  useEffect(() => {
+    if (!dragState) return
+    const onMove = (e: PointerEvent) => {
+      const drag = dragStateRef.current
+      if (!drag) return
+      const deltaY = e.clientY - drag.pointerStartY
+      const deltaMins = snap(Math.round((deltaY / HOUR_HEIGHT) * 60))
+
+      // Horizontal drag → day column shift (only for the week view)
+      let newDate = drag.origDate
+      if (drag.mode === 'move' && view === 'week') {
+        const target = (e.target as HTMLElement | null)?.closest('[data-day-col]') as HTMLElement | null
+        const overEl = document.elementFromPoint(e.clientX, e.clientY)
+        const dayCol = (overEl as HTMLElement | null)?.closest?.('[data-day-col]') as HTMLElement | null
+        const col = target || dayCol
+        if (col?.dataset.dayCol) {
+          newDate = col.dataset.dayCol
+        }
+      }
+
+      let newStart = drag.origStartMin
+      let newEnd = drag.origEndMin
+      if (drag.mode === 'move') {
+        newStart = drag.origStartMin + deltaMins
+        newEnd = drag.origEndMin + deltaMins
+      } else if (drag.mode === 'resize-top') {
+        newStart = Math.min(drag.origStartMin + deltaMins, drag.origEndMin - SNAP_MINUTES)
+      } else if (drag.mode === 'resize-bottom') {
+        newEnd = Math.max(drag.origEndMin + deltaMins, drag.origStartMin + SNAP_MINUTES)
+      }
+
+      // Clamp to the visible day range
+      const dayMinMins = DAY_START_HOUR * 60
+      const dayMaxMins = DAY_END_HOUR * 60
+      if (newStart < dayMinMins) {
+        const shift = dayMinMins - newStart
+        newStart += shift
+        if (drag.mode === 'move') newEnd += shift
+      }
+      if (newEnd > dayMaxMins) {
+        const shift = newEnd - dayMaxMins
+        newEnd -= shift
+        if (drag.mode === 'move') newStart -= shift
+      }
+
+      setDragState(prev => prev ? {
+        ...prev,
+        previewStartMin: newStart,
+        previewEndMin: newEnd,
+        previewDate: newDate,
+      } : prev)
+    }
+    const onUp = () => {
+      const drag = dragStateRef.current
+      if (drag) {
+        const changed = drag.previewStartMin !== drag.origStartMin
+          || drag.previewEndMin !== drag.origEndMin
+          || drag.previewDate !== drag.origDate
+        if (changed) {
+          // Real drag/resize → commit. updateEvent will auto-clear
+          // confirmation_sent_at if the customer was already notified.
+          updateEvent(drag.eventId, {
+            startTime: formatHHMM(drag.previewStartMin),
+            endTime: formatHHMM(drag.previewEndMin),
+            date: drag.previewDate,
+          })
+        } else {
+          // No movement → treat as a click on the card and open the
+          // detail panel for the original event.
+          const ev = events.find(e => e.id === drag.eventId)
+          if (ev) setSelectedEvent(ev)
+        }
+      }
+      setDragState(null)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [dragState, view, updateEvent, events])
+
+  // Begin a drag/resize from a pointer-down on a card or its edge handles.
+  const beginDrag = (ev: ScheduleEvent, mode: DragMode, e: React.PointerEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const { startMin, endMin } = eventTimes(ev)
+    setDragState({
+      eventId: ev.id,
+      mode,
+      origStartMin: startMin,
+      origEndMin: endMin,
+      origDate: ev.date,
+      previewStartMin: startMin,
+      previewEndMin: endMin,
+      previewDate: ev.date,
+      pointerStartY: e.clientY,
+      pointerStartX: e.clientX,
+    })
   }
 
   const dayEvents = events.filter(e => e.date === formatDate(currentDate))
@@ -428,6 +570,7 @@ export default function CalendarPage() {
 
       {/* week view */}
       {view === 'week' && (
+        <>
         <div style={{
           display: 'grid',
           gridTemplateColumns: '64px repeat(7, 1fr)',
@@ -481,10 +624,20 @@ export default function CalendarPage() {
           {weekDates.map((d, i) => {
             const dateStr = formatDate(d)
             const isToday = dateStr === today
-            const dayEvts = events.filter(e => e.date === dateStr)
+            // Collect events whose committed date is this column, plus any
+            // event currently being dragged whose preview date is this column
+            // (so cross-day drag visually moves the card live).
+            const committedEvts = events.filter(e => e.date === dateStr)
+            const dragVisitor = dragState && dragState.previewDate === dateStr && dragState.origDate !== dateStr
+              ? events.find(e => e.id === dragState.eventId)
+              : undefined
+            const dayEvts = dragVisitor && !committedEvts.some(e => e.id === dragVisitor.id)
+              ? [...committedEvts, dragVisitor]
+              : committedEvts
             return (
               <div
                 key={`day-${i}`}
+                data-day-col={dateStr}
                 style={{
                   position: 'relative',
                   background: isToday ? `${C.gold}08` : C.charcoal,
@@ -507,7 +660,15 @@ export default function CalendarPage() {
 
                 {/* Time-positioned event cards */}
                 {dayEvts.map(ev => {
-                  const { startMin, endMin, start, end } = eventTimes(ev)
+                  const drag = dragState && dragState.eventId === ev.id ? dragState : null
+                  // Hide the card from its original column once it's been
+                  // dragged into a different one.
+                  if (drag && drag.previewDate !== dateStr) return null
+                  const baseTimes = eventTimes(ev)
+                  const startMin = drag ? drag.previewStartMin : baseTimes.startMin
+                  const endMin = drag ? drag.previewEndMin : baseTimes.endMin
+                  const start = formatHHMM(startMin)
+                  const end = formatHHMM(endMin)
                   const dayStartMin = DAY_START_HOUR * 60
                   const dayEndMin = DAY_END_HOUR * 60
                   const visibleStart = Math.max(startMin, dayStartMin)
@@ -516,10 +677,11 @@ export default function CalendarPage() {
                   const top = ((visibleStart - dayStartMin) / 60) * HOUR_HEIGHT
                   const height = Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT, 24)
                   const isQuick = ev.slot === 'quick'
+                  const isBeingDragged = !!drag
                   return (
                     <div
                       key={ev.id}
-                      onClick={() => setSelectedEvent(ev)}
+                      onPointerDown={(e) => beginDrag(ev, 'move', e)}
                       style={{
                         position: 'absolute',
                         top, height,
@@ -529,16 +691,26 @@ export default function CalendarPage() {
                         borderLeft: `3px solid ${statusColor[ev.status]}`,
                         borderRadius: 6,
                         padding: '4px 6px',
-                        cursor: 'pointer',
+                        cursor: isBeingDragged ? 'grabbing' : 'grab',
                         overflow: 'hidden',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 1,
-                        transition: 'transform .12s, box-shadow .12s',
+                        transition: isBeingDragged ? 'none' : 'transform .12s, box-shadow .12s',
+                        boxShadow: isBeingDragged ? '0 8px 24px rgba(0,0,0,.5)' : 'none',
+                        zIndex: isBeingDragged ? 10 : 1,
+                        touchAction: 'none',
+                        userSelect: 'none',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.3)' }}
-                      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
                     >
+                      {/* Top resize handle */}
+                      <div
+                        onPointerDown={(e) => beginDrag(ev, 'resize-top', e)}
+                        style={{
+                          position: 'absolute', top: 0, left: 0, right: 0, height: 5,
+                          cursor: 'ns-resize', touchAction: 'none',
+                        }}
+                      />
                       <div style={{
                         fontSize: 11, fontWeight: 700, color: C.white,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -557,6 +729,14 @@ export default function CalendarPage() {
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>{ev.jobType}</div>
                       )}
+                      {/* Bottom resize handle */}
+                      <div
+                        onPointerDown={(e) => beginDrag(ev, 'resize-bottom', e)}
+                        style={{
+                          position: 'absolute', bottom: 0, left: 0, right: 0, height: 5,
+                          cursor: 'ns-resize', touchAction: 'none',
+                        }}
+                      />
                     </div>
                   )
                 })}
@@ -564,6 +744,10 @@ export default function CalendarPage() {
             )
           })}
         </div>
+        <div style={{ fontSize: 11, color: C.steel, marginTop: 8, textAlign: 'center' }}>
+          Drag a card to reschedule, or drag the top/bottom edge to resize. Snaps to 30-minute increments.
+        </div>
+        </>
       )}
 
       {/* day view — proper time-positioned grid. Each event card sits at
@@ -602,11 +786,14 @@ export default function CalendarPage() {
             </div>
 
             {/* Events column */}
-            <div style={{
-              position: 'relative',
-              background: C.charcoal,
-              height: DAY_GRID_HEIGHT,
-            }}>
+            <div
+              data-day-col={formatDate(currentDate)}
+              style={{
+                position: 'relative',
+                background: C.charcoal,
+                height: DAY_GRID_HEIGHT,
+              }}
+            >
               {/* Hour grid lines */}
               {dayGridHours.map(hour => (
                 <div
@@ -623,11 +810,18 @@ export default function CalendarPage() {
 
               {/* Event cards positioned by their actual times */}
               {dayEvents.map(ev => {
-                const { startMin, endMin, start, end } = eventTimes(ev)
+                const drag = dragState && dragState.eventId === ev.id ? dragState : null
+                // If this card is being dragged across days in the day view,
+                // skip rendering it here when the preview date moved away (the
+                // day view only shows currentDate).
+                if (drag && drag.previewDate !== formatDate(currentDate)) return null
+                const baseTimes = eventTimes(ev)
+                const startMin = drag ? drag.previewStartMin : baseTimes.startMin
+                const endMin = drag ? drag.previewEndMin : baseTimes.endMin
+                const start = formatHHMM(startMin)
+                const end = formatHHMM(endMin)
                 const dayStartMin = DAY_START_HOUR * 60
                 const dayEndMin = DAY_END_HOUR * 60
-                // Clamp to visible range so anything before/after still shows
-                // a partial card at the edge.
                 const visibleStart = Math.max(startMin, dayStartMin)
                 const visibleEnd = Math.min(endMin, dayEndMin)
                 if (visibleEnd <= visibleStart) return null
@@ -635,10 +829,11 @@ export default function CalendarPage() {
                 const height = Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT, 28)
                 const val = getEventValue(ev)
                 const isQuick = ev.slot === 'quick'
+                const isBeingDragged = !!drag
                 return (
                   <div
                     key={ev.id}
-                    onClick={() => setSelectedEvent(ev)}
+                    onPointerDown={(e) => beginDrag(ev, 'move', e)}
                     style={{
                       position: 'absolute',
                       top, height,
@@ -648,16 +843,26 @@ export default function CalendarPage() {
                       borderLeft: `3px solid ${statusColor[ev.status]}`,
                       borderRadius: 8,
                       padding: '6px 10px',
-                      cursor: 'pointer',
+                      cursor: isBeingDragged ? 'grabbing' : 'grab',
                       overflow: 'hidden',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 2,
-                      transition: 'transform .12s, box-shadow .12s',
+                      transition: isBeingDragged ? 'none' : 'transform .12s, box-shadow .12s',
+                      boxShadow: isBeingDragged ? '0 8px 24px rgba(0,0,0,.5)' : 'none',
+                      zIndex: isBeingDragged ? 10 : 1,
+                      touchAction: 'none',
+                      userSelect: 'none',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.3)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
                   >
+                    {/* Top resize handle */}
+                    <div
+                      onPointerDown={(e) => beginDrag(ev, 'resize-top', e)}
+                      style={{
+                        position: 'absolute', top: 0, left: 0, right: 0, height: 6,
+                        cursor: 'ns-resize', touchAction: 'none',
+                      }}
+                    />
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                       <div style={{
                         fontSize: 12, fontWeight: 700, color: C.white,
@@ -680,6 +885,14 @@ export default function CalendarPage() {
                         {'\u00A3'}{val.toLocaleString('en-GB')}
                       </div>
                     )}
+                    {/* Bottom resize handle */}
+                    <div
+                      onPointerDown={(e) => beginDrag(ev, 'resize-bottom', e)}
+                      style={{
+                        position: 'absolute', bottom: 0, left: 0, right: 0, height: 6,
+                        cursor: 'ns-resize', touchAction: 'none',
+                      }}
+                    />
                   </div>
                 )
               })}
@@ -689,11 +902,15 @@ export default function CalendarPage() {
                   position: 'absolute', inset: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: C.steel, fontSize: 13, fontStyle: 'italic',
+                  pointerEvents: 'none',
                 }}>
                   No jobs scheduled for this day
                 </div>
               )}
             </div>
+          </div>
+          <div style={{ fontSize: 11, color: C.steel, marginTop: 8, textAlign: 'center' }}>
+            Drag a card to reschedule, or drag the top/bottom edge to resize. Snaps to 30-minute increments.
           </div>
         </>
       )}
