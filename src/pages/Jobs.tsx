@@ -861,7 +861,8 @@ export default function Jobs() {
               </div>
 
               {/* Actionable warning banner — names the issue and jumps to the
-                  relevant tab so the user knows exactly what to do next. */}
+                  relevant tab so the user knows exactly what to do next. The
+                  whole banner is the click target when an action is available. */}
               {(() => {
                 const warning = getJobWarning(selectedJob)
                 if (!warning) return null
@@ -874,28 +875,29 @@ export default function Jobs() {
                   cta = { label: 'Open Payments', action: () => setPanelTab('payments') }
                 }
                 return (
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 14px', borderRadius: 10, marginBottom: 16,
-                    background: '#D46A6A12', border: '1px solid #D46A6A44',
-                  }}>
+                  <div
+                    role={cta ? 'button' : undefined}
+                    tabIndex={cta ? 0 : undefined}
+                    onClick={cta?.action}
+                    onKeyDown={cta ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cta!.action() } } : undefined}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 14px', borderRadius: 10, marginBottom: 16,
+                      background: '#D46A6A12', border: '1px solid #D46A6A44',
+                      cursor: cta ? 'pointer' : 'default',
+                    }}
+                    onMouseEnter={cta ? (e) => { e.currentTarget.style.background = '#D46A6A1F' } : undefined}
+                    onMouseLeave={cta ? (e) => { e.currentTarget.style.background = '#D46A6A12' } : undefined}
+                  >
                     <AlertCircle size={16} color="#D46A6A" style={{ flexShrink: 0 }} />
                     <div style={{ fontSize: 12, color: C.silver, flex: 1, lineHeight: 1.4 }}>
                       {warning}
+                      {cta && (
+                        <span style={{ color: '#D46A6A', fontWeight: 600, marginLeft: 8 }}>
+                          {cta.label} →
+                        </span>
+                      )}
                     </div>
-                    {cta && (
-                      <button
-                        onClick={cta.action}
-                        style={{
-                          background: '#D46A6A22', border: '1px solid #D46A6A66',
-                          color: '#D46A6A', borderRadius: 6, padding: '4px 10px',
-                          fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                          whiteSpace: 'nowrap', flexShrink: 0, minHeight: 28,
-                        }}
-                      >
-                        {cta.label} →
-                      </button>
-                    )}
                   </div>
                 )
               })()}
