@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload, RefreshCw, CheckCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
@@ -15,6 +15,7 @@ import { useUndo } from '../hooks/useUndo'
 import { LimitWarning } from '../components/FeatureGate'
 import { SkeletonKanban } from '../components/Skeleton'
 import ConflictResolverModal from '../components/ConflictResolverModal'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 /* ── helpers ── */
 
@@ -125,7 +126,18 @@ export default function Jobs() {
   }, [paidJobs, historySearch, historyFilterType, historyFilterCustomer])
   const historyRevenue = useMemo(() => filteredHistory.reduce((s, j) => s + j.value, 0), [filteredHistory])
   const navigate = useNavigate()
-  const [view, setView] = useState<'kanban' | 'table' | 'history'>('kanban')
+  // Mobile users default straight into the table (card-list) view —
+  // kanban is impractical on a phone screen and the table is the
+  // workflow view for managing the day on the go.
+  const isMobile = useIsMobile()
+  const [view, setView] = useState<'kanban' | 'table' | 'history'>(isMobile ? 'table' : 'kanban')
+  // If a desktop user resizes to mobile (or rotates an iPad to portrait
+  // and ends up under the breakpoint) while still on kanban, switch them
+  // over. Don't auto-switch back when going the other way — let them keep
+  // table view if they preferred it.
+  useEffect(() => {
+    if (isMobile && view === 'kanban') setView('table')
+  }, [isMobile, view])
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [dragOverCol, setDragOverCol] = useState<JobStatus | null>(null)
   const [scheduleDate, setScheduleDate] = useState('')
@@ -728,7 +740,7 @@ export default function Jobs() {
       )}
 
       {/* table view */}
-      {view === 'table' && (
+      {view === 'table' && !isMobile && (
         <div style={{ borderRadius: 12, overflow: 'hidden' }}>
           <table style={s.table}>
             <thead>
@@ -750,7 +762,7 @@ export default function Jobs() {
                   onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '22')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <td style={{ ...s.td, color: C.gold, fontWeight: 600 }}>{job.id}</td>
+                  <td style={{ ...s.td, color: C.gold, fontWeight: 600 }}>#{job.id.slice(-6).toUpperCase()}</td>
                   <td style={s.td}>{job.customerName}</td>
                   <td style={s.td}>{job.jobType}</td>
                   <td style={{ ...s.td, fontWeight: 600, color: C.gold }}>{fmtCurrency(job.value)}</td>
@@ -770,6 +782,108 @@ export default function Jobs() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Mobile table view — card list. Each row is a tappable card
+          showing customer + status on top, type + date + short ref in
+          the middle, and value + warning on the bottom. Job # references
+          collapse to a 6-char tail (#3EAB67) so they don't dominate. */}
+      {view === 'table' && isMobile && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {jobs.filter(j => j.status !== 'Paid').length === 0 && (
+            <div style={{ textAlign: 'center', padding: 32, color: C.steel, fontSize: 13 }}>
+              No active jobs.
+            </div>
+          )}
+          {jobs.filter(j => j.status !== 'Paid').map((job) => {
+            const warning = getJobWarning(job)
+            const shortRef = `#${job.id.slice(-6).toUpperCase()}`
+            return (
+              <div
+                key={job.id}
+                onClick={() => selectJob(job)}
+                style={{
+                  background: C.charcoalLight,
+                  borderLeft: `3px solid ${statusColor[job.status]}`,
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                {/* Top line: customer name + status */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: 8,
+                }}>
+                  <div style={{
+                    fontSize: 15, fontWeight: 700, color: C.white,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1,
+                  }}>
+                    {warning && (
+                      <AlertCircle size={14} color="#D46A6A" style={{ flexShrink: 0 }} />
+                    )}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{job.customerName}</span>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 10,
+                    color: statusColor[job.status],
+                    background: statusColor[job.status] + '1A',
+                    textTransform: 'uppercase', letterSpacing: 0.5,
+                    flexShrink: 0, whiteSpace: 'nowrap',
+                  }}>
+                    {job.status}
+                  </span>
+                </div>
+
+                {/* Middle line: type + date + short ref */}
+                <div style={{
+                  fontSize: 12, color: C.silver,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {job.jobType !== 'TBC' ? job.jobType : (() => {
+                      const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined
+                      return q?.jobTypeName || 'TBC'
+                    })()}
+                  </span>
+                  <span style={{ color: C.steel }}>·</span>
+                  <span>{fmtDate(job.date)}</span>
+                  <span style={{ color: C.steel }}>·</span>
+                  <span style={{
+                    fontSize: 10, color: C.steel, fontFamily: 'ui-monospace, monospace',
+                  }}>{shortRef}</span>
+                </div>
+
+                {/* Bottom line: value + warning text */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: 8,
+                }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.gold }}>
+                    {fmtCurrency(job.value > 0 ? job.value : (() => {
+                      const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined
+                      return q?.netTotal || 0
+                    })())}
+                  </span>
+                  {warning && (
+                    <span style={{
+                      fontSize: 10, color: '#D46A6A', fontWeight: 600,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      maxWidth: '60%',
+                    }}>
+                      {warning}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
