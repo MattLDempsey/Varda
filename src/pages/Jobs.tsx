@@ -109,6 +109,10 @@ export default function Jobs() {
   const [confirmVia, setConfirmVia] = useState<{ email: boolean; whatsapp: boolean }>({ email: true, whatsapp: false })
   const [confirmSending, setConfirmSending] = useState(false)
   const [confirmSentMsg, setConfirmSentMsg] = useState('')
+  // 'initial' = only dispatch events that haven't been sent yet (default).
+  // 'resend' = re-dispatch every day on the job, used when the customer can't
+  // find the original email.
+  const [confirmMode, setConfirmMode] = useState<'initial' | 'resend'>('initial')
 
   // Add-invoice form state
   const [showAddInvoice, setShowAddInvoice] = useState(false)
@@ -147,6 +151,7 @@ export default function Jobs() {
     setConfirmVia({ email: true, whatsapp: false })
     setConfirmSending(false)
     setConfirmSentMsg('')
+    setConfirmMode('initial')
     setScheduleDate('')
     // Load attachments for this job
     setAttachmentsLoading(true)
@@ -1249,8 +1254,13 @@ export default function Jobs() {
                       return lines
                     }
 
+                    // Resolve which events the modal will dispatch — either
+                    // just the unsent ones (initial send) or every day on the
+                    // job (resend, used when the customer's lost the original).
+                    const eventsForSend = confirmMode === 'resend' ? jobEvents : unconfirmedEvents
+
                     const handleSendConfirmation = async () => {
-                      if (unconfirmedEvents.length === 0) return
+                      if (eventsForSend.length === 0) return
                       if (!confirmVia.email && !confirmVia.whatsapp) return
                       setConfirmSending(true)
 
@@ -1258,30 +1268,33 @@ export default function Jobs() {
                       const jobType = selectedJob.jobType !== 'TBC'
                         ? selectedJob.jobType
                         : (selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId)?.jobTypeName || '' : '')
-                      const summary = buildScheduleSummary()
+                      const sendSummary = eventsForSend
+                        .map(ev => `• ${fmtDate(ev.date)} — ${slotLabels[ev.slot]}`)
+                        .join('\n')
+                      const subjectPrefix = confirmMode === 'resend' ? 'Reminder: ' : ''
 
                       // ── Email path ──
                       if (confirmVia.email && customer?.email && user?.orgId) {
                         try {
-                          // Generate one .ics file containing all unconfirmed events
-                          const ics = generateICSCalendar(unconfirmedEvents, customers)
-                          const firstEv = unconfirmedEvents[0]
+                          // One .ics file containing every event being dispatched
+                          const ics = generateICSCalendar(eventsForSend, customers)
+                          const firstEv = eventsForSend[0]
                           const emailData = buildBookingConfirmationEmail({
                             customerName: customer.name,
                             businessName: biz.businessName,
-                            jobTitle: unconfirmedEvents.length > 1 ? `${jobType} (${unconfirmedEvents.length} days)` : jobType,
+                            jobTitle: eventsForSend.length > 1 ? `${jobType} (${eventsForSend.length} days)` : jobType,
                             date: firstEv.date,
-                            time: unconfirmedEvents.length > 1
-                              ? `${unconfirmedEvents.length} days — see attached calendar`
+                            time: eventsForSend.length > 1
+                              ? `${eventsForSend.length} days — see attached calendar`
                               : (slotLabels[firstEv.slot] || firstEv.slot),
                             businessPhone: biz.phone,
                             businessEmail: biz.email,
                           })
                           await sendEmail({
                             to: customer.email,
-                            subject: emailData.subject,
+                            subject: subjectPrefix + emailData.subject,
                             htmlBody: emailData.html,
-                            textBody: `${emailData.text}\n\nScheduled days:\n${summary}`,
+                            textBody: `${emailData.text}\n\nScheduled days:\n${sendSummary}`,
                             replyTo: biz.email,
                             fromName: buildFromName(biz),
                             attachments: [{
@@ -1291,16 +1304,16 @@ export default function Jobs() {
                             }],
                             orgId: user.orgId,
                             customerId: customer.id,
-                            templateName: 'Booking Confirmation',
+                            templateName: confirmMode === 'resend' ? 'Booking Reminder' : 'Booking Confirmation',
                           })
                           addComm({
                             customerId: customer.id,
                             customerName: customer.name,
-                            templateName: 'Booking Confirmation',
+                            templateName: confirmMode === 'resend' ? 'Booking Reminder' : 'Booking Confirmation',
                             channel: 'email',
                             status: 'Sent',
                             date: new Date().toISOString(),
-                            body: `Confirmation for ${unconfirmedEvents.length} day${unconfirmedEvents.length > 1 ? 's' : ''}: ${unconfirmedEvents.map(e => fmtDate(e.date)).join(', ')}`,
+                            body: `${confirmMode === 'resend' ? 'Resent' : 'Sent'} ${eventsForSend.length} day${eventsForSend.length > 1 ? 's' : ''}: ${eventsForSend.map(e => fmtDate(e.date)).join(', ')}`,
                           })
                         } catch (err) {
                           console.error('[Schedule] email confirmation failed', err)
@@ -1310,29 +1323,37 @@ export default function Jobs() {
                       // ── WhatsApp path ──
                       if (confirmVia.whatsapp && customer?.phone) {
                         const phone = customer.phone.replace(/\s/g, '').replace(/^0/, '44')
-                        const text = `Hi ${customer.name}, just confirming your booking with ${biz.businessName} for:\n\n${summary}\n\nLet me know if there are any issues.`
+                        const intro = confirmMode === 'resend'
+                          ? `Hi ${customer.name}, just resending the booking details from ${biz.businessName}:`
+                          : `Hi ${customer.name}, just confirming your booking with ${biz.businessName} for:`
+                        const text = `${intro}\n\n${sendSummary}\n\nLet me know if there are any issues.`
                         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank')
                         if (customer.id) {
                           addComm({
                             customerId: customer.id,
                             customerName: customer.name,
-                            templateName: 'Booking Confirmation',
+                            templateName: confirmMode === 'resend' ? 'Booking Reminder' : 'Booking Confirmation',
                             channel: 'whatsapp',
                             status: 'Sent',
                             date: new Date().toISOString(),
-                            body: `WhatsApp confirmation for ${unconfirmedEvents.length} day${unconfirmedEvents.length > 1 ? 's' : ''}`,
+                            body: `WhatsApp ${confirmMode === 'resend' ? 'reminder' : 'confirmation'} for ${eventsForSend.length} day${eventsForSend.length > 1 ? 's' : ''}`,
                           })
                         }
                       }
 
-                      // Mark all sent events as confirmation_sent_at = now
+                      // Stamp confirmation_sent_at on every event we just
+                      // dispatched. For a resend, this overwrites the previous
+                      // timestamp with the latest send time, which is what we
+                      // want for "last time the customer was reminded".
                       const ts = new Date().toISOString()
-                      for (const ev of unconfirmedEvents) {
+                      for (const ev of eventsForSend) {
                         updateEvent(ev.id, { confirmationSentAt: ts })
                       }
 
                       const channels = [confirmVia.email && 'Email', confirmVia.whatsapp && 'WhatsApp'].filter(Boolean).join(' + ')
-                      setConfirmSentMsg(`Sent via ${channels}`)
+                      setConfirmSentMsg(confirmMode === 'resend'
+                        ? `Resent via ${channels}`
+                        : `Sent via ${channels}`)
                       setConfirmSending(false)
                     }
 
@@ -1404,7 +1425,7 @@ export default function Jobs() {
                             Tapping it opens the channel-picker modal below. */}
                         {unconfirmedEvents.length > 0 && !showConfirmModal && !confirmSentMsg && (
                           <button
-                            onClick={() => setShowConfirmModal(true)}
+                            onClick={() => { setConfirmMode('initial'); setShowConfirmModal(true) }}
                             style={{
                               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                               padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
@@ -1414,6 +1435,27 @@ export default function Jobs() {
                           >
                             <Send size={14} />
                             Send confirmation ({unconfirmedEvents.length} day{unconfirmedEvents.length > 1 ? 's' : ''})
+                          </button>
+                        )}
+
+                        {/* Resend confirmation — secondary, available whenever
+                            there's at least one already-sent day on the job.
+                            Used when the customer can't find the original. */}
+                        {jobEvents.length > 0 && unconfirmedEvents.length < jobEvents.length && !showConfirmModal && (
+                          <button
+                            onClick={() => { setConfirmMode('resend'); setShowConfirmModal(true) }}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                              padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                              cursor: 'pointer', minHeight: 34, marginBottom: 12,
+                              background: 'transparent', border: `1px solid ${C.steel}44`, color: C.silver,
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.color = C.gold; e.currentTarget.style.borderColor = `${C.gold}66` }}
+                            onMouseLeave={e => { e.currentTarget.style.color = C.silver; e.currentTarget.style.borderColor = `${C.steel}44` }}
+                            title="Resend the booking confirmation if the customer can't find the original email"
+                          >
+                            <RefreshCw size={12} />
+                            Resend confirmation
                           </button>
                         )}
 
@@ -1454,10 +1496,10 @@ export default function Jobs() {
                             background: C.charcoalLight, border: `1px solid ${C.steel}44`,
                           }}>
                             <div style={{ fontSize: 13, fontWeight: 600, color: C.white, marginBottom: 4 }}>
-                              Send confirmation for {unconfirmedEvents.length} day{unconfirmedEvents.length > 1 ? 's' : ''}
+                              {confirmMode === 'resend' ? 'Resend' : 'Send'} confirmation for {eventsForSend.length} day{eventsForSend.length > 1 ? 's' : ''}
                             </div>
                             <div style={{ fontSize: 11, color: C.steel, marginBottom: 12 }}>
-                              {unconfirmedEvents.map(e => `${fmtDate(e.date)} (${slotLabels[e.slot]})`).join(' · ')}
+                              {eventsForSend.map(e => `${fmtDate(e.date)} (${slotLabels[e.slot]})`).join(' · ')}
                             </div>
 
                             <label style={{
