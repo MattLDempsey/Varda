@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { TrendingUp, TrendingDown, AlertTriangle, Award, X } from 'lucide-react'
+import InsightModal from '../components/InsightModal'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -32,6 +33,9 @@ export default function Insights() {
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year' | 'overall'>('year')
   const [selectedYear, setSelectedYear] = useState('')
   const [expandedJobType, setExpandedJobType] = useState<string | null>(null)
+  // Modal state for drill-down views — null = closed, string = which modal
+  type ModalType = 'allJobTypes' | 'allCustomers' | 'revenueKpi' | 'avgValueKpi' | 'winRateKpi' | 'durationKpi' | 'revenueSummary' | 'costsSummary' | 'profitSummary' | 'taxSummary' | null
+  const [activeModal, setActiveModal] = useState<ModalType>(null)
   const [insightsView, setInsightsView] = useState<'simple' | 'detailed'>(() =>
     (localStorage.getItem('varda-insights-view') as 'simple' | 'detailed') || 'simple'
   )
@@ -142,11 +146,11 @@ export default function Insights() {
     return paidJobs.filter(j => { const d = new Date(j.date); return d >= start && d <= end })
   }, [paidJobs, period, activeYearStart, activeYearEnd])
 
-  const kpis = [
-    { label: `Revenue — ${periodLabels[period]}`, value: fmtCurrency(periodJobs.reduce((s, j) => s + j.value, 0)), change: `${periodJobs.length} jobs`, up: true },
-    { label: 'Avg Job Value', value: fmtCurrency(periodJobs.length > 0 ? Math.round(periodJobs.reduce((s, j) => s + j.value, 0) / periodJobs.length) : 0), change: `${periodJobs.length} jobs`, up: true },
-    { label: 'Win Rate', value: `${Math.round(computed.winRate)}%`, change: 'quotes accepted', up: computed.winRate > 50 },
-    { label: 'Avg Duration', value: `${periodJobs.length > 0 ? (periodJobs.reduce((s, j) => s + j.estimatedHours, 0) / periodJobs.length).toFixed(1) : '0.0'}h`, change: 'per job', up: true },
+  const kpis: { label: string; value: string; change: string; up: boolean; modal: ModalType }[] = [
+    { label: `Revenue — ${periodLabels[period]}`, value: fmtCurrency(periodJobs.reduce((s, j) => s + j.value, 0)), change: `${periodJobs.length} jobs`, up: true, modal: 'revenueKpi' },
+    { label: 'Avg Job Value', value: fmtCurrency(periodJobs.length > 0 ? Math.round(periodJobs.reduce((s, j) => s + j.value, 0) / periodJobs.length) : 0), change: `${periodJobs.length} jobs`, up: true, modal: 'avgValueKpi' },
+    { label: 'Win Rate', value: `${Math.round(computed.winRate)}%`, change: 'quotes accepted', up: computed.winRate > 50, modal: 'winRateKpi' },
+    { label: 'Avg Duration', value: `${periodJobs.length > 0 ? (periodJobs.reduce((s, j) => s + j.estimatedHours, 0) / periodJobs.length).toFixed(1) : '0.0'}h`, change: 'per job', up: true, modal: 'durationKpi' },
   ]
 
   // Helper: get cost for a job from its linked quote
@@ -162,7 +166,7 @@ export default function Insights() {
   /* ── revenue/costs/profit chart — adapts to period ── */
   const revenueChart = useMemo(() => {
     const now = new Date()
-    const bars: { label: string; revenue: number; costs: number; profit: number; key: string }[] = []
+    const bars: { label: string; revenue: number; costs: number; profit: number; key: string; isFuture?: boolean }[] = []
 
     const calcBar = (matchingJobs: typeof paidJobs) => {
       const revenue = matchingJobs.reduce((s, j) => s + j.value, 0)
@@ -176,8 +180,9 @@ export default function Insights() {
       for (let i = 0; i < 7; i++) {
         const d = new Date(monday); d.setDate(d.getDate() + i)
         const key = d.toISOString().split('T')[0]
+        const isFuture = d > now
         const { revenue, costs, profit } = calcBar(periodJobs.filter(j => j.date === key))
-        bars.push({ label: dayNames[i], revenue, costs, profit, key })
+        bars.push({ label: dayNames[i], revenue, costs, profit, key, isFuture })
       }
     } else if (period === 'month') {
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -218,8 +223,9 @@ export default function Insights() {
       for (let i = 0; i < 12; i++) {
         const d = new Date(startYear, 3 + i, 1)
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        const isFuture = d.getFullYear() > now.getFullYear() || (d.getFullYear() === now.getFullYear() && d.getMonth() > now.getMonth())
         const { revenue, costs, profit } = calcBar(paidJobs.filter(j => monthKey(j.date) === key))
-        bars.push({ label: shortMonth(key), revenue, costs, profit, key })
+        bars.push({ label: shortMonth(key), revenue, costs, profit, key, isFuture })
       }
     }
     return bars
@@ -774,7 +780,13 @@ export default function Insights() {
       {/* KPIs */}
       <div style={s.kpiRow}>
         {kpis.map(k => (
-          <div key={k.label} style={s.kpiCard}>
+          <div
+            key={k.label}
+            style={{ ...s.kpiCard, cursor: 'pointer', transition: 'border-color .15s' }}
+            onClick={() => setActiveModal(k.modal)}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.gold }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'transparent' }}
+          >
             <div style={s.kpiValue}>{k.value}</div>
             <div style={s.kpiLabel}>{k.label}</div>
             <div style={{ ...s.kpiChange, color: k.up ? C.green : C.red }}>
@@ -837,23 +849,25 @@ export default function Insights() {
                 const height = (Math.abs(val) / maxChartValue) * 160
                 const isLast = i === revenueChart.length - 1
                 const isSelected = selectedBar === m.label
+                const isFut = !!m.isFuture
                 const barColor = chartMetric === 'revenue' ? C.gold : chartMetric === 'costs' ? '#D46A6A' : C.green
                 return (
-                  <div key={m.label + m.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div key={m.label + m.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', opacity: isFut ? 0.3 : 1 }}>
                     <div style={s.barValue as CSSProperties}>
-                      {Math.abs(val) >= 1000 ? `£${(val / 1000).toFixed(1)}k` : `£${Math.round(val)}`}
+                      {isFut ? '—' : Math.abs(val) >= 1000 ? `£${(val / 1000).toFixed(1)}k` : `£${Math.round(val)}`}
                     </div>
                     <div
                       style={{
                         width: '100%', height: Math.max(height, 2), borderRadius: '6px 6px 0 0',
-                        background: isSelected || isLast ? barColor : `${barColor}44`,
-                        transition: 'height .3s ease, background .15s', cursor: 'pointer',
+                        background: isFut ? `${C.steel}33` : (isSelected || isLast ? barColor : `${barColor}44`),
+                        transition: 'height .3s ease, background .15s', cursor: isFut ? 'default' : 'pointer',
+                        borderTop: isFut ? `1px dashed ${C.steel}66` : 'none',
                       }}
-                      onClick={() => setSelectedBar(isSelected ? null : m.label)}
-                      onMouseEnter={e => { e.currentTarget.style.background = barColor }}
-                      onMouseLeave={e => { if (!isLast && !isSelected) e.currentTarget.style.background = `${barColor}44` }}
+                      onClick={() => !isFut && setSelectedBar(isSelected ? null : m.label)}
+                      onMouseEnter={e => { if (!isFut) e.currentTarget.style.background = barColor }}
+                      onMouseLeave={e => { if (!isFut && !isLast && !isSelected) e.currentTarget.style.background = `${barColor}44` }}
                     />
-                    <div style={s.barLabel as CSSProperties}>{m.label}</div>
+                    <div style={{ ...(s.barLabel as object), color: isFut ? `${C.steel}88` : C.steel }}>{m.label}</div>
                   </div>
                 )
               })}
@@ -898,18 +912,28 @@ export default function Insights() {
             const toX = (i: number) => padL + i * step
             const toY = (v: number) => padT + plotH * (1 - v / maxVal)
 
-            const toLinePoints = (values: number[]) =>
-              values.map((v, i) => `${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ')
+            // Only draw lines for past/current months — future months are excluded
+            // from the line chart so it builds up over time rather than
+            // showing a line dropping to £0.
+            const pastBars = revenueChart.filter(m => !m.isFuture)
+            const lastPastIdx = pastBars.length - 1
 
-            // Area fill points (close the path at the bottom)
-            const toAreaPoints = (values: number[]) => {
-              const line = values.map((v, i) => `${toX(i).toFixed(1)},${toY(v).toFixed(1)}`)
-              return [...line, `${toX(values.length - 1).toFixed(1)},${toY(0).toFixed(1)}`, `${toX(0).toFixed(1)},${toY(0).toFixed(1)}`].join(' ')
+            const toLinePoints = (values: number[], limit?: number) => {
+              const n = limit != null ? Math.min(values.length, limit + 1) : values.length
+              return values.slice(0, n).map((v, i) => `${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ')
             }
 
-            const revLine = toLinePoints(revenueChart.map(m => m.revenue))
-            const costLine = toLinePoints(revenueChart.map(m => m.costs))
-            const profitLine = toLinePoints(revenueChart.map(m => m.profit))
+            // Area fill points (close the path at the bottom)
+            const toAreaPoints = (values: number[], limit?: number) => {
+              const n = limit != null ? Math.min(values.length, limit + 1) : values.length
+              const slice = values.slice(0, n)
+              const line = slice.map((v, i) => `${toX(i).toFixed(1)},${toY(v).toFixed(1)}`)
+              return [...line, `${toX(n - 1).toFixed(1)},${toY(0).toFixed(1)}`, `${toX(0).toFixed(1)},${toY(0).toFixed(1)}`].join(' ')
+            }
+
+            const revLine = toLinePoints(revenueChart.map(m => m.revenue), lastPastIdx)
+            const costLine = toLinePoints(revenueChart.map(m => m.costs), lastPastIdx)
+            const profitLine = toLinePoints(revenueChart.map(m => m.profit), lastPastIdx)
 
             // Y-axis tick values
             const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(maxVal * f))
@@ -941,35 +965,40 @@ export default function Insights() {
                     )
                   })}
 
-                  {/* Area fills */}
-                  <polygon points={toAreaPoints(revenueChart.map(m => m.revenue))} fill="url(#revGrad)" />
-                  <polygon points={toAreaPoints(revenueChart.map(m => m.profit))} fill="url(#profitGrad)" />
+                  {/* Area fills — only up to current month */}
+                  <polygon points={toAreaPoints(revenueChart.map(m => m.revenue), lastPastIdx)} fill="url(#revGrad)" />
+                  <polygon points={toAreaPoints(revenueChart.map(m => m.profit), lastPastIdx)} fill="url(#profitGrad)" />
 
                   {/* Lines */}
                   <polyline points={costLine} fill="none" stroke="#D46A6A" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
                   <polyline points={profitLine} fill="none" stroke={C.green} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
                   <polyline points={revLine} fill="none" stroke={C.gold} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
 
-                  {/* Dots + hover columns */}
+                  {/* Dots + hover columns — future months show as faint placeholders */}
                   {revenueChart.map((m, i) => {
                     const x = toX(i)
                     const isHovered = selectedBar === m.label
+                    const isFut = !!m.isFuture
                     return (
-                      <g key={m.key}>
+                      <g key={m.key} opacity={isFut ? 0.2 : 1}>
                         {/* Invisible hover column */}
-                        <rect
+                        {!isFut && <rect
                           x={x - step / 2} y={padT} width={step} height={plotH}
                           fill="transparent" cursor="pointer"
                           onClick={() => setSelectedBar(isHovered ? null : m.label)}
-                        />
+                        />}
                         {/* Vertical indicator on hover */}
                         {isHovered && (
                           <line x1={x} x2={x} y1={padT} y2={padT + plotH} stroke={`${C.steel}44`} strokeWidth="1" strokeDasharray="4 4" />
                         )}
-                        {/* Dots */}
-                        <circle cx={x} cy={toY(m.revenue)} r={isHovered ? 5.5 : 3.5} fill={C.gold} stroke={C.black} strokeWidth={isHovered ? 2 : 0} />
-                        <circle cx={x} cy={toY(m.costs)} r={isHovered ? 5 : 3} fill="#D46A6A" stroke={C.black} strokeWidth={isHovered ? 2 : 0} />
-                        <circle cx={x} cy={toY(m.profit)} r={isHovered ? 5 : 3} fill={C.green} stroke={C.black} strokeWidth={isHovered ? 2 : 0} />
+                        {/* Dots — only for past months */}
+                        {!isFut && <>
+                          <circle cx={x} cy={toY(m.revenue)} r={isHovered ? 5.5 : 3.5} fill={C.gold} stroke={C.black} strokeWidth={isHovered ? 2 : 0} />
+                          <circle cx={x} cy={toY(m.costs)} r={isHovered ? 5 : 3} fill="#D46A6A" stroke={C.black} strokeWidth={isHovered ? 2 : 0} />
+                          <circle cx={x} cy={toY(m.profit)} r={isHovered ? 5 : 3} fill={C.green} stroke={C.black} strokeWidth={isHovered ? 2 : 0} />
+                        </>}
+                        {/* Future month marker */}
+                        {isFut && <circle cx={x} cy={toY(0)} r={2} fill={C.steel} opacity={0.5} />}
                         {/* Tooltip */}
                         {isHovered && (
                           <g>
@@ -1030,7 +1059,12 @@ export default function Insights() {
       {/* job type performance + repeat customers */}
       <div style={s.twoCol}>
         <div style={s.panel}>
-          <div style={s.panelTitle}>Job Type Performance</div>
+          <div
+            style={{ ...s.panelTitle as object, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+            onClick={() => setActiveModal('allJobTypes')}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.color = C.gold }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.color = C.white }}
+          >Job Type Performance <span style={{ fontSize: 11, color: C.steel, fontWeight: 400 }}>View all →</span></div>
           <div style={{ overflowX: 'auto' }}>
             <table style={s.table}>
               <thead>
@@ -1076,7 +1110,12 @@ export default function Insights() {
         </div>
 
         <div style={s.panel}>
-          <div style={s.panelTitle}>Top Repeat Customers</div>
+          <div
+            style={{ ...s.panelTitle as object, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+            onClick={() => setActiveModal('allCustomers')}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.color = C.gold }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.color = C.white }}
+          >Top Repeat Customers <span style={{ fontSize: 11, color: C.steel, fontWeight: 400 }}>View all →</span></div>
           {repeatCustomers.map((c, i) => (
             <div
               key={c.name}
@@ -1107,16 +1146,23 @@ export default function Insights() {
       <div style={{ ...s.panel, marginBottom: 24 }}>
         <div style={s.panelTitle}>Financial Summary — {periodLabels[period]}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-          {[
-            { label: 'Revenue', value: fmtCurrency(Math.round(financials.revenue)), color: C.gold },
-            { label: 'Costs', value: fmtCurrency(Math.round(financials.costs)), color: C.red },
-            { label: 'Gross Profit', value: fmtCurrency(Math.round(financials.grossProfit)), color: C.green },
-            { label: 'Income Tax + NI (est.)', value: `${fmtCurrency(Math.round(financials.estimatedTax))}/yr`, color: C.silver },
-          ].map(item => (
-            <div key={item.label} style={{
-              background: C.black, borderRadius: 10, padding: '16px 20px',
-              borderTop: `3px solid ${item.color}`,
-            }}>
+          {([
+            { label: 'Revenue', value: fmtCurrency(Math.round(financials.revenue)), color: C.gold, modal: 'revenueSummary' as ModalType },
+            { label: 'Costs', value: fmtCurrency(Math.round(financials.costs)), color: C.red, modal: 'costsSummary' as ModalType },
+            { label: 'Gross Profit', value: fmtCurrency(Math.round(financials.grossProfit)), color: C.green, modal: 'profitSummary' as ModalType },
+            { label: 'Income Tax + NI (est.)', value: `${fmtCurrency(Math.round(financials.estimatedTax))}/yr`, color: C.silver, modal: 'taxSummary' as ModalType },
+          ]).map(item => (
+            <div
+              key={item.label}
+              onClick={() => setActiveModal(item.modal)}
+              style={{
+                background: C.black, borderRadius: 10, padding: '16px 20px',
+                borderTop: `3px solid ${item.color}`,
+                cursor: 'pointer', transition: 'border-color .15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderTopColor = C.gold }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderTopColor = item.color }}
+            >
               <div style={{ fontSize: 12, color: C.silver, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>{item.label}</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: item.color }}>{item.value}</div>
             </div>
@@ -1505,6 +1551,245 @@ export default function Insights() {
           </>
         )
       })()}
+
+      {/* ═══════════ Drill-down modals for all clickable elements ═══════════ */}
+
+      {/* All Job Types Performance */}
+      {activeModal === 'allJobTypes' && (
+        <InsightModal title="All Job Type Performance" subtitle={`${periodLabels[period]} · ${jobTypePerformance.length} types`} onClose={() => setActiveModal(null)} width={640}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {jobTypePerformance.map(jt => {
+              const barColor = jt.marginNum >= 50 ? C.green : jt.marginNum >= 30 ? C.gold : '#D46A6A'
+              return (
+                <div key={jt.type} onClick={() => { setActiveModal(null); setExpandedJobType(jt.type) }} style={{
+                  background: C.black, borderRadius: 10, padding: '12px 16px', cursor: 'pointer',
+                  transition: 'background .15s',
+                }} onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}22` }} onMouseLeave={e => { e.currentTarget.style.background = C.black }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <div>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>{jt.type}</span>
+                      <span style={{ fontSize: 12, color: C.silver, marginLeft: 8 }}>{jt.jobs} job{jt.jobs > 1 ? 's' : ''} · {jt.avgPrice} avg</span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: C.gold }}>{jt.revenue}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: barColor, marginLeft: 8 }}>{jt.margin}</span>
+                    </div>
+                  </div>
+                  <div style={{ background: `${C.steel}33`, borderRadius: 3, height: 6, overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.min(jt.marginNum, 100)}%`, height: '100%', borderRadius: 3, background: barColor }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </InsightModal>
+      )}
+
+      {/* All Customers */}
+      {activeModal === 'allCustomers' && (() => {
+        const allCusts: typeof repeatCustomers = []
+        const byCustomer: Record<string, { name: string; jobs: number; totalSpend: number; totalCost: number; lastDate: string }> = {}
+        for (const j of periodJobs) {
+          if (!byCustomer[j.customerId]) {
+            const cust = customers.find(c => c.id === j.customerId)
+            byCustomer[j.customerId] = { name: cust?.name || j.customerName, jobs: 0, totalSpend: 0, totalCost: 0, lastDate: j.date }
+          }
+          const entry = byCustomer[j.customerId]
+          entry.jobs += 1; entry.totalSpend += j.value; entry.totalCost += getJobCost(j)
+          if (j.date > entry.lastDate) entry.lastDate = j.date
+        }
+        for (const c of Object.values(byCustomer)) {
+          const margin = c.totalSpend > 0 ? Math.round(((c.totalSpend - c.totalCost) / c.totalSpend) * 100) : 0
+          allCusts.push({ name: c.name, jobs: c.jobs, totalSpend: fmtCurrency(c.totalSpend), margin, marginColor: margin >= 50 ? '#6ABF8A' : margin >= 30 ? '#C6A86A' : '#D46A6A', lastJob: new Date(c.lastDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) })
+        }
+        allCusts.sort((a, b) => b.jobs - a.jobs)
+        return (
+          <InsightModal title="All Customers" subtitle={`${periodLabels[period]} · ${allCusts.length} customers`} onClose={() => setActiveModal(null)} width={540}>
+            {allCusts.map((c, i) => (
+              <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 8px', borderBottom: i < allCusts.length - 1 ? `1px solid ${C.steel}1A` : 'none' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: C.silver }}>{c.jobs} jobs · Last: {c.lastJob}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.gold }}>{c.totalSpend}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: c.marginColor }}>{c.margin}% margin</div>
+                </div>
+              </div>
+            ))}
+          </InsightModal>
+        )
+      })()}
+
+      {/* Revenue KPI breakdown */}
+      {activeModal === 'revenueKpi' && (
+        <InsightModal title="Revenue Breakdown" subtitle={periodLabels[period]} onClose={() => setActiveModal(null)}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: C.gold, marginBottom: 16 }}>{fmtCurrency(periodJobs.reduce((s, j) => s + j.value, 0))}</div>
+          <div style={{ fontSize: 12, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Top 10 jobs by value</div>
+          {[...periodJobs].sort((a, b) => b.value - a.value).slice(0, 10).map((j, i) => (
+            <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.steel}11`, fontSize: 13 }}>
+              <span style={{ color: C.white }}>{i + 1}. {j.customerName} — {j.jobType}</span>
+              <span style={{ color: C.gold, fontWeight: 600 }}>{fmtCurrency(j.value)}</span>
+            </div>
+          ))}
+        </InsightModal>
+      )}
+
+      {/* Win Rate KPI breakdown */}
+      {activeModal === 'winRateKpi' && (() => {
+        const nonDraft = quotes.filter(q => q.status !== 'Draft')
+        const accepted = nonDraft.filter(q => q.status === 'Accepted')
+        const declined = nonDraft.filter(q => q.status === 'Declined' || q.status === 'Expired')
+        const pending = nonDraft.filter(q => q.status === 'Sent' || q.status === 'Viewed')
+        return (
+          <InsightModal title="Quote Conversion" subtitle={`${nonDraft.length} quotes sent`} onClose={() => setActiveModal(null)}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div style={{ background: C.black, borderRadius: 10, padding: '14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#6ABF8A' }}>{accepted.length}</div>
+                <div style={{ fontSize: 11, color: C.steel }}>Accepted</div>
+              </div>
+              <div style={{ background: C.black, borderRadius: 10, padding: '14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: C.gold }}>{pending.length}</div>
+                <div style={{ fontSize: 11, color: C.steel }}>Pending</div>
+              </div>
+              <div style={{ background: C.black, borderRadius: 10, padding: '14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#D46A6A' }}>{declined.length}</div>
+                <div style={{ fontSize: 11, color: C.steel }}>Lost</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: C.silver }}>
+              Win rate: <strong style={{ color: C.white }}>{Math.round(computed.winRate)}%</strong> — {computed.winRate > 50 ? 'healthy conversion' : 'consider following up on pending quotes'}
+            </div>
+          </InsightModal>
+        )
+      })()}
+
+      {/* Avg Value / Duration KPI — simple info modals */}
+      {(activeModal === 'avgValueKpi' || activeModal === 'durationKpi') && (
+        <InsightModal
+          title={activeModal === 'avgValueKpi' ? 'Average Job Value' : 'Average Job Duration'}
+          subtitle={`${periodJobs.length} jobs in ${periodLabels[period]}`}
+          onClose={() => setActiveModal(null)}
+        >
+          {activeModal === 'avgValueKpi' ? (
+            <div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: C.gold, marginBottom: 16 }}>
+                {fmtCurrency(periodJobs.length > 0 ? Math.round(periodJobs.reduce((s, j) => s + j.value, 0) / periodJobs.length) : 0)}
+              </div>
+              <div style={{ fontSize: 12, color: C.steel, marginBottom: 8 }}>Value distribution</div>
+              {[
+                { label: 'Under £250', count: periodJobs.filter(j => j.value < 250).length },
+                { label: '£250–£500', count: periodJobs.filter(j => j.value >= 250 && j.value < 500).length },
+                { label: '£500–£1,000', count: periodJobs.filter(j => j.value >= 500 && j.value < 1000).length },
+                { label: '£1,000–£2,500', count: periodJobs.filter(j => j.value >= 1000 && j.value < 2500).length },
+                { label: 'Over £2,500', count: periodJobs.filter(j => j.value >= 2500).length },
+              ].map(band => (
+                <div key={band.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
+                  <span style={{ color: C.silver }}>{band.label}</span>
+                  <span style={{ color: C.white, fontWeight: 600 }}>{band.count} job{band.count !== 1 ? 's' : ''}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: C.gold, marginBottom: 16 }}>
+                {periodJobs.length > 0 ? (periodJobs.reduce((s, j) => s + j.estimatedHours, 0) / periodJobs.length).toFixed(1) : '0.0'}h
+              </div>
+              <div style={{ fontSize: 12, color: C.steel, marginBottom: 8 }}>Duration distribution</div>
+              {[
+                { label: 'Under 2h', count: periodJobs.filter(j => j.estimatedHours < 2).length },
+                { label: '2–4h', count: periodJobs.filter(j => j.estimatedHours >= 2 && j.estimatedHours < 4).length },
+                { label: '4–8h (full day)', count: periodJobs.filter(j => j.estimatedHours >= 4 && j.estimatedHours < 8).length },
+                { label: '1–2 days', count: periodJobs.filter(j => j.estimatedHours >= 8 && j.estimatedHours < 16).length },
+                { label: '2+ days', count: periodJobs.filter(j => j.estimatedHours >= 16).length },
+              ].map(band => (
+                <div key={band.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
+                  <span style={{ color: C.silver }}>{band.label}</span>
+                  <span style={{ color: C.white, fontWeight: 600 }}>{band.count} job{band.count !== 1 ? 's' : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </InsightModal>
+      )}
+
+      {/* Financial Summary breakdowns */}
+      {activeModal === 'revenueSummary' && (
+        <InsightModal title="Revenue Breakdown" subtitle={`${periodLabels[period]}`} onClose={() => setActiveModal(null)}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: C.gold, marginBottom: 16 }}>{fmtCurrency(Math.round(financials.revenue))}</div>
+          <div style={{ fontSize: 12, color: C.steel, marginBottom: 8 }}>By job type</div>
+          {jobTypePerformance.map(jt => (
+            <div key={jt.type} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.steel}11`, fontSize: 13 }}>
+              <span style={{ color: C.silver }}>{jt.type} ({jt.jobs})</span>
+              <span style={{ color: C.gold, fontWeight: 600 }}>{jt.revenue}</span>
+            </div>
+          ))}
+        </InsightModal>
+      )}
+
+      {activeModal === 'costsSummary' && (
+        <InsightModal title="Costs Breakdown" subtitle={`${periodLabels[period]}`} onClose={() => setActiveModal(null)}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: '#D46A6A', marginBottom: 16 }}>{fmtCurrency(Math.round(financials.costs))}</div>
+          <div style={{ fontSize: 12, color: C.steel, marginBottom: 8 }}>By job type</div>
+          {jobTypePerformance.map(jt => (
+            <div key={jt.type} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.steel}11`, fontSize: 13 }}>
+              <span style={{ color: C.silver }}>{jt.type}</span>
+              <span style={{ color: '#D46A6A', fontWeight: 600 }}>{fmtCurrency(Math.round(jt.costsRaw))}</span>
+            </div>
+          ))}
+        </InsightModal>
+      )}
+
+      {activeModal === 'profitSummary' && (
+        <InsightModal title="Profit Breakdown" subtitle={`${periodLabels[period]}`} onClose={() => setActiveModal(null)}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: C.green, marginBottom: 16 }}>{fmtCurrency(Math.round(financials.grossProfit))}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div style={{ background: C.black, borderRadius: 10, padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: C.gold }}>{fmtCurrency(Math.round(financials.revenue))}</div>
+              <div style={{ fontSize: 10, color: C.steel }}>Revenue</div>
+            </div>
+            <div style={{ background: C.black, borderRadius: 10, padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#D46A6A' }}>{fmtCurrency(Math.round(financials.costs))}</div>
+              <div style={{ fontSize: 10, color: C.steel }}>Costs</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 13, color: C.silver }}>
+            Overall margin: <strong style={{ color: financials.revenue > 0 ? C.green : C.steel }}>{financials.revenue > 0 ? Math.round((financials.grossProfit / financials.revenue) * 100) : 0}%</strong>
+          </div>
+        </InsightModal>
+      )}
+
+      {activeModal === 'taxSummary' && (
+        <InsightModal title="Tax Estimate Breakdown" subtitle="Based on 2025/26 HMRC rates" onClose={() => setActiveModal(null)}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: C.silver, marginBottom: 16 }}>{fmtCurrency(Math.round(financials.estimatedTax))}/yr</div>
+          <div style={{ fontSize: 12, color: C.steel, marginBottom: 8 }}>Components</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: `1px solid ${C.steel}11` }}>
+              <span style={{ color: C.silver }}>Gross Profit (taxable income)</span>
+              <span style={{ color: C.white, fontWeight: 600 }}>{fmtCurrency(Math.round(financials.grossProfit))}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: `1px solid ${C.steel}11` }}>
+              <span style={{ color: C.silver }}>Personal Allowance</span>
+              <span style={{ color: C.green }}>−£12,570</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: `1px solid ${C.steel}11` }}>
+              <span style={{ color: C.silver }}>Income Tax (20% basic / 40% higher)</span>
+              <span style={{ color: C.white }}>{fmtCurrency(Math.round(financials.estimatedTax * 0.7))}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: `1px solid ${C.steel}11` }}>
+              <span style={{ color: C.silver }}>Class 2 NI (£3.45/week)</span>
+              <span style={{ color: C.white }}>£179</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
+              <span style={{ color: C.silver }}>Class 4 NI (6%/2% bands)</span>
+              <span style={{ color: C.white }}>{fmtCurrency(Math.round(financials.estimatedTax * 0.3))}</span>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: C.steel, marginTop: 12, fontStyle: 'italic' }}>
+            This is a rough estimate. Actual tax depends on personal circumstances, allowable expenses, pension contributions, and other factors. Consult your accountant.
+          </div>
+        </InsightModal>
+      )}
 
       {/* ── VAT Summary Panel ── */}
       <div style={{ ...s.panel, marginBottom: 24 }}>
