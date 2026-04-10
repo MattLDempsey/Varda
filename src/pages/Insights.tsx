@@ -24,16 +24,11 @@ function shortMonth(key: string): string {
   return d.toLocaleString('en-GB', { month: 'short' })
 }
 
-/* ── smart alerts (kept as demo data) ── */
-const alerts = [
-  { type: 'warning', message: 'Lighting jobs may be underpriced — avg price £200 vs £245 market rate', icon: <AlertTriangle size={16} /> },
-  { type: 'info', message: 'EV Charger demand up 40% — consider raising base price', icon: <TrendingUp size={16} /> },
-  { type: 'success', message: 'EICR margin at 82% — highest performing job type', icon: <Award size={16} /> },
-]
+/* smart alerts are now computed inside the component from real data */
 
 export default function Insights() {
   const { C } = useTheme()
-  const { jobs, quotes, customers, expenses } = useData()
+  const { jobs, quotes, customers, expenses, invoices } = useData()
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year' | 'overall'>('year')
   const [selectedYear, setSelectedYear] = useState('')
   const [insightsView, setInsightsView] = useState<'simple' | 'detailed'>(() =>
@@ -231,25 +226,133 @@ export default function Insights() {
 
   const chartLabels: Record<string, string> = { week: 'Daily', month: 'Weekly', quarter: 'Monthly', year: 'Monthly', overall: 'Annual' }
 
-  /* ── job type performance (filtered to period) ── */
+  /* ── job type performance (filtered to period) with REAL margins and trends ── */
   const jobTypePerformance = useMemo(() => {
-    const byType: Record<string, { jobs: number; revenue: number }> = {}
+    const byType: Record<string, { jobs: number; revenue: number; costs: number }> = {}
     for (const j of periodJobs) {
-      if (!byType[j.jobType]) byType[j.jobType] = { jobs: 0, revenue: 0 }
+      if (!byType[j.jobType]) byType[j.jobType] = { jobs: 0, revenue: 0, costs: 0 }
       byType[j.jobType].jobs += 1
       byType[j.jobType].revenue += j.value
+      byType[j.jobType].costs += getJobCost(j)
     }
+
+    // Compute previous period for trend comparison
+    const now = new Date()
+    const prevStart = (() => {
+      if (period === 'week') { const d = getMonday(now); d.setDate(d.getDate() - 7); return d }
+      if (period === 'month') return new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      if (period === 'quarter') return new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 - 3, 1)
+      if (period === 'overall') return new Date(2000, 0, 1)
+      const ys = new Date(activeYearStart); ys.setFullYear(ys.getFullYear() - 1); return ys
+    })()
+    const prevEnd = (() => {
+      if (period === 'week') return getMonday(now)
+      if (period === 'month') return new Date(now.getFullYear(), now.getMonth(), 1)
+      if (period === 'quarter') return new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
+      if (period === 'overall') return new Date(2000, 0, 1)
+      return activeYearStart
+    })()
+    const prevJobs = paidJobs.filter(j => { const d = new Date(j.date); return d >= prevStart && d < prevEnd })
+    const prevByType: Record<string, number> = {}
+    for (const j of prevJobs) prevByType[j.jobType] = (prevByType[j.jobType] ?? 0) + j.value
+
     return Object.entries(byType)
-      .map(([type, d]) => ({
-        type,
-        jobs: d.jobs,
-        revenue: fmtCurrency(d.revenue),
-        avgPrice: fmtCurrency(Math.round(d.revenue / d.jobs)),
-        margin: `${Math.round(55 + Math.random() * 30)}%`,
-        trend: 'up' as const,
-      }))
+      .map(([type, d]) => {
+        const margin = d.revenue > 0 ? Math.round(((d.revenue - d.costs) / d.revenue) * 100) : 0
+        const prevRevenue = prevByType[type] ?? 0
+        const trend: 'up' | 'down' | 'flat' = prevRevenue === 0
+          ? (d.revenue > 0 ? 'up' : 'flat')
+          : d.revenue > prevRevenue * 1.05 ? 'up' : d.revenue < prevRevenue * 0.95 ? 'down' : 'flat'
+        return {
+          type,
+          jobs: d.jobs,
+          revenue: fmtCurrency(d.revenue),
+          avgPrice: fmtCurrency(Math.round(d.revenue / d.jobs)),
+          margin: `${margin}%`,
+          trend,
+        }
+      })
       .sort((a, b) => b.jobs - a.jobs)
-  }, [periodJobs])
+  }, [periodJobs, paidJobs, period, getJobCost, activeYearStart])
+
+  /* ── smart alerts computed from real data ── */
+  const smartAlerts = useMemo(() => {
+    const alerts: { type: 'warning' | 'info' | 'success'; message: string }[] = []
+    if (periodJobs.length < 3) return alerts // not enough data
+
+    // 1. Find the highest-margin job type
+    const typeStats: Record<string, { revenue: number; costs: number; jobs: number }> = {}
+    for (const j of periodJobs) {
+      if (!typeStats[j.jobType]) typeStats[j.jobType] = { revenue: 0, costs: 0, jobs: 0 }
+      typeStats[j.jobType].revenue += j.value
+      typeStats[j.jobType].costs += getJobCost(j)
+      typeStats[j.jobType].jobs += 1
+    }
+
+    let bestType = '', bestMargin = 0, worstType = '', worstMargin = 100
+    for (const [type, s] of Object.entries(typeStats)) {
+      if (s.jobs < 2) continue
+      const margin = s.revenue > 0 ? ((s.revenue - s.costs) / s.revenue) * 100 : 0
+      if (margin > bestMargin) { bestMargin = margin; bestType = type }
+      if (margin < worstMargin) { worstMargin = margin; worstType = type }
+    }
+    if (bestType && bestMargin > 50) {
+      alerts.push({ type: 'success', message: `${bestType} is your most profitable job type at ${Math.round(bestMargin)}% margin` })
+    }
+    if (worstType && worstMargin < 30 && worstType !== bestType) {
+      alerts.push({ type: 'warning', message: `${worstType} margin is only ${Math.round(worstMargin)}% — consider raising your price or reducing costs` })
+    }
+
+    // 2. Revenue trend
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    const sixtyDaysAgo = new Date(now); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
+    const recentRev = paidJobs.filter(j => new Date(j.date) >= thirtyDaysAgo).reduce((s, j) => s + j.value, 0)
+    const priorRev = paidJobs.filter(j => { const d = new Date(j.date); return d >= sixtyDaysAgo && d < thirtyDaysAgo }).reduce((s, j) => s + j.value, 0)
+    if (priorRev > 0 && recentRev > priorRev * 1.2) {
+      alerts.push({ type: 'success', message: `Revenue up ${Math.round((recentRev / priorRev - 1) * 100)}% vs previous 30 days — keep it up` })
+    } else if (priorRev > 0 && recentRev < priorRev * 0.8) {
+      alerts.push({ type: 'warning', message: `Revenue down ${Math.round((1 - recentRev / priorRev) * 100)}% vs previous 30 days — check your pipeline` })
+    }
+
+    // 3. Quote conversion speed
+    const sentQuotes = quotes.filter(q => q.status !== 'Draft' && q.sentAt)
+    const acceptedQuotes = sentQuotes.filter(q => q.status === 'Accepted' && q.acceptedAt && q.sentAt)
+    if (acceptedQuotes.length >= 3) {
+      const avgDays = acceptedQuotes.reduce((s, q) => {
+        const sent = new Date(q.sentAt!).getTime()
+        const accepted = new Date(q.acceptedAt!).getTime()
+        return s + (accepted - sent) / 86400000
+      }, 0) / acceptedQuotes.length
+      if (avgDays <= 2) {
+        alerts.push({ type: 'success', message: `Quotes are being accepted in ${avgDays.toFixed(1)} days on average — fast turnaround` })
+      } else if (avgDays > 7) {
+        alerts.push({ type: 'info', message: `Average ${Math.round(avgDays)} days from quote to acceptance — consider following up sooner` })
+      }
+    }
+
+    // 4. Outstanding invoices
+    const overdueInvoices = invoices.filter(i => i.status === 'Sent' && i.dueDate && i.dueDate < now.toISOString().split('T')[0])
+    if (overdueInvoices.length > 0) {
+      const overdueTotal = overdueInvoices.reduce((s, i) => s + i.grandTotal, 0)
+      alerts.push({ type: 'warning', message: `${overdueInvoices.length} overdue invoice${overdueInvoices.length > 1 ? 's' : ''} totalling ${fmtCurrency(overdueTotal)} — chase payment` })
+    }
+
+    // 5. Growing job type
+    for (const [type, s] of Object.entries(typeStats)) {
+      if (s.jobs < 3) continue
+      const prevCount = paidJobs.filter(j => {
+        const d = new Date(j.date)
+        return j.jobType === type && d >= sixtyDaysAgo && d < thirtyDaysAgo
+      }).length
+      const recentCount = paidJobs.filter(j => new Date(j.date) >= thirtyDaysAgo && j.jobType === type).length
+      if (prevCount > 0 && recentCount >= prevCount * 1.5 && recentCount >= 3) {
+        alerts.push({ type: 'info', message: `${type} demand up ${Math.round((recentCount / prevCount - 1) * 100)}% — consider raising your base price` })
+      }
+    }
+
+    return alerts.slice(0, 4) // Cap at 4 alerts to avoid noise
+  }, [periodJobs, paidJobs, quotes, invoices, getJobCost])
 
   /* ── repeat customers (filtered to period, top 5) ── */
   const repeatCustomers = useMemo(() => {
@@ -820,8 +923,25 @@ export default function Insights() {
           </div>
         </div>
 
-        {/* smart alerts — will be computed from real data once enough
-            history is accumulated. Hidden for now to avoid showing fake insights. */}
+        {/* ── Smart Alerts — computed from real business data ── */}
+        {smartAlerts.length > 0 && (
+        <div style={s.panel}>
+          <div style={s.panelTitle}>Smart Alerts</div>
+          {smartAlerts.map((a, i) => (
+            <div
+              key={i}
+              style={{
+                ...s.alertCard,
+                background: a.type === 'warning' ? `${C.gold}15` : a.type === 'success' ? `${C.green}15` : `${C.blue}15`,
+                color: a.type === 'warning' ? C.gold : a.type === 'success' ? C.green : C.blue,
+              }}
+            >
+              {a.type === 'warning' ? <AlertTriangle size={16} /> : a.type === 'success' ? <Award size={16} /> : <TrendingUp size={16} />}
+              <span style={{ color: C.silver }}>{a.message}</span>
+            </div>
+          ))}
+        </div>
+        )}
       </div>
 
       {/* Everything below is detailed view only */}
