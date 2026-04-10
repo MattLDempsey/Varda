@@ -36,6 +36,8 @@ export default function Insights() {
   // Modal state for drill-down views — null = closed, string = which modal
   type ModalType = 'allJobTypes' | 'allCustomers' | 'revenueKpi' | 'avgValueKpi' | 'winRateKpi' | 'durationKpi' | 'revenueSummary' | 'costsSummary' | 'profitSummary' | 'taxSummary' | null
   const [activeModal, setActiveModal] = useState<ModalType>(null)
+  // Financial Summary + VAT: toggle between actuals-to-date and full year projected
+  const [financialView, setFinancialView] = useState<'actuals' | 'projected'>('actuals')
   const [insightsView, setInsightsView] = useState<'simple' | 'detailed'>(() =>
     (localStorage.getItem('varda-insights-view') as 'simple' | 'detailed') || 'simple'
   )
@@ -610,6 +612,32 @@ export default function Insights() {
     return { actual, lastYear, forecast, growthRate, hasLastYearData }
   }, [paidJobs, jobs, getJobCost])
 
+  // Projected full-year financials: actuals + forecast revenue/costs
+  const projectedFinancials = useMemo(() => {
+    if (period !== 'year') return financials
+    const fcRevenue = forecastData.forecast.reduce((s, m) => s + m.revenue, 0)
+    const fcCosts = forecastData.forecast.reduce((s, m) => s + m.costs, 0)
+    const revenue = financials.revenue + fcRevenue
+    const costs = financials.costs + fcCosts
+    const grossProfit = revenue - costs
+    const personalAllowance = 12570
+    const basicRateLimit = 50270
+    let incomeTax = 0
+    if (grossProfit > personalAllowance) {
+      const basicBand = Math.min(grossProfit, basicRateLimit) - personalAllowance
+      incomeTax += basicBand * 0.20
+      if (grossProfit > basicRateLimit) incomeTax += (grossProfit - basicRateLimit) * 0.40
+    }
+    const class2NI = 3.45 * 52
+    let class4NI = 0
+    if (grossProfit > personalAllowance) {
+      const band = Math.min(grossProfit, basicRateLimit) - personalAllowance
+      class4NI += band * 0.06
+      if (grossProfit > basicRateLimit) class4NI += (grossProfit - basicRateLimit) * 0.02
+    }
+    return { revenue, costs, grossProfit, estimatedTax: Math.max(incomeTax + class2NI + class4NI, 0) }
+  }, [financials, forecastData, period])
+
   // Weighted average: 2× recent + 1× older
   function weightedAvg(recent: number, older: number): number {
     if (recent > 0 && older > 0) return (recent * 2 + older) / 3
@@ -620,11 +648,12 @@ export default function Insights() {
 
   /* ── VAT Summary ── */
   const vatSummary = useMemo(() => {
-    const outputVAT = financials.revenue * 0.20
-    const inputVAT = financials.costs * 0.20
+    const fin = financialView === 'projected' && period === 'year' ? projectedFinancials : financials
+    const outputVAT = fin.revenue * 0.20
+    const inputVAT = fin.costs * 0.20
     const liability = outputVAT - inputVAT
     return { outputVAT, inputVAT, liability }
-  }, [financials])
+  }, [financials, projectedFinancials, financialView, period])
 
   /* ── CSV export ── */
   const exportCSV = useCallback(() => {
@@ -1144,13 +1173,40 @@ export default function Insights() {
 
       {/* ── Financial Summary Panel ── */}
       <div style={{ ...s.panel, marginBottom: 24 }}>
-        <div style={s.panelTitle}>Financial Summary — {periodLabels[period]}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={s.panelTitle}>Financial Summary — {periodLabels[period]}</div>
+          {period === 'year' && (
+            <div style={{ display: 'flex', background: C.black, borderRadius: 8, overflow: 'hidden' }}>
+              <button
+                onClick={() => setFinancialView('actuals')}
+                style={{
+                  padding: '6px 12px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: financialView === 'actuals' ? C.charcoalLight : 'transparent',
+                  color: financialView === 'actuals' ? C.gold : C.steel,
+                }}
+              >Actuals to Date</button>
+              <button
+                onClick={() => setFinancialView('projected')}
+                style={{
+                  padding: '6px 12px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: financialView === 'projected' ? C.charcoalLight : 'transparent',
+                  color: financialView === 'projected' ? C.gold : C.steel,
+                }}
+              >Full Year (Projected)</button>
+            </div>
+          )}
+        </div>
+        {(() => {
+          const fin = financialView === 'projected' && period === 'year' ? projectedFinancials : financials
+          const isProjected = financialView === 'projected' && period === 'year'
+          return (
+        <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
           {([
-            { label: 'Revenue', value: fmtCurrency(Math.round(financials.revenue)), color: C.gold, modal: 'revenueSummary' as ModalType },
-            { label: 'Costs', value: fmtCurrency(Math.round(financials.costs)), color: C.red, modal: 'costsSummary' as ModalType },
-            { label: 'Gross Profit', value: fmtCurrency(Math.round(financials.grossProfit)), color: C.green, modal: 'profitSummary' as ModalType },
-            { label: 'Income Tax + NI (est.)', value: `${fmtCurrency(Math.round(financials.estimatedTax))}/yr`, color: C.silver, modal: 'taxSummary' as ModalType },
+            { label: isProjected ? 'Revenue (Projected)' : 'Revenue', value: fmtCurrency(Math.round(fin.revenue)), color: C.gold, modal: 'revenueSummary' as ModalType },
+            { label: isProjected ? 'Costs (Projected)' : 'Costs', value: fmtCurrency(Math.round(fin.costs)), color: C.red, modal: 'costsSummary' as ModalType },
+            { label: isProjected ? 'Gross Profit (Projected)' : 'Gross Profit', value: fmtCurrency(Math.round(fin.grossProfit)), color: C.green, modal: 'profitSummary' as ModalType },
+            { label: 'Income Tax + NI (est.)', value: `${fmtCurrency(Math.round(fin.estimatedTax))}/yr`, color: C.silver, modal: 'taxSummary' as ModalType },
           ]).map(item => (
             <div
               key={item.label}
@@ -1169,8 +1225,12 @@ export default function Insights() {
           ))}
         </div>
         <div style={{ fontSize: 11, color: C.steel, marginTop: 8, fontStyle: 'italic' }}>
-          Income Tax + NI estimate includes Income Tax (20%/40% bands), Class 2 NI, and Class 4 NI based on 2025/26 HMRC rates. This is a rough estimate — consult your accountant for actual figures.
+          {isProjected ? 'Projected figures include forecast revenue/costs for remaining months. ' : ''}
+          Income Tax + NI estimate includes Income Tax (20%/40% bands), Class 2 NI, and Class 4 NI based on 2025/26 HMRC rates. Consult your accountant for actual figures.
         </div>
+        </>
+          )
+        })()}
       </div>
 
       {/* ── Trend & Forecast (full width) — Business plan ── */}
@@ -1640,7 +1700,8 @@ export default function Insights() {
         const nonDraft = quotes.filter(q => q.status !== 'Draft')
         const accepted = nonDraft.filter(q => q.status === 'Accepted')
         const declined = nonDraft.filter(q => q.status === 'Declined' || q.status === 'Expired')
-        const pending = nonDraft.filter(q => q.status === 'Sent' || q.status === 'Viewed')
+        const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+        const pending = nonDraft.filter(q => (q.status === 'Sent' || q.status === 'Viewed') && q.sentAt && new Date(q.sentAt) >= thirtyDaysAgo)
         return (
           <InsightModal title="Quote Conversion" subtitle={`${nonDraft.length} quotes sent`} onClose={() => setActiveModal(null)}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
@@ -1793,7 +1854,29 @@ export default function Insights() {
 
       {/* ── VAT Summary Panel ── */}
       <div style={{ ...s.panel, marginBottom: 24 }}>
-        <div style={s.panelTitle}>VAT Summary — {periodLabels[period]}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={s.panelTitle}>VAT Summary — {periodLabels[period]}{financialView === 'projected' && period === 'year' ? ' (Projected)' : ''}</div>
+          {period === 'year' && (
+            <div style={{ display: 'flex', background: C.black, borderRadius: 8, overflow: 'hidden' }}>
+              <button
+                onClick={() => setFinancialView('actuals')}
+                style={{
+                  padding: '6px 12px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: financialView === 'actuals' ? C.charcoalLight : 'transparent',
+                  color: financialView === 'actuals' ? C.gold : C.steel,
+                }}
+              >Actuals</button>
+              <button
+                onClick={() => setFinancialView('projected')}
+                style={{
+                  padding: '6px 12px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: financialView === 'projected' ? C.charcoalLight : 'transparent',
+                  color: financialView === 'projected' ? C.gold : C.steel,
+                }}
+              >Full Year</button>
+            </div>
+          )}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 12 }}>
           {[
             { label: 'Output VAT (collected)', value: fmtCurrency(Math.round(vatSummary.outputVAT)), color: C.gold },
