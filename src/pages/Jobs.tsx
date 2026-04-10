@@ -1043,10 +1043,11 @@ export default function Jobs() {
                     </div>
                   </div>
 
-                  {/* Start job — visible only when the job is Scheduled.
+                  {/* Start job — only appears on or after the scheduled
+                      day so future jobs can't be accidentally started early.
                       Mirrors the Start button on the Dashboard so the user
                       can flip status without going back to the dashboard. */}
-                  {selectedJob.status === 'Scheduled' && (
+                  {selectedJob.status === 'Scheduled' && selectedJob.date <= new Date().toISOString().split('T')[0] && (
                     <button
                       onClick={() => {
                         const ts = new Date().toISOString()
