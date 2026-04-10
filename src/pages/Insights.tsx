@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { TrendingUp, TrendingDown, AlertTriangle, Award } from 'lucide-react'
+import { TrendingUp, TrendingDown, AlertTriangle, Award, X } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -31,6 +31,7 @@ export default function Insights() {
   const { jobs, quotes, customers, expenses, invoices } = useData()
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year' | 'overall'>('year')
   const [selectedYear, setSelectedYear] = useState('')
+  const [expandedJobType, setExpandedJobType] = useState<string | null>(null)
   const [insightsView, setInsightsView] = useState<'simple' | 'detailed'>(() =>
     (localStorage.getItem('varda-insights-view') as 'simple' | 'detailed') || 'simple'
   )
@@ -267,8 +268,11 @@ export default function Insights() {
           type,
           jobs: d.jobs,
           revenue: fmtCurrency(d.revenue),
+          revenueRaw: d.revenue,
+          costsRaw: d.costs,
           avgPrice: fmtCurrency(Math.round(d.revenue / d.jobs)),
           margin: `${margin}%`,
+          marginNum: margin,
           trend,
         }
       })
@@ -1001,7 +1005,7 @@ export default function Insights() {
 
         {/* ── Smart Alerts — computed from real business data ── */}
         {smartAlerts.length > 0 && (
-        <div style={s.panel}>
+        <div style={{ ...s.panel, marginTop: 24 }}>
           <div style={s.panelTitle}>Smart Alerts</div>
           {smartAlerts.map((a, i) => (
             <div
@@ -1041,16 +1045,27 @@ export default function Insights() {
               </thead>
               <tbody>
                 {jobTypePerformance.map(j => (
-                  <tr key={j.type}>
+                  <tr
+                    key={j.type}
+                    onClick={() => setExpandedJobType(j.type)}
+                    style={{ cursor: 'pointer', transition: 'background .15s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}22` }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >
                     <td style={{ ...s.td, fontWeight: 500 }}>{j.type}</td>
                     <td style={s.td}>{j.jobs}</td>
                     <td style={{ ...s.td, color: C.gold, fontWeight: 600 }}>{j.revenue}</td>
                     <td style={s.td}>{j.avgPrice}</td>
-                    <td style={s.td}>{j.margin}</td>
+                    <td style={{
+                      ...s.td, fontWeight: 600,
+                      color: j.marginNum >= 50 ? C.green : j.marginNum >= 30 ? C.gold : '#D46A6A',
+                    }}>{j.margin}</td>
                     <td style={s.td}>
                       {j.trend === 'up'
                         ? <TrendingUp size={14} color={C.green} />
-                        : <TrendingDown size={14} color={C.red} />
+                        : j.trend === 'down'
+                          ? <TrendingDown size={14} color={'#D46A6A'} />
+                          : <span style={{ fontSize: 12, color: C.steel }}>—</span>
                       }
                     </td>
                   </tr>
@@ -1402,36 +1417,94 @@ export default function Insights() {
       </div>
       </FeatureGate>
 
-      {/* ── Profit Margin by Job Type (full width, compact) — Business plan ── */}
-      <FeatureGate feature="insightsAdvanced">
-      <div style={{ ...s.panel, marginBottom: 24 }}>
-        <div style={s.panelTitle}>Profit Margin by Job Type</div>
-        {marginByType.length === 0 ? (
-          <div style={{ color: C.steel, fontSize: 13 }}>No job data for this period</div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-            {marginByType.map(m => (
-              <div key={m.type} style={{ background: C.black, borderRadius: 10, padding: '12px 16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, color: C.white, fontWeight: 500 }}>{m.type}</span>
-                  <span style={{ fontSize: 13, color: m.margin >= 50 ? C.green : m.margin >= 30 ? C.gold : C.red, fontWeight: 600 }}>
-                    {m.margin.toFixed(1)}%
-                  </span>
+      {/* Job Type Detail Modal — opens when clicking a row in Job Type Performance */}
+      {expandedJobType && (() => {
+        const jt = jobTypePerformance.find(j => j.type === expandedJobType)
+        if (!jt) return null
+        // Get month-by-month revenue for this job type
+        const monthlyData: { label: string; revenue: number; jobs: number }[] = []
+        const now = new Date()
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+          const monthJobs = paidJobs.filter(j => j.jobType === expandedJobType && j.date.startsWith(key))
+          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+          monthlyData.push({ label: months[d.getMonth()], revenue: monthJobs.reduce((s, j) => s + j.value, 0), jobs: monthJobs.length })
+        }
+        const maxRev = Math.max(...monthlyData.map(m => m.revenue), 1)
+        const barColor = jt.marginNum >= 50 ? C.green : jt.marginNum >= 30 ? C.gold : '#D46A6A'
+        return (
+          <>
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 200 }} onClick={() => setExpandedJobType(null)} />
+            <div style={{
+              position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+              background: C.charcoalLight, borderRadius: 16, padding: 'clamp(20px, 4vw, 28px)',
+              width: 'min(520px, calc(100vw - 24px))', maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto',
+              zIndex: 210, boxShadow: '0 16px 48px rgba(0,0,0,.5)', border: `1px solid ${C.steel}44`,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: C.white }}>{expandedJobType}</div>
+                  <div style={{ fontSize: 12, color: C.silver, marginTop: 2 }}>{jt.jobs} jobs · {jt.revenue} revenue · {jt.avgPrice} avg</div>
                 </div>
-                <div style={{ background: `${C.steel}33`, borderRadius: 4, height: 8, overflow: 'hidden', marginBottom: 4 }}>
-                  <div style={{
-                    width: `${Math.min(m.margin, 100)}%`, height: '100%', borderRadius: 4,
-                    background: m.margin >= 50 ? C.green : m.margin >= 30 ? C.gold : C.red,
-                  }} />
+                <button onClick={() => setExpandedJobType(null)} style={{ background: 'transparent', border: 'none', color: C.silver, cursor: 'pointer', padding: 4, display: 'flex' }}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Margin bar */}
+              <div style={{ background: C.black, borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, color: C.silver }}>Profit Margin</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: barColor }}>{jt.margin}</span>
                 </div>
-                <div style={{ fontSize: 11, color: C.steel }}>
-                  Rev {fmtCurrency(Math.round(m.revenue))} · Cost {fmtCurrency(Math.round(m.costs))}
+                <div style={{ background: `${C.steel}33`, borderRadius: 4, height: 10, overflow: 'hidden', marginBottom: 6 }}>
+                  <div style={{ width: `${Math.min(jt.marginNum, 100)}%`, height: '100%', borderRadius: 4, background: barColor }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: C.steel }}>
+                  <span>Revenue: {fmtCurrency(Math.round(jt.revenueRaw))}</span>
+                  <span>Costs: {fmtCurrency(Math.round(jt.costsRaw))}</span>
+                  <span>Profit: {fmtCurrency(Math.round(jt.revenueRaw - jt.costsRaw))}</span>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+
+              {/* 6-month trend mini chart */}
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.silver, marginBottom: 8 }}>Last 6 Months</div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 100, marginBottom: 8 }}>
+                {monthlyData.map((m, i) => (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <div style={{
+                      width: '100%', borderRadius: 4,
+                      height: maxRev > 0 ? Math.max((m.revenue / maxRev) * 80, 4) : 4,
+                      background: m.revenue > 0 ? barColor : `${C.steel}33`,
+                      transition: 'height .3s',
+                    }} />
+                    <span style={{ fontSize: 9, color: C.steel }}>{m.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: C.steel }}>
+                {monthlyData.map((m, i) => (
+                  <span key={i} style={{ flex: 1, textAlign: 'center' }}>
+                    {m.jobs > 0 ? `${m.jobs}j · £${Math.round(m.revenue / 1000)}k` : '—'}
+                  </span>
+                ))}
+              </div>
+
+              {/* Trend indicator */}
+              <div style={{
+                marginTop: 16, padding: '10px 14px', borderRadius: 8,
+                background: C.black, display: 'flex', alignItems: 'center', gap: 10,
+              }}>
+                {jt.trend === 'up' ? <TrendingUp size={16} color={C.green} /> : jt.trend === 'down' ? <TrendingDown size={16} color={'#D46A6A'} /> : <span style={{ color: C.steel }}>—</span>}
+                <span style={{ fontSize: 12, color: C.silver }}>
+                  {jt.trend === 'up' ? 'Revenue trending up vs previous period' : jt.trend === 'down' ? 'Revenue trending down vs previous period' : 'Revenue stable vs previous period'}
+                </span>
+              </div>
+            </div>
+          </>
+        )
+      })()}
 
       {/* ── VAT Summary Panel ── */}
       <div style={{ ...s.panel, marginBottom: 24 }}>
@@ -1455,7 +1528,6 @@ export default function Insights() {
           Estimated — consult your accountant for actual figures
         </div>
       </div>
-      </FeatureGate>
 
       </>}
     </div>
