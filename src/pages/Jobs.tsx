@@ -1040,7 +1040,15 @@ export default function Jobs() {
                       <td style={{ ...s.td, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: C.steel }}>#{job.id.slice(-6).toUpperCase()}</td>
                       <td style={{ ...s.td, fontWeight: 500 }}>
                         {job.customerName}
-                        {(() => { const cust = customers.find(c => c.id === job.customerId); return cust?.postcode ? <span style={{ color: C.steel, fontWeight: 400, marginLeft: 6, fontSize: 12 }}>{cust.postcode}</span> : null })()}
+                        {(() => {
+                          // Prefer the job-site postcode from the quote over
+                          // the customer's home postcode — they can differ.
+                          const linkedQ = job.quoteId ? quotes.find(q => q.id === job.quoteId) : undefined
+                          const sitePostcode = linkedQ?.jobPostcode
+                          const custPostcode = customers.find(c => c.id === job.customerId)?.postcode
+                          const pc = sitePostcode || custPostcode
+                          return pc ? <span style={{ color: C.steel, fontWeight: 400, marginLeft: 6, fontSize: 12 }}>{pc}</span> : null
+                        })()}
                       </td>
                       <td style={s.td}>{job.jobType !== 'TBC' ? job.jobType : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.jobTypeName || 'TBC' })()}</td>
                       <td style={{ ...s.td, fontWeight: 600, color: C.gold }}>{fmtCurrency(job.value > 0 ? job.value : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.netTotal || 0 })())}</td>

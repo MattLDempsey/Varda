@@ -146,6 +146,9 @@ export interface Quote {
   estHours: number
   // materials breakdown (line-item materials after sourcing)
   materialsBreakdown?: Array<{ description: string; quantity: number; unitPrice: number }>
+  // job site location (from QuickQuote — may differ from customer's home address)
+  jobPostcode?: string
+  distanceMiles?: number
   // meta
   status: QuoteStatus
   createdAt: string
