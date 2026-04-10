@@ -882,10 +882,15 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
   }, [persist, bgCall])
 
   const updateJobTypeConfig = useCallback((id: string, updates: Partial<JobTypeConfig>) => {
-    persist(s => ({
-      ...s,
-      jobTypeConfigs: s.jobTypeConfigs.map(jt => jt.id === id ? { ...jt, ...updates } : jt),
-    }))
+    persist(s => {
+      const exists = s.jobTypeConfigs.some(jt => jt.id === id)
+      return {
+        ...s,
+        jobTypeConfigs: exists
+          ? s.jobTypeConfigs.map(jt => jt.id === id ? { ...jt, ...updates } : jt)
+          : [...s.jobTypeConfigs, { id, name: id, baseMaterialCost: 0, baseHours: 1, certRequired: false, isPerUnit: false, minCharge: 0, ...updates } as JobTypeConfig],
+      }
+    })
     bgCall(async () => {
       await new Promise(r => setTimeout(r, 0))
       await svc.upsertJobTypeConfigs(orgIdRef.current, storeRef.current.jobTypeConfigs)

@@ -25,6 +25,41 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
 
+  // ── Permission overrides state (for permissions tab) ──
+  const [permOverrides, setPermOverrides] = useState<Record<string, Record<string, boolean>>>({})
+  const [permLoaded, setPermLoaded] = useState(false)
+  useEffect(() => {
+    if (permLoaded || activeTab !== 'permissions') return
+    supabase.from('org_permissions').select('role, permission, allowed').then(({ data: rows }) => {
+      const overrides: Record<string, Record<string, boolean>> = {}
+      for (const row of (rows ?? [])) {
+        if (!overrides[row.role]) overrides[row.role] = {}
+        overrides[row.role][row.permission] = row.allowed
+      }
+      setPermOverrides(overrides)
+      setPermLoaded(true)
+    })
+  }, [permLoaded, activeTab])
+
+  const togglePerm = (role: string, permission: string) => {
+    const current = hasPermission(role as any, permission as any, permOverrides[role])
+    const newVal = !current
+    setPermOverrides(prev => ({ ...prev, [role]: { ...(prev[role] ?? {}), [permission]: newVal } }))
+    supabase.from('org_permissions').upsert({
+      org_id: user?.orgId, role, permission, allowed: newVal,
+    }, { onConflict: 'org_id,role,permission' }).then(() => {}, () => {})
+  }
+
+  // ── Activity log state ──
+  const [activityLogs, setActivityLogs] = useState<Array<{ id: string; user_name: string; action: string; entity_type: string; entity_id: string; details: any; created_at: string }>>([])
+  const [activityLoading, setActivityLoading] = useState(true)
+  useEffect(() => {
+    if (activeTab !== 'activity') return
+    setActivityLoading(true)
+    supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(50)
+      .then(({ data: rows }) => { setActivityLogs(rows ?? []); setActivityLoading(false) })
+  }, [activeTab])
+
   const bookingUrl = user?.orgId ? `${window.location.origin}/book/${user.orgId}` : ''
   const handleCopyBookingLink = () => {
     if (!bookingUrl) return
@@ -601,34 +636,7 @@ export default function SettingsPage() {
           {/* ════════════════════════════════════════════════
               PERMISSIONS TAB
               ════════════════════════════════════════════════ */}
-          {activeTab === 'permissions' && (() => {
-            // eslint-disable-next-line react-hooks/rules-of-hooks
-            const [permOverrides, setPermOverrides] = useState<Record<string, Record<string, boolean>>>({})
-            // eslint-disable-next-line react-hooks/rules-of-hooks
-            const [permLoaded, setPermLoaded] = useState(false)
-            // eslint-disable-next-line react-hooks/rules-of-hooks
-            useEffect(() => {
-              if (permLoaded) return
-              supabase.from('org_permissions').select('role, permission, allowed').then(({ data }) => {
-                const overrides: Record<string, Record<string, boolean>> = {}
-                for (const row of (data ?? [])) {
-                  if (!overrides[row.role]) overrides[row.role] = {}
-                  overrides[row.role][row.permission] = row.allowed
-                }
-                setPermOverrides(overrides)
-                setPermLoaded(true)
-              })
-            }, [permLoaded])
-            const togglePerm = (role: string, permission: string) => {
-              const current = hasPermission(role as any, permission as any, permOverrides[role])
-              const newVal = !current
-              setPermOverrides(prev => ({ ...prev, [role]: { ...(prev[role] ?? {}), [permission]: newVal } }))
-              // Upsert to DB
-              supabase.from('org_permissions').upsert({
-                org_id: user?.orgId, role, permission, allowed: newVal,
-              }, { onConflict: 'org_id,role,permission' }).then(() => {}, () => {})
-            }
-            return (
+          {activeTab === 'permissions' && (
             <div style={s.panel}>
               <div style={s.panelTitle}>Role Permissions</div>
               <div style={s.panelSub}>
@@ -699,8 +707,7 @@ export default function SettingsPage() {
                 Click any checkbox to customise permissions for your organisation. Changes save automatically.
               </div>
             </div>
-            )
-          })()}
+          )}
 
           {/* ════════════════════════════════════════════════
               JOB TYPES TAB
@@ -805,15 +812,6 @@ export default function SettingsPage() {
               ACTIVITY LOG TAB
               ════════════════════════════════════════════════ */}
           {activeTab === 'activity' && (() => {
-            // eslint-disable-next-line react-hooks/rules-of-hooks
-            const [logs, setLogs] = useState<Array<{ id: string; user_name: string; action: string; entity_type: string; entity_id: string; details: any; created_at: string }>>([])
-            // eslint-disable-next-line react-hooks/rules-of-hooks
-            const [logsLoading, setLogsLoading] = useState(true)
-            // eslint-disable-next-line react-hooks/rules-of-hooks
-            useEffect(() => {
-              supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(50)
-                .then(({ data }) => { setLogs(data ?? []); setLogsLoading(false) })
-            }, [])
             const actionLabels: Record<string, string> = {
               'job.created': 'Created job', 'job.updated': 'Updated job', 'job.statusChanged': 'Changed status',
               'job.deleted': 'Deleted job', 'job.assigned': 'Assigned job',
@@ -828,9 +826,9 @@ export default function SettingsPage() {
               <div style={s.panel}>
                 <div style={s.panelTitle}>Activity Log</div>
                 <div style={s.panelSub}>Recent activity across your organisation. Shows the last 50 actions.</div>
-                {logsLoading && <div style={{ color: C.steel, fontSize: 13, padding: 20, textAlign: 'center' }}>Loading...</div>}
-                {!logsLoading && logs.length === 0 && <div style={{ color: C.steel, fontSize: 13, padding: 20, textAlign: 'center' }}>No activity recorded yet.</div>}
-                {logs.map(log => (
+                {activityLoading && <div style={{ color: C.steel, fontSize: 13, padding: 20, textAlign: 'center' }}>Loading...</div>}
+                {!activityLoading && activityLogs.length === 0 && <div style={{ color: C.steel, fontSize: 13, padding: 20, textAlign: 'center' }}>No activity recorded yet.</div>}
+                {activityLogs.map(log => (
                   <div key={log.id} style={{
                     display: 'flex', alignItems: 'flex-start', gap: 12,
                     padding: '10px 0', borderBottom: `1px solid ${C.steel}11`,
