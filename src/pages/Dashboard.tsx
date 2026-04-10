@@ -491,7 +491,7 @@ export default function Dashboard() {
                 <div style={s.listLeft}>
                   <span style={s.listName}>{ev.customerName}</span>
                   <span style={s.listMeta}>
-                    {ev.startTime || slotLabel(ev.slot)} &middot;{' '}
+                    {ev.startTime || ({ morning: '08:00', afternoon: '12:00', full: '08:00', quick: '08:00' }[ev.slot] ?? '08:00')} &middot;{' '}
                     {isInternal ? 'Internal' : ev.jobType}
                     {linkedJob && linkedJob.value > 0 ? ` · ${fmtCurrency(linkedJob.value)}` : ''}
                   </span>
