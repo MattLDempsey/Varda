@@ -702,30 +702,38 @@ export default function CalendarPage() {
                 key={`mc-${i}`}
                 style={{
                   ...s.monthCell,
-                  ...(isToday ? { borderTop: `2px solid ${C.gold}` } : {}),
-                  ...(!isCurrentMonth ? { opacity: 0.35 } : {}),
+                  ...(isToday ? { borderTop: `2px solid ${C.gold}`, background: `${C.gold}08` } : {}),
+                  ...(!isCurrentMonth ? { opacity: 0.3 } : {}),
                 }}
                 onClick={() => { setCurrentDate(new Date(d)); setView('day') }}
               >
                 <div style={{
                   ...s.monthDateNum,
-                  ...(isToday ? { color: C.gold } : {}),
+                  ...(isToday ? {
+                    color: C.charcoal, background: C.gold,
+                    borderRadius: '50%', width: 24, height: 24,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 700, fontSize: 12,
+                  } : {}),
                 }}>
                   {d.getDate()}
                 </div>
                 {cellEvents.slice(0, 3).map(ev => {
-                  const val = getEventValue(ev)
+                  const isInternal = !!ev.category
+                  const preset = isInternal ? INTERNAL_PRESETS.find(p => p.key === ev.category) : null
+                  const accent = preset?.color ?? statusColor[ev.status]
+                  const times = eventTimes(ev)
                   return (
                   <div
                     key={ev.id}
                     style={{
                       ...s.monthEvent,
-                      borderLeftColor: statusColor[ev.status],
-                      background: statusColor[ev.status] + '20',
+                      borderLeftColor: accent,
+                      background: accent + '20',
                     }}
                     onClick={(e) => { e.stopPropagation(); setSelectedEvent(ev) }}
                   >
-                    {ev.customerName}{val > 0 ? ` \u00A3${val.toLocaleString('en-GB')}` : ''}
+                    {preset ? `${preset.icon} ` : ''}{times.start} {ev.customerName}
                   </div>
                   )
                 })}
