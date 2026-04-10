@@ -169,6 +169,7 @@ export default function Jobs() {
   const [newInvType, setNewInvType] = useState<InvoiceType>('Deposit')
   const [newInvAmount, setNewInvAmount] = useState('')
   const [newInvDesc, setNewInvDesc] = useState('')
+  const [newInvDueDate, setNewInvDueDate] = useState('')
 
   // Panel tab state
   const [panelTab, setPanelTab] = useState<'details' | 'quote' | 'payments'>('details')
@@ -3160,6 +3161,7 @@ export default function Jobs() {
                     <button
                       onClick={() => {
                         setShowAddInvoice(true)
+                        const paymentTermsDays = settings.quoteConfig.paymentTerms || 14
                         const existingTypes = jobInvoices.map(i => i.type)
                         let defaultType: InvoiceType = 'Deposit'
                         if (existingTypes.includes('Deposit') && !existingTypes.includes('Final')) {
@@ -3179,6 +3181,21 @@ export default function Jobs() {
                           Custom: `${jobTypeName}`,
                         }
                         setNewInvDesc(descMap[defaultType])
+                        // Compute smart due date
+                        const computeDueDate = (type: InvoiceType): string => {
+                          if (type === 'Deposit' && selectedJob.date) {
+                            const start = new Date(selectedJob.date)
+                            start.setDate(start.getDate() - 7)
+                            const earliest = new Date()
+                            earliest.setDate(earliest.getDate() + 2)
+                            const target = start > earliest ? start : earliest
+                            return target.toISOString().split('T')[0]
+                          }
+                          const d = new Date()
+                          d.setDate(d.getDate() + paymentTermsDays)
+                          return d.toISOString().split('T')[0]
+                        }
+                        setNewInvDueDate(computeDueDate(defaultType))
                       }}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -3199,6 +3216,26 @@ export default function Jobs() {
                       boxSizing: 'border-box' as const,
                     }
                     const jobTypeName = selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (linkedQuote?.jobTypeName || 'Works')
+                    const paymentTermsDays = settings.quoteConfig.paymentTerms || 14
+                    const computeDueDate = (type: InvoiceType): string => {
+                      if (type === 'Deposit' && selectedJob.date) {
+                        // 7 days before start, but never in the past
+                        const start = new Date(selectedJob.date)
+                        start.setDate(start.getDate() - 7)
+                        const earliest = new Date()
+                        earliest.setDate(earliest.getDate() + 2)
+                        return (start > earliest ? start : earliest).toISOString().split('T')[0]
+                      }
+                      const d = new Date()
+                      d.setDate(d.getDate() + paymentTermsDays)
+                      return d.toISOString().split('T')[0]
+                    }
+                    const dueDateHint: Record<InvoiceType, string> = {
+                      Deposit: selectedJob.date ? `Due before work starts on ${fmtDate(selectedJob.date)}` : `Due within ${paymentTermsDays} days`,
+                      Progress: `Due within ${paymentTermsDays} days`,
+                      Final: `Due within ${paymentTermsDays} days`,
+                      Custom: 'Set your own due date',
+                    }
 
                     return (
                       <div style={{ background: C.black, borderRadius: 12, padding: 16, marginTop: 4 }}>
@@ -3225,6 +3262,7 @@ export default function Jobs() {
                                 }
                                 setNewInvDesc(descMap[t])
                                 if (t === 'Final') setNewInvAmount(remaining.toFixed(2))
+                                setNewInvDueDate(computeDueDate(t))
                               }}
                               style={{
                                 flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600,
@@ -3279,8 +3317,20 @@ export default function Jobs() {
                           type="text"
                           value={newInvDesc}
                           onChange={e => setNewInvDesc(e.target.value)}
-                          style={{ ...inputStyle, marginBottom: 14 }}
+                          style={{ ...inputStyle, marginBottom: 12 }}
                         />
+
+                        {/* Due date — smart default per type, fully overridable */}
+                        <span style={{ ...s.fieldLabel, fontSize: 11 }}>Due Date</span>
+                        <input
+                          type="date"
+                          value={newInvDueDate}
+                          onChange={e => setNewInvDueDate(e.target.value)}
+                          style={{ ...inputStyle, marginBottom: 4, colorScheme: 'dark' }}
+                        />
+                        <div style={{ fontSize: 10, color: C.steel, marginBottom: 14, fontStyle: 'italic' }}>
+                          {dueDateHint[newInvType]}
+                        </div>
 
                         {/* Create */}
                         <button
@@ -3291,7 +3341,7 @@ export default function Jobs() {
                             const vatRate = 0.20
                             const net = amount / (1 + vatRate)
                             const vat = amount - net
-                            const dueDate = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
+                            const dueDate = newInvDueDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
 
                             addInvoice({
                               jobId: selectedJob.id,
