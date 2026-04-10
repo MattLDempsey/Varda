@@ -291,6 +291,11 @@ export async function updateInvoice(
   return toCamel<Invoice>(data)
 }
 
+export async function deleteInvoice(id: string): Promise<void> {
+  const { error } = await supabase.from('invoices').delete().eq('id', id)
+  if (error) throw error
+}
+
 /* ══════════════════════════════════════════════════════
    Schedule Events
    ══════════════════════════════════════════════════════ */

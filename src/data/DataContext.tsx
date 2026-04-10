@@ -420,6 +420,7 @@ interface DataContextValue {
   // invoice actions
   addInvoice: (i: Omit<Invoice, 'id' | 'ref' | 'createdAt'>) => Invoice
   updateInvoice: (id: string, updates: Partial<Invoice>) => void
+  deleteInvoice: (id: string) => void
   getInvoiceForJob: (jobId: string) => Invoice | undefined
   getInvoicesForJob: (jobId: string) => Invoice[]
   // comm actions
@@ -774,6 +775,11 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
     bgCall(() => svc.updateInvoice(id, updates))
   }, [persist, bgCall])
 
+  const deleteInvoice = useCallback((id: string) => {
+    persist(s => ({ ...s, invoices: s.invoices.filter(i => i.id !== id) }))
+    bgCall(() => svc.deleteInvoice(id))
+  }, [persist, bgCall])
+
   const getInvoiceForJob = useCallback((jobId: string) => storeRef.current.invoices.find(i => i.jobId === jobId), [])
   const getInvoicesForJob = useCallback((jobId: string) => storeRef.current.invoices.filter(i => i.jobId === jobId), [])
 
@@ -866,7 +872,7 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       addCustomer, updateCustomer, deleteCustomer,
       addQuote, updateQuote,
       addJob, updateJob, moveJob, softDeleteJob, restoreJob,
-      addInvoice, updateInvoice, getInvoiceForJob, getInvoicesForJob,
+      addInvoice, updateInvoice, deleteInvoice, getInvoiceForJob, getInvoicesForJob,
       addEvent, updateEvent, deleteEvent,
       addComm,
       expenses: store.expenses, addExpense, updateExpense, deleteExpense,

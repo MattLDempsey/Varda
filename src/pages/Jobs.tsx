@@ -98,7 +98,7 @@ const invoiceStatusColors: Record<string, string> = {
 
 export default function Jobs() {
   const { C } = useTheme()
-  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, getInvoicesForJob, addEvent, updateEvent, deleteEvent, addComm, softDeleteJob, restoreJob, awaitRealId, isDataLoading } = useData()
+  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, deleteInvoice, getInvoicesForJob, addEvent, updateEvent, deleteEvent, addComm, softDeleteJob, restoreJob, awaitRealId, isDataLoading } = useData()
   const { user } = useAuth()
   const { features, plan } = useSubscription()
   const { showUndo } = useUndo()
@@ -3130,6 +3130,56 @@ export default function Jobs() {
                                     <Receipt size={12} /> Paid
                                   </button>
                                 )}
+                                {/* Delete invoice — warns if already sent or paid */}
+                                <button
+                                  onClick={() => {
+                                    let msg = `Delete invoice ${inv.ref} (${fmtCurrencyDecimals(inv.grandTotal)})?`
+                                    if (inv.status === 'Paid') {
+                                      msg += '\n\nThis invoice has already been marked as paid. Deleting it will affect your revenue records.'
+                                    } else if (inv.status === 'Sent' || inv.status === 'Viewed') {
+                                      msg += '\n\nThis invoice has already been sent to the customer. They may still have the link.'
+                                    }
+                                    if (!window.confirm(msg)) return
+                                    const invData = { ...inv }
+                                    deleteInvoice(inv.id)
+                                    // If deleting drops us below the invoiced threshold, revert
+                                    // the job from Invoiced/Paid back to Complete.
+                                    if (['Invoiced', 'Paid'].includes(selectedJob.status)) {
+                                      const remainingInvoices = jobInvoices.filter(i => i.id !== inv.id)
+                                      if (remainingInvoices.length === 0) {
+                                        moveJob(selectedJob.id, 'Complete')
+                                        setSelectedJob({ ...selectedJob, status: 'Complete' })
+                                      }
+                                    }
+                                    showUndo({
+                                      message: `Invoice ${invData.ref} deleted`,
+                                      undo: () => addInvoice({
+                                        jobId: invData.jobId,
+                                        quoteId: invData.quoteId,
+                                        customerId: invData.customerId,
+                                        customerName: invData.customerName,
+                                        jobTypeName: invData.jobTypeName,
+                                        description: invData.description,
+                                        type: invData.type,
+                                        netTotal: invData.netTotal,
+                                        vat: invData.vat,
+                                        grandTotal: invData.grandTotal,
+                                        status: invData.status,
+                                        dueDate: invData.dueDate,
+                                      }),
+                                    })
+                                  }}
+                                  style={{
+                                    background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 6,
+                                    color: C.steel, cursor: 'pointer', padding: '4px 6px', fontSize: 11,
+                                    display: 'flex', alignItems: 'center', minHeight: 30,
+                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.color = '#D46A6A'; e.currentTarget.style.borderColor = '#D46A6A66' }}
+                                  onMouseLeave={e => { e.currentTarget.style.color = C.steel; e.currentTarget.style.borderColor = `${C.steel}33` }}
+                                  title="Delete this invoice"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
                               </div>
                             </div>
                           </div>
