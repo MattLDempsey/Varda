@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload, RefreshCw, CheckCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
-import { useData, isEventConfirmed, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
+import { useData, isEventConfirmed, customerGreetingName, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
 import { useAuth } from '../auth/AuthContext'
 import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { uploadJobFile, deleteJobFile, getJobAttachments, formatFileSize, type Attachment } from '../lib/file-upload'
@@ -1975,8 +1975,8 @@ export default function Jobs() {
                       if (confirmVia.whatsapp && customer?.phone) {
                         const phone = customer.phone.replace(/\s/g, '').replace(/^0/, '44')
                         const intro = confirmMode === 'resend'
-                          ? `Hi ${customer.name}, resending the booking details from ${biz.businessName}. We've got you down for:`
-                          : `Hi ${customer.name}, ${biz.businessName} here. I've got you booked in for:`
+                          ? `Hi ${customerGreetingName(customer)}, resending the booking details from ${biz.businessName}. We've got you down for:`
+                          : `Hi ${customerGreetingName(customer)}, ${biz.businessName} here. I've got you booked in for:`
                         const text = `${intro}\n\n${sendSummary}\n\nPlease let me know if any of these don't work and I'll find another time. Otherwise see you then!`
                         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank')
                         if (customer.id) {

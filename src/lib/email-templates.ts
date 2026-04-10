@@ -11,6 +11,13 @@
  *   Divider:      #3A3D44
  */
 
+/**
+ * All email params accept an optional `greetingName` for "Hi X,".
+ * For business customers this should be the point-of-contact's first
+ * name (e.g. "Sarah"), not the company name (e.g. "Acme Property Mgmt").
+ * Falls back to the first word of `customerName` if not provided.
+ */
+
 // ─── Shared layout helpers ──────────────────────────────────────────────────
 
 const COLORS = {
@@ -88,6 +95,7 @@ function esc(s: string): string {
 
 export interface QuoteEmailParams {
   customerName: string
+  greetingName?: string
   businessName: string
   quoteRef: string
   total: string
@@ -98,13 +106,14 @@ export interface QuoteEmailParams {
 }
 
 export function buildQuoteEmail(params: QuoteEmailParams): { subject: string; html: string; text: string } {
-  const { customerName, businessName, quoteRef, total, quoteUrl, validityDays, businessPhone, businessEmail } = params
+  const { customerName, greetingName, businessName, quoteRef, total, quoteUrl, validityDays, businessPhone, businessEmail } = params
+  const greeting = greetingName || customerName.split(' ')[0]
   const subject = `Your quote from ${businessName} — ${quoteRef}`
 
   const bodyRows = `
   <tr>
     <td style="padding: 24px 40px 0 40px;">
-      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(customerName)},</h2>
+      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(greeting || customerName.split(' ')[0])},</h2>
       <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: ${COLORS.silver};">
         Here's your quote from ${esc(businessName)}. You can view the full breakdown and approve it online.
       </p>
@@ -132,7 +141,7 @@ export function buildQuoteEmail(params: QuoteEmailParams): { subject: string; ht
     </td>
   </tr>`
 
-  const text = `Hi ${customerName},
+  const text = `Hi ${greeting || customerName.split(' ')[0]},
 
 Here's your quote from ${businessName}.
 
@@ -153,6 +162,7 @@ ${businessName}`
 
 export interface InvoiceEmailParams {
   customerName: string
+  greetingName?: string
   businessName: string
   invoiceRef: string
   total: string
@@ -163,13 +173,13 @@ export interface InvoiceEmailParams {
 }
 
 export function buildInvoiceEmail(params: InvoiceEmailParams): { subject: string; html: string; text: string } {
-  const { customerName, businessName, invoiceRef, total, dueDate, invoiceUrl, businessPhone, businessEmail } = params
+  const { customerName, greetingName: greeting, businessName, invoiceRef, total, dueDate, invoiceUrl, businessPhone, businessEmail } = params
   const subject = `Invoice ${invoiceRef} from ${businessName}`
 
   const bodyRows = `
   <tr>
     <td style="padding: 24px 40px 0 40px;">
-      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(customerName)},</h2>
+      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(greeting || customerName.split(' ')[0])},</h2>
       <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: ${COLORS.silver};">
         Please find your invoice from ${esc(businessName)} below. Click the button to view and pay online.
       </p>
@@ -197,7 +207,7 @@ export function buildInvoiceEmail(params: InvoiceEmailParams): { subject: string
     </td>
   </tr>`
 
-  const text = `Hi ${customerName},
+  const text = `Hi ${greeting || customerName.split(' ')[0]},
 
 Please find your invoice from ${businessName}.
 
@@ -218,6 +228,7 @@ ${businessName}`
 
 export interface BookingConfirmationEmailParams {
   customerName: string
+  greetingName?: string
   businessName: string
   jobTitle: string
   date: string
@@ -229,13 +240,13 @@ export interface BookingConfirmationEmailParams {
 }
 
 export function buildBookingConfirmationEmail(params: BookingConfirmationEmailParams): { subject: string; html: string; text: string } {
-  const { customerName, businessName, jobTitle, date, time, address, bookingUrl, businessPhone, businessEmail } = params
+  const { customerName, greetingName: greeting, businessName, jobTitle, date, time, address, bookingUrl, businessPhone, businessEmail } = params
   const subject = `Your booking with ${businessName} — ${jobTitle}`
 
   const bodyRows = `
   <tr>
     <td style="padding: 24px 40px 0 40px;">
-      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(customerName)},</h2>
+      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(greeting || customerName.split(' ')[0])},</h2>
       <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: ${COLORS.silver};">
         I've got you booked in with ${esc(businessName)} for the work below. <strong style="color: ${COLORS.white};">Please reply to this email or give me a call if any of these dates don't work</strong> — otherwise I'll see you then.
       </p>
@@ -264,7 +275,7 @@ export function buildBookingConfirmationEmail(params: BookingConfirmationEmailPa
     </td>
   </tr>`
 
-  const text = `Hi ${customerName},
+  const text = `Hi ${greeting || customerName.split(' ')[0]},
 
 I've got you booked in with ${businessName} for the work below. Please reply or give me a call if any of these dates don't work — otherwise I'll see you then.
 
@@ -285,6 +296,7 @@ ${businessName}`
 
 export interface PaymentReminderEmailParams {
   customerName: string
+  greetingName?: string
   businessName: string
   invoiceRef: string
   total: string
@@ -296,7 +308,7 @@ export interface PaymentReminderEmailParams {
 }
 
 export function buildPaymentReminderEmail(params: PaymentReminderEmailParams): { subject: string; html: string; text: string } {
-  const { customerName, businessName, invoiceRef, total, dueDate, daysOverdue, invoiceUrl, businessPhone, businessEmail } = params
+  const { customerName, greetingName: greeting, businessName, invoiceRef, total, dueDate, daysOverdue, invoiceUrl, businessPhone, businessEmail } = params
   const subject = `Payment reminder — Invoice ${invoiceRef}`
 
   const overdueNote = daysOverdue > 0
@@ -306,7 +318,7 @@ export function buildPaymentReminderEmail(params: PaymentReminderEmailParams): {
   const bodyRows = `
   <tr>
     <td style="padding: 24px 40px 0 40px;">
-      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(customerName)},</h2>
+      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(greeting || customerName.split(' ')[0])},</h2>
       <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: ${COLORS.silver};">
         This is a friendly reminder regarding an outstanding invoice from ${esc(businessName)}. ${overdueNote}
       </p>
@@ -334,7 +346,7 @@ export function buildPaymentReminderEmail(params: PaymentReminderEmailParams): {
     </td>
   </tr>`
 
-  const text = `Hi ${customerName},
+  const text = `Hi ${greeting || customerName.split(' ')[0]},
 
 This is a friendly reminder regarding an outstanding invoice from ${businessName}.
 
@@ -357,6 +369,7 @@ ${businessName}`
 
 export interface FollowUpEmailParams {
   customerName: string
+  greetingName?: string
   businessName: string
   quoteRef?: string
   customMessage?: string
@@ -366,7 +379,7 @@ export interface FollowUpEmailParams {
 }
 
 export function buildFollowUpEmail(params: FollowUpEmailParams): { subject: string; html: string; text: string } {
-  const { customerName, businessName, quoteRef, customMessage, quoteUrl, businessPhone, businessEmail } = params
+  const { customerName, greetingName: greeting, businessName, quoteRef, customMessage, quoteUrl, businessPhone, businessEmail } = params
   const subject = quoteRef ? `Following up on your quote ${quoteRef}` : `Following up — ${businessName}`
 
   const message = customMessage
@@ -375,7 +388,7 @@ export function buildFollowUpEmail(params: FollowUpEmailParams): { subject: stri
   const bodyRows = `
   <tr>
     <td style="padding: 24px 40px 0 40px;">
-      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(customerName)},</h2>
+      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 600; color: ${COLORS.white};">Hi ${esc(greeting || customerName.split(' ')[0])},</h2>
       <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: ${COLORS.silver};">
         ${esc(message)}
       </p>
@@ -394,7 +407,7 @@ export function buildFollowUpEmail(params: FollowUpEmailParams): { subject: stri
     </td>
   </tr>`
 
-  const text = `Hi ${customerName},
+  const text = `Hi ${greeting || customerName.split(' ')[0]},
 
 ${message}
 ${quoteUrl ? `\nView your quote: ${quoteUrl}` : ''}

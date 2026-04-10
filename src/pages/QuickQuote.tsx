@@ -1291,7 +1291,8 @@ export default function QuickQuote() {
 
           if (sendVia.whatsapp) {
             const phone = selectedCustomer?.phone?.replace(/\s/g, '').replace(/^0/, '44') || ''
-            const text = `Hi ${customerName}, here's your quote from ${settings.business.businessName}:\n\n${safeUrl}\n\nTotal: £${fmt(totals.grandTotal)} (inc. VAT)\n\nLet me know if you'd like to go ahead!`
+            const greetName = selectedCustomer?.isBusiness && selectedCustomer?.contactName ? selectedCustomer.contactName.split(' ')[0] : customerName.split(' ')[0]
+            const text = `Hi ${greetName}, here's your quote from ${settings.business.businessName}:\n\n${safeUrl}\n\nTotal: £${fmt(totals.grandTotal)} (inc. VAT)\n\nLet me know if you'd like to go ahead!`
             window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank')
             usedMethods.push('WhatsApp')
           }
