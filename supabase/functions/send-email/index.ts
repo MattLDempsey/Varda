@@ -78,6 +78,7 @@ serve(async (req) => {
       textBody,
       replyTo,
       fromName,
+      attachments,
       orgId,
       customerId,
       templateName,
@@ -88,6 +89,7 @@ serve(async (req) => {
       textBody?: string
       replyTo?: string
       fromName?: string
+      attachments?: Array<{ filename: string; content: string; contentType?: string }>
       orgId: string
       customerId?: string
       templateName?: string
@@ -131,6 +133,14 @@ serve(async (req) => {
 
     if (textBody) emailPayload.text = textBody
     if (replyTo) emailPayload.reply_to = replyTo
+    // Resend accepts an array of { filename, content (base64) } objects.
+    if (attachments && attachments.length > 0) {
+      emailPayload.attachments = attachments.map(a => ({
+        filename: a.filename,
+        content: a.content,
+        ...(a.contentType ? { contentType: a.contentType } : {}),
+      }))
+    }
 
     const resendRes = await fetch(RESEND_API_URL, {
       method: 'POST',

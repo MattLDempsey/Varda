@@ -8,7 +8,8 @@ import { useAuth } from '../auth/AuthContext'
 import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { uploadJobFile, deleteJobFile, getJobAttachments, formatFileSize, type Attachment } from '../lib/file-upload'
 import { sendEmail, buildFromName } from '../lib/send-email'
-import { buildQuoteEmail, buildInvoiceEmail } from '../lib/email-templates'
+import { buildQuoteEmail, buildInvoiceEmail, buildBookingConfirmationEmail } from '../lib/email-templates'
+import { generateICSEvent } from '../lib/calendar-export'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { useUndo } from '../hooks/useUndo'
 import { LimitWarning } from '../components/FeatureGate'
@@ -94,6 +95,15 @@ export default function Jobs() {
   const [dragOverCol, setDragOverCol] = useState<JobStatus | null>(null)
   const [scheduleDate, setScheduleDate] = useState('')
   const [scheduleSlot, setScheduleSlot] = useState<'morning' | 'afternoon' | 'full'>('morning')
+  // Week-strip picker — anchor day of the 7-day window currently shown
+  const [scheduleWeekStart, setScheduleWeekStart] = useState<string>(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    const dow = d.getDay() // 0 = Sun ... 6 = Sat
+    const offsetToMon = dow === 0 ? -6 : 1 - dow
+    d.setDate(d.getDate() + offsetToMon)
+    return d.toISOString().split('T')[0]
+  })
 
   // Add-invoice form state
   const [showAddInvoice, setShowAddInvoice] = useState(false)
@@ -1123,20 +1133,173 @@ export default function Jobs() {
                   {(selectedJob.status === 'Accepted' || selectedJob.status === 'Scheduled' || selectedJob.status === 'In Progress') && (() => {
                     const jobEvents = events.filter(e => e.jobId === selectedJob.id).sort((a, b) => a.date.localeCompare(b.date))
                     const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day' }
-                    const inputStyle: CSSProperties = {
-                      width: '100%', padding: '10px 12px', borderRadius: 10,
-                      background: C.black, border: `1px solid ${C.steel}33`,
-                      color: C.white, fontSize: 14, outline: 'none',
+
+                    // Build the 7-day strip from scheduleWeekStart
+                    const weekDays: string[] = Array.from({ length: 7 }, (_, i) => {
+                      const d = new Date(scheduleWeekStart)
+                      d.setDate(d.getDate() + i)
+                      return d.toISOString().split('T')[0]
+                    })
+                    const todayStr = new Date().toISOString().split('T')[0]
+                    const weekEndStr = weekDays[6]
+                    const weekRangeLabel = (() => {
+                      const a = new Date(weekDays[0])
+                      const b = new Date(weekDays[6])
+                      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                      return `${a.getDate()} ${months[a.getMonth()]} – ${b.getDate()} ${months[b.getMonth()]}`
+                    })()
+                    const dayHeaders = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+                    // Count existing events per day across the org so the user can route smartly
+                    const eventsPerDay: Record<string, number> = {}
+                    for (const ev of events) {
+                      if (ev.date >= weekDays[0] && ev.date <= weekEndStr) {
+                        eventsPerDay[ev.date] = (eventsPerDay[ev.date] ?? 0) + 1
+                      }
+                    }
+                    const selectedDayContext = scheduleDate ? events.filter(e => e.date === scheduleDate && e.jobId !== selectedJob.id) : []
+
+                    const shiftWeek = (delta: number) => {
+                      const d = new Date(scheduleWeekStart)
+                      d.setDate(d.getDate() + delta)
+                      setScheduleWeekStart(d.toISOString().split('T')[0])
+                    }
+                    const goToToday = () => {
+                      const d = new Date()
+                      d.setHours(0,0,0,0)
+                      const dow = d.getDay()
+                      const offsetToMon = dow === 0 ? -6 : 1 - dow
+                      d.setDate(d.getDate() + offsetToMon)
+                      setScheduleWeekStart(d.toISOString().split('T')[0])
+                      setScheduleDate(todayStr)
+                    }
+
+                    const dayBtnStyle = (date: string): CSSProperties => {
+                      const isPast = date < todayStr
+                      const isToday = date === todayStr
+                      const isSelected = date === scheduleDate
+                      const count = eventsPerDay[date] ?? 0
+                      return {
+                        flex: 1, minWidth: 0,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                        padding: '8px 4px', borderRadius: 10,
+                        background: isSelected ? C.gold : (count > 0 ? `${C.gold}10` : C.black),
+                        border: isSelected
+                          ? `1px solid ${C.gold}`
+                          : (isToday ? `1px solid ${C.gold}66` : `1px solid ${C.steel}22`),
+                        color: isSelected ? C.charcoal : (isPast ? C.steel : C.white),
+                        cursor: isPast ? 'not-allowed' : 'pointer',
+                        opacity: isPast ? 0.4 : 1,
+                        transition: 'background .15s, transform .1s',
+                      }
+                    }
+
+                    const handleSchedule = async () => {
+                      if (!scheduleDate) return
+                      const jobType = selectedJob.jobType !== 'TBC'
+                        ? selectedJob.jobType
+                        : (selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId)?.jobTypeName || '' : '')
+
+                      addEvent({
+                        jobId: selectedJob.id,
+                        customerId: selectedJob.customerId,
+                        customerName: selectedJob.customerName,
+                        jobType,
+                        date: scheduleDate,
+                        slot: scheduleSlot,
+                        status: 'Scheduled',
+                        notes: '',
+                      })
+
+                      // Update job date to the earliest scheduled date
+                      const allDates = [...jobEvents.map(e => e.date), scheduleDate].sort()
+                      updateJob(selectedJob.id, { date: allDates[0] })
+                      if (selectedJob.status === 'Accepted') {
+                        moveJob(selectedJob.id, 'Scheduled')
+                        setSelectedJob({ ...selectedJob, status: 'Scheduled', date: allDates[0] })
+                      }
+                      const pickedDate = scheduleDate
+                      const pickedSlot = scheduleSlot
+                      setScheduleDate('')
+
+                      // ── Confirmation email + .ics attachment (best-effort) ──
+                      const customer = customers.find(c => c.id === selectedJob.customerId)
+                      if (customer?.email && user?.orgId) {
+                        try {
+                          const biz = settings.business
+                          const customerAddress = customer
+                            ? [customer.address1, customer.address2, customer.city, customer.postcode].filter(Boolean).join(', ')
+                            : ''
+                          const ics = generateICSEvent({
+                            title: `${jobType} - ${customer.name}`,
+                            description: selectedJob.notes || '',
+                            date: pickedDate,
+                            slot: pickedSlot,
+                            customerName: customer.name,
+                            customerPhone: customer.phone,
+                            customerAddress: customerAddress || undefined,
+                            jobType,
+                          })
+                          const emailData = buildBookingConfirmationEmail({
+                            customerName: customer.name,
+                            businessName: biz.businessName,
+                            jobTitle: jobType,
+                            date: pickedDate,
+                            time: slotLabels[pickedSlot] || pickedSlot,
+                            businessPhone: biz.phone,
+                            businessEmail: biz.email,
+                          })
+                          await sendEmail({
+                            to: customer.email,
+                            subject: emailData.subject,
+                            htmlBody: emailData.html,
+                            textBody: emailData.text,
+                            replyTo: biz.email,
+                            fromName: buildFromName(biz),
+                            attachments: [{
+                              filename: 'appointment.ics',
+                              content: ics,
+                              contentType: 'text/calendar',
+                            }],
+                            orgId: user.orgId,
+                            customerId: customer.id,
+                            templateName: 'Booking Confirmation',
+                          })
+                          addComm({
+                            customerId: customer.id,
+                            customerName: customer.name,
+                            templateName: 'Booking Confirmation',
+                            channel: 'email',
+                            status: 'Sent',
+                            date: new Date().toISOString(),
+                            body: `Confirmed ${fmtDate(pickedDate)} (${slotLabels[pickedSlot]})`,
+                          })
+                        } catch (err) {
+                          console.error('[Schedule] confirmation email failed', err)
+                        }
+                      }
                     }
 
                     return (
                       <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                          <CalendarDays size={16} color={C.gold} />
-                          <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Schedule</span>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <CalendarDays size={16} color={C.gold} />
+                            <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>Schedule</span>
+                          </div>
+                          <button
+                            onClick={() => { setSelectedJob(null); navigate('/calendar') }}
+                            style={{
+                              background: 'transparent', border: 'none', color: C.gold,
+                              cursor: 'pointer', fontSize: 11, fontWeight: 500, padding: 0,
+                              display: 'flex', alignItems: 'center', gap: 4,
+                            }}
+                            title="Open the full calendar"
+                          >
+                            View calendar <ChevronRight size={12} />
+                          </button>
                         </div>
 
-                        {/* Existing scheduled days */}
+                        {/* Already-booked days for this job */}
                         {jobEvents.length > 0 && (
                           <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {jobEvents.map(ev => (
@@ -1169,56 +1332,106 @@ export default function Jobs() {
                           </div>
                         )}
 
-                        {/* Add another day */}
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                          <input
-                            type="date"
-                            value={scheduleDate}
-                            onChange={e => setScheduleDate(e.target.value)}
-                            style={{ ...inputStyle, flex: 1, colorScheme: 'dark' }}
-                          />
-                          <div style={{ position: 'relative', flex: 1 }}>
-                            <select
-                              value={scheduleSlot}
-                              onChange={e => setScheduleSlot(e.target.value as 'morning' | 'afternoon' | 'full')}
-                              style={{ ...inputStyle, appearance: 'none', WebkitAppearance: 'none' as any }}
-                            >
-                              <option value="morning">Morning</option>
-                              <option value="afternoon">Afternoon</option>
-                              <option value="full">Full Day</option>
-                            </select>
-                            <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                            </div>
-                          </div>
+                        {/* Week navigator */}
+                        <div style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          marginBottom: 8, gap: 6,
+                        }}>
+                          <button
+                            onClick={() => shiftWeek(-7)}
+                            style={{
+                              background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 8,
+                              color: C.silver, cursor: 'pointer', padding: '4px 8px', fontSize: 12,
+                              display: 'flex', alignItems: 'center', minHeight: 28,
+                            }}
+                          >‹</button>
+                          <button
+                            onClick={goToToday}
+                            style={{
+                              flex: 1, background: 'transparent', border: 'none',
+                              color: C.silver, cursor: 'pointer', fontSize: 12, fontWeight: 600, minHeight: 28,
+                            }}
+                            title="Jump to this week"
+                          >{weekRangeLabel}</button>
+                          <button
+                            onClick={() => shiftWeek(7)}
+                            style={{
+                              background: 'transparent', border: `1px solid ${C.steel}33`, borderRadius: 8,
+                              color: C.silver, cursor: 'pointer', padding: '4px 8px', fontSize: 12,
+                              display: 'flex', alignItems: 'center', minHeight: 28,
+                            }}
+                          >›</button>
                         </div>
+
+                        {/* Day strip */}
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+                          {weekDays.map((d, i) => {
+                            const dateObj = new Date(d)
+                            const isPast = d < todayStr
+                            const count = eventsPerDay[d] ?? 0
+                            return (
+                              <button
+                                key={d}
+                                disabled={isPast}
+                                onClick={() => setScheduleDate(d)}
+                                style={dayBtnStyle(d)}
+                              >
+                                <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.7 }}>{dayHeaders[i]}</span>
+                                <span style={{ fontSize: 16, fontWeight: 700 }}>{dateObj.getDate()}</span>
+                                {count > 0 && (
+                                  <span style={{
+                                    fontSize: 9, fontWeight: 700,
+                                    color: d === scheduleDate ? C.charcoal : C.gold,
+                                  }}>{count} job{count > 1 ? 's' : ''}</span>
+                                )}
+                                {count === 0 && <span style={{ height: 11 }} />}
+                              </button>
+                            )
+                          })}
+                        </div>
+
+                        {/* Slot picker — only when a day is selected */}
+                        {scheduleDate && (
+                          <>
+                            {selectedDayContext.length > 0 && (
+                              <div style={{
+                                fontSize: 11, color: C.silver, marginBottom: 8,
+                                padding: '6px 10px', background: `${C.gold}10`, borderRadius: 6,
+                              }}>
+                                Already on {fmtDate(scheduleDate)}: {selectedDayContext.map(e => `${e.customerName} (${slotLabels[e.slot]})`).join(', ')}
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+                              {(['morning','afternoon','full'] as const).map(slot => {
+                                const active = scheduleSlot === slot
+                                return (
+                                  <button
+                                    key={slot}
+                                    onClick={() => setScheduleSlot(slot)}
+                                    style={{
+                                      flex: 1, padding: '10px 8px', borderRadius: 10,
+                                      background: active ? C.gold : C.black,
+                                      border: `1px solid ${active ? C.gold : C.steel + '33'}`,
+                                      color: active ? C.charcoal : C.white,
+                                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                      minHeight: 38,
+                                    }}
+                                  >
+                                    {slotLabels[slot]}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </>
+                        )}
+
                         <button
-                          onClick={() => {
-                            if (!scheduleDate) return
-                            addEvent({
-                              jobId: selectedJob.id,
-                              customerId: selectedJob.customerId,
-                              customerName: selectedJob.customerName,
-                              jobType: selectedJob.jobType !== 'TBC' ? selectedJob.jobType : (selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId)?.jobTypeName || '' : ''),
-                              date: scheduleDate,
-                              slot: scheduleSlot,
-                              status: 'Scheduled',
-                              notes: '',
-                            })
-                            // Update job date to the earliest scheduled date
-                            const allDates = [...jobEvents.map(e => e.date), scheduleDate].sort()
-                            updateJob(selectedJob.id, { date: allDates[0] })
-                            if (selectedJob.status === 'Accepted') {
-                              moveJob(selectedJob.id, 'Scheduled')
-                              setSelectedJob({ ...selectedJob, status: 'Scheduled', date: allDates[0] })
-                            }
-                            setScheduleDate('')
-                          }}
+                          onClick={handleSchedule}
                           disabled={!scheduleDate}
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
-                            cursor: scheduleDate ? 'pointer' : 'not-allowed', minHeight: 42,
+                            padding: '12px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                            cursor: scheduleDate ? 'pointer' : 'not-allowed', minHeight: 44,
                             background: scheduleDate ? `${C.gold}15` : C.black,
                             border: `1px solid ${scheduleDate ? C.gold + '44' : C.steel + '33'}`,
                             color: scheduleDate ? C.gold : C.steel,
@@ -1226,8 +1439,14 @@ export default function Jobs() {
                           }}
                         >
                           <CalendarDays size={14} />
-                          {jobEvents.length > 0 ? 'Add Day' : 'Schedule'}
+                          {scheduleDate
+                            ? `${jobEvents.length > 0 ? 'Add' : 'Confirm'} ${fmtDate(scheduleDate)} · ${slotLabels[scheduleSlot]}`
+                            : 'Pick a day above'}
                         </button>
+
+                        <div style={{ fontSize: 11, color: C.steel, marginTop: 6, textAlign: 'center' }}>
+                          Customer gets a confirmation email with a calendar invite.
+                        </div>
                       </div>
                     )
                   })()}

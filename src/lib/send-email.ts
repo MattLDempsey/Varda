@@ -7,6 +7,15 @@
 
 import { supabase } from './supabase'
 
+export interface SendEmailAttachment {
+  /** File name shown to the recipient (e.g. "appointment.ics") */
+  filename: string
+  /** Raw text content. Will be base64-encoded before sending. */
+  content: string
+  /** MIME type, e.g. "text/calendar". Defaults to plain octet-stream. */
+  contentType?: string
+}
+
 export interface SendEmailParams {
   to: string
   subject: string
@@ -19,6 +28,12 @@ export interface SendEmailParams {
    * emails appear to come from the business owner instead of "Varda".
    */
   fromName?: string
+  /**
+   * File attachments to send alongside the email. Used by the scheduling flow
+   * to attach a .ics calendar invite the customer can tap to add to their
+   * phone calendar.
+   */
+  attachments?: SendEmailAttachment[]
   orgId: string
   customerId?: string
   templateName?: string
@@ -52,7 +67,7 @@ export interface SendEmailResult {
  * If the Edge Function is unreachable or fails, opens a mailto: link as fallback.
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  const { to, subject, htmlBody, textBody, replyTo, fromName, orgId, customerId, templateName } = params
+  const { to, subject, htmlBody, textBody, replyTo, fromName, attachments, orgId, customerId, templateName } = params
 
   try {
     const { data: { session } } = await supabase.auth.getSession()
@@ -82,6 +97,14 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
         textBody,
         replyTo,
         fromName,
+        attachments: attachments?.map(a => ({
+          filename: a.filename,
+          // Resend expects base64-encoded content, not raw text.
+          content: typeof btoa === 'function'
+            ? btoa(unescape(encodeURIComponent(a.content)))
+            : a.content,
+          contentType: a.contentType,
+        })),
         orgId,
         customerId,
         templateName,
