@@ -292,8 +292,13 @@ export default function Jobs() {
         return !job.date ? 'No date set' : null
       case 'Complete':
         return !hasQuote ? 'No quote — cannot invoice' : null
-      case 'Invoiced':
-        return !hasInvoice ? 'No invoice created' : null
+      case 'Invoiced': {
+        if (!hasInvoice) return 'No invoice created'
+        // Check for overdue invoices
+        const overdue = jobInvoices.find(i => i.status !== 'Paid' && i.dueDate && i.dueDate < todayStr)
+        if (overdue) return `Invoice ${overdue.ref} is overdue — chase payment`
+        return null
+      }
       default:
         return null
     }

@@ -168,7 +168,99 @@ export function computeFollowUps(
       }
     })
 
-  // 7. Appointment reminders — events tomorrow that haven't been reminded
+  // 7. Stale leads — Lead for > 7 days with no linked quote created
+  jobs
+    .filter(j => j.status === 'Lead' && !j.quoteId)
+    .forEach(j => {
+      const days = daysBetween(j.createdAt, today)
+      if (days > 7) {
+        items.push({
+          id: `followup-stale-lead-${j.id}`,
+          priority: days > 14 ? 'high' : 'medium',
+          message: `Lead for ${j.customerName} is ${days} days old — create a quote or archive it`,
+          route: '/jobs',
+          urgency: days > 14 ? 1.5 : 4.5,
+        })
+      }
+    })
+
+  // 8. Expired quotes — validity period has passed
+  const validityDays = settings.quoteConfig.validityDays || 30
+  quotes
+    .filter(q => (q.status === 'Sent' || q.status === 'Viewed') && q.sentAt)
+    .forEach(q => {
+      const daysSinceSent = daysBetween(q.sentAt!, today)
+      if (daysSinceSent > validityDays) {
+        items.push({
+          id: `followup-quote-expired-${q.id}`,
+          priority: 'high',
+          message: `Quote ${q.ref} for ${q.customerName} has expired — follow up or extend`,
+          route: `/quote?quoteId=${q.id}`,
+          urgency: 1.5,
+        })
+      }
+    })
+
+  // 9. Overrunning jobs — In Progress with actualHours > estimatedHours
+  jobs
+    .filter(j => j.status === 'In Progress' && j.actualHours != null && j.estimatedHours > 0)
+    .forEach(j => {
+      if (j.actualHours! > j.estimatedHours * 1.2) {
+        items.push({
+          id: `followup-overrun-${j.id}`,
+          priority: 'medium',
+          message: `${j.customerName} job is overrunning — ${j.actualHours}h actual vs ${j.estimatedHours}h estimated`,
+          route: '/jobs',
+          urgency: 3.5,
+        })
+      }
+    })
+
+  // 10. Stale Scheduled — job date has passed but still in Scheduled
+  jobs
+    .filter(j => j.status === 'Scheduled' && j.date < today)
+    .forEach(j => {
+      const days = daysBetween(j.date, today)
+      items.push({
+        id: `followup-stale-scheduled-${j.id}`,
+        priority: days > 3 ? 'high' : 'medium',
+        message: `${j.customerName} was scheduled ${days} day${days === 1 ? '' : 's'} ago — update its status`,
+        route: '/jobs',
+        urgency: days > 3 ? 0.5 : 2.5,
+      })
+    })
+
+  // 11. Schedule changed — events with unconfirmed changes need resending
+  if (events) {
+    // Group by job — only one action item per affected job
+    const jobsWithUnsent = new Set<string>()
+    events.forEach(e => {
+      if (!e.category && e.jobId && e.confirmationSentAt && e.confirmedDate != null) {
+        // Check if the schedule drifted from what the customer was told
+        const drifted = e.confirmedDate !== e.date
+          || (e.confirmedStartTime || null) !== (e.startTime || null)
+          || (e.confirmedEndTime || null) !== (e.endTime || null)
+        if (drifted) jobsWithUnsent.add(e.jobId)
+      }
+      // Brand-new unsent events
+      if (!e.category && e.jobId && !e.confirmationSentAt) {
+        jobsWithUnsent.add(e.jobId)
+      }
+    })
+    jobsWithUnsent.forEach(jobId => {
+      const job = jobs.find(j => j.id === jobId)
+      if (!job) return
+      items.push({
+        id: `followup-schedule-unsent-${jobId}`,
+        priority: 'medium',
+        message: `Schedule for ${job.customerName} has changed — send updated confirmation`,
+        route: '/jobs',
+        urgency: 3,
+      })
+    })
+  }
+
+  // 12. Appointment reminders — events tomorrow that haven't been reminded
   if (events && customers) {
     const reminders = getUpcomingReminders(events, customers)
     const slotLabels: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', full: 'Full Day' }

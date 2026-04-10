@@ -188,30 +188,40 @@ export default function Dashboard() {
 
   /* ── Action items now powered by FollowUpManager ── */
 
-  /* ── Recent quotes (most recent 5) ── */
+  /* ── Recent quotes (most recent 5) with linked job status for context ── */
   const recentQuotes = useMemo(() =>
     [...quotes]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 5)
-      .map(q => ({
-        id: q.id,
-        customer: q.customerName,
-        jobType: q.jobTypeName,
-        amount: fmtCurrency(q.grandTotal),
-        date: fmtDate(q.createdAt),
-        status: q.status,
-      })),
-    [quotes],
+      .map(q => {
+        // Find the linked job so we can show pipeline context
+        const linkedJob = jobs.find(j => j.quoteId === q.id)
+        return {
+          id: q.id,
+          customer: q.customerName,
+          jobType: q.jobTypeName,
+          amount: fmtCurrency(q.grandTotal),
+          date: fmtDate(q.createdAt),
+          status: q.status,
+          jobStatus: linkedJob?.status ?? null,
+          jobId: linkedJob?.id ?? null,
+        }
+      }),
+    [quotes, jobs],
   )
 
-  /* ── Pipeline overview ── */
+  /* ── Pipeline overview — includes Complete + Invoiced so the user sees
+       the commercial state of the business, not just outstanding work. Paid
+       is excluded since those are done-and-dusted. ── */
   const pipeline = useMemo(() => {
     const stages: { label: string; status: string; color: string }[] = [
-      { label: 'Lead', status: 'Lead', color: '#8A8F96' },
-      { label: 'Quoted', status: 'Quoted', color: '#9B7ED8' },
-      { label: 'Accepted', status: 'Accepted', color: '#6ABF8A' },
-      { label: 'Scheduled', status: 'Scheduled', color: '#5B9BD5' },
+      { label: 'Lead',        status: 'Lead',        color: '#8A8F96' },
+      { label: 'Quoted',      status: 'Quoted',      color: '#9B7ED8' },
+      { label: 'Accepted',    status: 'Accepted',    color: '#6ABF8A' },
+      { label: 'Scheduled',   status: 'Scheduled',   color: '#5B9BD5' },
       { label: 'In Progress', status: 'In Progress', color: '#C6A86A' },
+      { label: 'Complete',    status: 'Complete',     color: '#6ABF8A' },
+      { label: 'Invoiced',    status: 'Invoiced',     color: '#5BBFD4' },
     ]
 
     const counts = stages.map(st => ({
@@ -594,35 +604,59 @@ export default function Dashboard() {
 
       {/* ── Row 3: Recent Quotes + Pipeline Overview ── */}
       <div style={s.columns}>
-        {/* Recent Quotes */}
+        {/* Recent Quotes — clickable rows go to the linked job or the
+            quote editor, depending on whether a job exists. Shows the job's
+            pipeline status alongside the quote status for context. */}
         <div style={s.panel}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Recent Quotes</h2>
-            <span style={s.panelLink} onClick={() => navigate('/quotes')}>
-              View All <ChevronRight size={14} />
+            <span style={s.panelLink} onClick={() => navigate('/jobs')}>
+              View Jobs <ChevronRight size={14} />
             </span>
           </div>
           {recentQuotes.length === 0 && (
             <div style={s.empty}>No quotes yet. Create one from Quick Quote.</div>
           )}
-          {recentQuotes.map((q) => (
-            <div
-              key={q.id}
-              style={s.listItem}
-              onClick={() => navigate(`/quote?quoteId=${q.id}`)}
-              onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={s.listLeft}>
-                <span style={s.listName}>{q.customer}</span>
-                <span style={s.listMeta}>{q.jobType} &middot; {q.date}</span>
+          {recentQuotes.map((q) => {
+            const jobStatusColors: Record<string, string> = {
+              Lead: '#8A8F96', Quoted: '#9B7ED8', Accepted: '#6ABF8A', Scheduled: '#5B9BD5',
+              'In Progress': '#C6A86A', Complete: '#6ABF8A', Invoiced: '#5BBFD4', Paid: '#4CAF50',
+            }
+            return (
+              <div
+                key={q.id}
+                style={s.listItem}
+                onClick={() => navigate(`/quote?quoteId=${q.id}`)}
+                onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={s.listLeft}>
+                  <span style={s.listName}>{q.customer}</span>
+                  <span style={s.listMeta}>{q.jobType} &middot; {q.date}</span>
+                </div>
+                <div style={{ ...s.listRight, gap: 6 }}>
+                  <span style={s.amount}>{q.amount}</span>
+                  {q.jobStatus ? (
+                    <span style={{
+                      ...s.badge,
+                      color: jobStatusColors[q.jobStatus] ?? C.steel,
+                      background: (jobStatusColors[q.jobStatus] ?? C.steel) + '1A',
+                    }}>
+                      {q.jobStatus}
+                    </span>
+                  ) : (
+                    <span style={{
+                      ...s.badge,
+                      color: statusColor[q.status],
+                      background: statusColor[q.status] + '1A',
+                    }}>
+                      {q.status}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div style={s.listRight}>
-                <span style={s.amount}>{q.amount}</span>
-                <span style={{ ...s.badge, color: statusColor[q.status], background: statusColor[q.status] + '1A' }}>{q.status}</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Pipeline Overview */}
