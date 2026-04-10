@@ -9,6 +9,12 @@ export interface AuthUser {
   role: 'owner' | 'admin' | 'member'
   orgId: string
   orgName: string
+  phone?: string
+  jobTitle?: string
+  address1?: string
+  address2?: string
+  city?: string
+  postcode?: string
 }
 
 interface AuthContextValue {
@@ -36,7 +42,7 @@ const AuthContext = createContext<AuthContextValue>({
 async function fetchProfile(userId: string): Promise<AuthUser | 'needs_onboarding' | null> {
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('id, display_name, role, org_id, organizations(id, name)')
+    .select('id, display_name, role, org_id, phone, job_title, address1, address2, city, postcode, organizations(id, name)')
     .eq('id', userId)
     .maybeSingle()
 
@@ -58,6 +64,12 @@ async function fetchProfile(userId: string): Promise<AuthUser | 'needs_onboardin
     role: profile.role as AuthUser['role'],
     orgId: org.id,
     orgName: org.name,
+    phone: profile.phone ?? undefined,
+    jobTitle: profile.job_title ?? undefined,
+    address1: profile.address1 ?? undefined,
+    address2: profile.address2 ?? undefined,
+    city: profile.city ?? undefined,
+    postcode: profile.postcode ?? undefined,
   }
 }
 

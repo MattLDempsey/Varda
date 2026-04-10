@@ -592,65 +592,98 @@ export default function AppShell() {
                 <User size={16} color={C.gold} />
                 Personal Details
               </div>
-              {editingName ? (
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  <input
-                    value={profileName}
-                    onChange={e => setProfileName(e.target.value)}
-                    placeholder="Display name"
-                    style={{
-                      flex: 1, padding: '8px 12px', borderRadius: 8,
-                      background: C.black, border: `1px solid ${C.steel}33`,
-                      color: C.white, fontSize: 13, outline: 'none',
-                    }}
-                    autoFocus
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && profileName.trim()) {
-                        setProfileSaving(true)
-                        supabase.from('profiles').update({ display_name: profileName.trim() }).eq('id', user?.id ?? '')
-                          .then(() => { setEditingName(false); setProfileSaving(false) })
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={() => {
-                      if (!profileName.trim()) return
-                      setProfileSaving(true)
-                      supabase.from('profiles').update({ display_name: profileName.trim() }).eq('id', user?.id ?? '')
-                        .then(() => { setEditingName(false); setProfileSaving(false) })
-                    }}
-                    disabled={profileSaving}
-                    style={{
-                      padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                      background: C.gold, border: 'none', color: C.charcoal, cursor: 'pointer',
-                    }}
-                  >
-                    {profileSaving ? '...' : 'Save'}
-                  </button>
-                </div>
-              ) : (
-                <div
-                  onClick={() => { setProfileName(user?.displayName ?? ''); setEditingName(true) }}
-                  style={{
-                    padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
-                    background: C.black, border: `1px solid ${C.steel}33`,
-                    marginBottom: 8,
-                  }}
-                >
-                  <div style={{ fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Name</div>
-                  <div style={{ fontSize: 14, color: C.white, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    {user?.displayName ?? '—'}
-                    <Pencil size={12} color={C.steel} />
-                  </div>
-                </div>
-              )}
-              <div style={{
-                padding: '10px 14px', borderRadius: 10,
-                background: C.black, border: `1px solid ${C.steel}33`,
-              }}>
-                <div style={{ fontSize: 11, color: C.steel, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Email</div>
-                <div style={{ fontSize: 14, color: C.silver }}>{user?.email ?? '—'}</div>
-              </div>
+              {(() => {
+                // Inline editable fields — each saves to profiles table directly
+                const fieldStyle: CSSProperties = {
+                  padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                  background: C.black, border: `1px solid ${C.steel}33`,
+                  marginBottom: 6,
+                }
+                const labelStyle: CSSProperties = {
+                  fontSize: 10, color: C.steel, textTransform: 'uppercase',
+                  letterSpacing: 0.5, marginBottom: 3,
+                }
+                const valueStyle: CSSProperties = {
+                  fontSize: 13, color: C.white, display: 'flex',
+                  justifyContent: 'space-between', alignItems: 'center',
+                }
+                const inputStyle: CSSProperties = {
+                  width: '100%', padding: '8px 12px', borderRadius: 8,
+                  background: C.black, border: `1px solid ${C.steel}33`,
+                  color: C.white, fontSize: 13, outline: 'none',
+                  boxSizing: 'border-box',
+                }
+
+                // Single editable field component rendered inline
+                const EditableField = ({ label, field, value, inputMode }: {
+                  label: string; field: string; value: string; inputMode?: string
+                }) => {
+                  const isEditing = editingName && profileName === `__field__${field}`
+                  if (isEditing) {
+                    return (
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                        <input
+                          defaultValue={value}
+                          autoFocus
+                          inputMode={inputMode as any}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              const val = (e.target as HTMLInputElement).value.trim()
+                              supabase.from('profiles').update({ [field]: val || null }).eq('id', user?.id ?? '')
+                                .then(() => setEditingName(false))
+                            }
+                            if (e.key === 'Escape') setEditingName(false)
+                          }}
+                          style={inputStyle}
+                          placeholder={label}
+                        />
+                        <button
+                          onClick={e => {
+                            const input = (e.currentTarget.previousElementSibling as HTMLInputElement)
+                            const val = input?.value?.trim() ?? ''
+                            supabase.from('profiles').update({ [field]: val || null }).eq('id', user?.id ?? '')
+                              .then(() => setEditingName(false))
+                          }}
+                          style={{
+                            padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                            background: C.gold, border: 'none', color: C.charcoal, cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >Save</button>
+                      </div>
+                    )
+                  }
+                  return (
+                    <div
+                      onClick={() => { setProfileName(`__field__${field}`); setEditingName(true) }}
+                      style={fieldStyle}
+                    >
+                      <div style={labelStyle}>{label}</div>
+                      <div style={valueStyle}>
+                        <span style={{ color: value ? C.white : C.steel }}>{value || '—'}</span>
+                        <Pencil size={11} color={C.steel} />
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <>
+                    <EditableField label="Name" field="display_name" value={user?.displayName ?? ''} />
+                    <EditableField label="Job Title" field="job_title" value={user?.jobTitle ?? ''} />
+                    <EditableField label="Phone" field="phone" value={user?.phone ?? ''} inputMode="tel" />
+                    <div style={{ ...fieldStyle, cursor: 'default' }}>
+                      <div style={labelStyle}>Email</div>
+                      <div style={{ fontSize: 13, color: C.silver }}>{user?.email ?? '—'}</div>
+                    </div>
+                    <EditableField label="Address" field="address1" value={user?.address1 ?? ''} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      <EditableField label="City" field="city" value={user?.city ?? ''} />
+                      <EditableField label="Postcode" field="postcode" value={user?.postcode ?? ''} />
+                    </div>
+                  </>
+                )
+              })()}
             </div>
 
             {/* ── Organisation ── */}
