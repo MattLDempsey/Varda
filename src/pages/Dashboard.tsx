@@ -66,7 +66,7 @@ const statusColor: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate()
   const { C } = useTheme()
-  const { quotes, jobs, events, invoices, settings, customers, addComm, updateJob, moveJob, isDataLoading } = useData()
+  const { quotes, jobs, events, invoices, settings, customers, teamMembers, addComm, updateJob, moveJob, isDataLoading } = useData()
   const [actionPage, setActionPage] = useState(0)
   const ACTIONS_PER_PAGE = 3
   const { user } = useAuth()
@@ -857,6 +857,72 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ── Row 4: Team Workload (only when 2+ members) ── */}
+      {teamMembers.length > 1 && (
+        <div style={s.panel}>
+          <div style={s.panelHeader}>
+            <h2 style={s.panelTitle}>Team Workload</h2>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            {teamMembers.map(m => {
+              const memberJobs = jobs.filter(j => j.assignedTo === m.id && j.status !== 'Paid')
+              const memberEvents = events.filter(e => e.date === today && !e.category && e.jobId && jobs.some(j => j.id === e.jobId && j.assignedTo === m.id))
+              return (
+                <div key={m.id} style={{
+                  background: C.black, borderRadius: 10, padding: '14px 16px',
+                  border: `1px solid ${C.steel}22`,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: C.charcoalLight, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 700, color: C.silver,
+                      border: `1px solid ${C.steel}44`,
+                    }}>
+                      {m.displayName.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: C.white }}>{m.displayName}</div>
+                      <div style={{ fontSize: 11, color: C.steel, textTransform: 'capitalize' }}>{m.role}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div style={{ textAlign: 'center', padding: '8px', borderRadius: 8, background: C.charcoalLight }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: C.gold }}>{memberJobs.length}</div>
+                      <div style={{ fontSize: 10, color: C.steel }}>Active Jobs</div>
+                    </div>
+                    <div style={{ textAlign: 'center', padding: '8px', borderRadius: 8, background: C.charcoalLight }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: C.gold }}>{memberEvents.length}</div>
+                      <div style={{ fontSize: 10, color: C.steel }}>Today</div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            {/* Unassigned jobs */}
+            {(() => {
+              const unassigned = jobs.filter(j => !j.assignedTo && j.status !== 'Paid')
+              if (unassigned.length === 0) return null
+              return (
+                <div style={{
+                  background: C.black, borderRadius: 10, padding: '14px 16px',
+                  border: `1px dashed ${C.steel}44`,
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.silver, marginBottom: 10 }}>
+                    Unassigned
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '8px', borderRadius: 8, background: C.charcoalLight }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: C.steel }}>{unassigned.length}</div>
+                    <div style={{ fontSize: 10, color: C.steel }}>Jobs to assign</div>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

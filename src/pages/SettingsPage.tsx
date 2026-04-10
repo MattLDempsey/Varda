@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Save, Building2, Clock, FileText, Bell, Link, Copy, Check, MessageSquare, Mail, MessageCircle, Smartphone, ChevronDown, RotateCcw } from 'lucide-react'
+import { Save, Building2, Clock, FileText, Bell, Link, Copy, Check, MessageSquare, Mail, MessageCircle, Smartphone, ChevronDown, RotateCcw, Shield, Briefcase, Plus, Trash2 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useAuth } from '../auth/AuthContext'
@@ -8,16 +8,18 @@ import SettingsNav from '../components/SettingsNav'
 import type { AppSettings } from '../data/DataContext'
 import { loadTemplates, saveTemplate, resetTemplate, DEFAULT_TEMPLATES } from '../data/templates'
 import type { MessageTemplate } from '../data/templates'
+import { PERMISSION_GROUPS, hasPermission } from '../data/permissions'
 
 /* ── types ── */
-type SettingsTab = 'business' | 'hours' | 'quotes' | 'notifications' | 'templates'
+type SettingsTab = 'business' | 'hours' | 'quotes' | 'notifications' | 'templates' | 'permissions' | 'jobtypes'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 export default function SettingsPage() {
   const { C } = useTheme()
   const { user } = useAuth()
-  const { settings, updateSettings } = useData()
+  const data = useData()
+  const { settings, updateSettings } = data
   const [activeTab, setActiveTab] = useState<SettingsTab>('business')
   const [saved, setSaved] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
@@ -142,6 +144,8 @@ export default function SettingsPage() {
     { id: 'quotes', label: 'Quotes & Invoices', icon: <FileText size={18} /> },
     { id: 'notifications', label: 'Notifications', icon: <Bell size={18} /> },
     { id: 'templates', label: 'Templates', icon: <MessageSquare size={18} /> },
+    { id: 'permissions', label: 'Permissions', icon: <Shield size={18} /> },
+    { id: 'jobtypes', label: 'Job Types', icon: <Briefcase size={18} /> },
   ]
 
   return (
@@ -591,6 +595,159 @@ export default function SettingsPage() {
               })}
             </>
           )}
+
+          {/* ════════════════════════════════════════════════
+              PERMISSIONS TAB
+              ════════════════════════════════════════════════ */}
+          {activeTab === 'permissions' && (
+            <div style={s.panel}>
+              <div style={s.panelTitle}>Role Permissions</div>
+              <div style={s.panelSub}>
+                Control what each role can do. Owner always has full access. Changes take effect immediately.
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '10px 14px', color: C.silver, fontWeight: 600, borderBottom: `1px solid ${C.steel}33` }}>Permission</th>
+                      <th style={{ textAlign: 'center', padding: '10px 14px', color: '#6ABF8A', fontWeight: 600, borderBottom: `1px solid ${C.steel}33` }}>Admin</th>
+                      <th style={{ textAlign: 'center', padding: '10px 14px', color: C.gold, fontWeight: 600, borderBottom: `1px solid ${C.steel}33` }}>Member</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      return PERMISSION_GROUPS.map((group) => (
+                        <React.Fragment key={group.label}>
+                          <tr>
+                            <td colSpan={3} style={{
+                              padding: '14px 14px 6px', fontWeight: 700, fontSize: 12,
+                              color: C.gold, textTransform: 'uppercase', letterSpacing: 0.5,
+                              borderBottom: `1px solid ${C.steel}22`,
+                            }}>
+                              {group.label}
+                            </td>
+                          </tr>
+                          {group.permissions.map((p) => (
+                            <tr key={p.key}>
+                              <td style={{ padding: '8px 14px', color: C.white, borderBottom: `1px solid ${C.steel}11` }}>
+                                {p.label}
+                              </td>
+                              <td style={{ textAlign: 'center', padding: '8px 14px', borderBottom: `1px solid ${C.steel}11` }}>
+                                <span style={{
+                                  display: 'inline-block', width: 18, height: 18, borderRadius: 4,
+                                  background: hasPermission('admin', p.key) ? '#6ABF8A' : C.black,
+                                  border: `1px solid ${hasPermission('admin', p.key) ? '#6ABF8A' : C.steel}`,
+                                  color: hasPermission('admin', p.key) ? '#fff' : 'transparent',
+                                  fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center',
+                                }}>✓</span>
+                              </td>
+                              <td style={{ textAlign: 'center', padding: '8px 14px', borderBottom: `1px solid ${C.steel}11` }}>
+                                <span style={{
+                                  display: 'inline-block', width: 18, height: 18, borderRadius: 4,
+                                  background: hasPermission('member', p.key) ? C.gold : C.black,
+                                  border: `1px solid ${hasPermission('member', p.key) ? C.gold : C.steel}`,
+                                  color: hasPermission('member', p.key) ? C.charcoal : 'transparent',
+                                  fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center',
+                                }}>✓</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ))
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ fontSize: 12, color: C.steel, marginTop: 16, fontStyle: 'italic' }}>
+                Custom per-org permission overrides coming soon. Currently showing the default permission matrix.
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════
+              JOB TYPES TAB
+              ════════════════════════════════════════════════ */}
+          {activeTab === 'jobtypes' && (() => {
+            const { jobTypeConfigs, updateJobTypeConfig } = data
+            return (
+            <div style={s.panel}>
+              <div style={s.panelTitle}>Job Types</div>
+              <div style={s.panelSub}>
+                Manage the job types available in Quick Quote. Adjust base pricing, hours, and minimum charges per type.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {jobTypeConfigs.map(jt => (
+                  <div key={jt.id} style={{
+                    background: C.black, borderRadius: 10, padding: '14px 16px',
+                    border: `1px solid ${C.steel}22`,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>{jt.name}</span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+                        color: jt.certRequired ? '#9B7ED8' : C.steel,
+                        background: jt.certRequired ? '#9B7ED815' : 'transparent',
+                        border: `1px solid ${jt.certRequired ? '#9B7ED844' : C.steel + '33'}`,
+                      }}>
+                        {jt.certRequired ? 'Cert Required' : 'No Cert'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: C.steel, textTransform: 'uppercase', marginBottom: 2 }}>Base Materials</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 11, color: C.steel }}>£</span>
+                          <input
+                            type="number" min={0} step={5}
+                            value={jt.baseMaterialCost}
+                            onChange={e => updateJobTypeConfig(jt.id, { baseMaterialCost: Number(e.target.value) || 0 })}
+                            style={{
+                              width: '100%', padding: '6px 8px', borderRadius: 6,
+                              background: C.charcoal, border: `1px solid ${C.steel}33`,
+                              color: C.white, fontSize: 13, outline: 'none',
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: C.steel, textTransform: 'uppercase', marginBottom: 2 }}>Base Hours</div>
+                        <input
+                          type="number" min={0} step={0.5}
+                          value={jt.baseHours}
+                          onChange={e => updateJobTypeConfig(jt.id, { baseHours: Number(e.target.value) || 0 })}
+                          style={{
+                            width: '100%', padding: '6px 8px', borderRadius: 6,
+                            background: C.charcoal, border: `1px solid ${C.steel}33`,
+                            color: C.white, fontSize: 13, outline: 'none',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: C.steel, textTransform: 'uppercase', marginBottom: 2 }}>Min Charge</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 11, color: C.steel }}>£</span>
+                          <input
+                            type="number" min={0} step={5}
+                            value={jt.minCharge}
+                            onChange={e => updateJobTypeConfig(jt.id, { minCharge: Number(e.target.value) || 0 })}
+                            style={{
+                              width: '100%', padding: '6px 8px', borderRadius: 6,
+                              background: C.charcoal, border: `1px solid ${C.steel}33`,
+                              color: C.white, fontSize: 13, outline: 'none',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 12, color: C.steel, marginTop: 16, fontStyle: 'italic' }}>
+                Custom job types (add your own beyond the defaults) available on the Business plan.
+              </div>
+            </div>
+            )
+          })()}
         </div>
       </div>
     </div>
