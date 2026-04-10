@@ -3,8 +3,8 @@
 -- Existing events are backfilled to created_at so they don't show as
 -- pending and trigger spurious resend prompts.
 
-ALTER TABLE events ADD COLUMN IF NOT EXISTS confirmation_sent_at timestamptz;
+ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS confirmation_sent_at timestamptz;
 
-UPDATE events
+UPDATE schedule_events
 SET confirmation_sent_at = created_at
 WHERE confirmation_sent_at IS NULL;
