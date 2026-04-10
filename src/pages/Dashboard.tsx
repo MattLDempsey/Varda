@@ -4,7 +4,7 @@ import {
   FileText, Briefcase, PoundSterling, Clock, TrendingUp,
   CalendarCheck, CheckCircle, AlertTriangle, ChevronRight,
   Calendar, Bell, X, Square, CheckSquare,
-  PenLine, UserPlus, ClipboardList,
+  PenLine, UserPlus, ClipboardList, Play,
 } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
@@ -66,7 +66,7 @@ const statusColor: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate()
   const { C } = useTheme()
-  const { quotes, jobs, events, invoices, settings, customers, addComm, isDataLoading } = useData()
+  const { quotes, jobs, events, invoices, settings, customers, addComm, updateJob, moveJob, isDataLoading } = useData()
   const { user } = useAuth()
   const isMobile = useIsMobile()
   const today = todayStr()
@@ -450,23 +450,61 @@ export default function Dashboard() {
           {todaysEvents.length === 0 && (
             <div style={s.empty}>Nothing scheduled today.</div>
           )}
-          {todaysEvents.map((ev) => (
-            <div
-              key={ev.id}
-              style={s.listItem}
-              onClick={() => navigate('/calendar')}
-              onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={s.listLeft}>
-                <span style={s.listName}>{ev.customerName}</span>
-                <span style={s.listMeta}>{ev.jobType} &middot; {slotLabel(ev.slot)}</span>
+          {todaysEvents.map((ev) => {
+            // Internal events (travel/admin/etc) skip the Start button.
+            const isInternal = !!ev.category
+            const linkedJob = !isInternal && ev.jobId ? jobs.find(j => j.id === ev.jobId) : undefined
+            const canStart = !!linkedJob && linkedJob.status === 'Scheduled'
+            const inProgress = !!linkedJob && linkedJob.status === 'In Progress'
+            const handleStart = (e: React.MouseEvent) => {
+              e.stopPropagation()
+              if (!linkedJob) return
+              const ts = new Date().toISOString()
+              updateJob(linkedJob.id, { startedAt: ts })
+              moveJob(linkedJob.id, 'In Progress')
+            }
+            return (
+              <div
+                key={ev.id}
+                style={s.listItem}
+                onClick={() => navigate('/calendar')}
+                onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={s.listLeft}>
+                  <span style={s.listName}>{ev.customerName}</span>
+                  <span style={s.listMeta}>
+                    {isInternal ? 'Internal' : ev.jobType} &middot;{' '}
+                    {ev.startTime || slotLabel(ev.slot)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {canStart && (
+                    <button
+                      onClick={handleStart}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        padding: '6px 10px', borderRadius: 8,
+                        background: `${C.gold}15`, border: `1px solid ${C.gold}66`,
+                        color: C.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        minHeight: 30,
+                      }}
+                      title="Mark this job as started — moves it to In Progress"
+                    >
+                      <Play size={11} fill="currentColor" /> Start
+                    </button>
+                  )}
+                  <span style={{
+                    ...s.badge,
+                    color: inProgress ? C.gold : statusColor[ev.status],
+                    background: (inProgress ? C.gold : statusColor[ev.status]) + '1A',
+                  }}>
+                    {linkedJob?.status ?? ev.status}
+                  </span>
+                </div>
               </div>
-              <span style={{ ...s.badge, color: statusColor[ev.status], background: statusColor[ev.status] + '1A' }}>
-                {ev.status}
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Action Items — powered by FollowUpManager */}

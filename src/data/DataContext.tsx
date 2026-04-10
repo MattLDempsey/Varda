@@ -180,6 +180,10 @@ export interface Job {
   parentJobId?: string
   /** ISO timestamp set when job is soft-deleted; null/undefined for active jobs */
   deletedAt?: string | null
+  /** ISO timestamp set when the user explicitly marks the job as started.
+   *  Distinct from `date` (the scheduled day) — captures when work actually
+   *  began, used by Insights for accurate "actual hours" reporting. */
+  startedAt?: string | null
 }
 
 export interface ScheduleEvent {

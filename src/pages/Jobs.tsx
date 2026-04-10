@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload, RefreshCw, CheckCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
@@ -166,6 +166,9 @@ export default function Jobs() {
   // from expenses tagged to the job, not from a manual line-item editor.
   const [actualMaterials, setActualMaterials] = useState<string>('')
   const [materialsLoadedFor, setMaterialsLoadedFor] = useState<string | null>(null)
+  // Ref to the schedule section so the panel-header warning banner can
+  // scroll the user straight to it when they click "Open Schedule".
+  const scheduleSectionRef = useRef<HTMLDivElement>(null)
 
   // Attachments state
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -252,6 +255,15 @@ export default function Jobs() {
     const jobEvents = events.filter(e => e.jobId === job.id)
     if (jobEvents.length > 0 && jobEvents.some(e => !isEventConfirmed(e))) {
       return 'Schedule changed — customer needs new confirmation'
+    }
+
+    // Backstop: a job that was scheduled for a date in the past but is
+    // still sitting in Scheduled probably needs its status updated. The
+    // user might have done the work and forgotten, or it might have been
+    // cancelled. Either way, the kanban shouldn't lie about it.
+    const todayStr = new Date().toISOString().split('T')[0]
+    if (job.status === 'Scheduled' && job.date && job.date < todayStr) {
+      return 'Was this job done? Update its status'
     }
 
     switch (job.status) {
@@ -918,7 +930,16 @@ export default function Jobs() {
                 if (warning.includes('Quote') || warning.includes('quote')) {
                   cta = { label: 'Open Quote', action: () => setPanelTab('quote') }
                 } else if (warning.includes('Schedule') || warning.includes('schedule') || warning.includes('date') || warning.includes('Date')) {
-                  cta = { label: 'Open Schedule', action: () => setPanelTab('details') }
+                  cta = {
+                    label: 'Open Schedule',
+                    action: () => {
+                      setPanelTab('details')
+                      // Wait a tick for the tab switch to render before scrolling.
+                      setTimeout(() => {
+                        scheduleSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      }, 0)
+                    },
+                  }
                 } else if (warning.includes('invoice')) {
                   cta = { label: 'Open Payments', action: () => setPanelTab('payments') }
                 }
@@ -1553,7 +1574,7 @@ export default function Jobs() {
                     }
 
                     return (
-                      <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33` }}>
+                      <div ref={scheduleSectionRef} style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.steel}33`, scrollMarginTop: 16 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <CalendarDays size={16} color={C.gold} />
@@ -1684,19 +1705,34 @@ export default function Jobs() {
 
                         {/* Send confirmation CTA — appears once one or more
                             days are added but not yet sent to the customer.
-                            Tapping it opens the channel-picker modal below. */}
+                            Tapping it opens the channel-picker modal below.
+                            Disabled when there's an unresolved conflict with
+                            an internal event — the user must delete or move
+                            the internal entry first. */}
                         {unconfirmedEvents.length > 0 && !showConfirmModal && !confirmSentMsg && (
                           <button
-                            onClick={() => { setConfirmMode('initial'); setShowConfirmModal(true) }}
+                            onClick={() => {
+                              if (internalConflicts.length > 0) return
+                              setConfirmMode('initial')
+                              setShowConfirmModal(true)
+                            }}
+                            disabled={internalConflicts.length > 0}
+                            title={internalConflicts.length > 0 ? 'Resolve the schedule clash above before sending' : undefined}
                             style={{
                               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                               padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                              cursor: 'pointer', minHeight: 42, marginBottom: 12,
-                              background: `${C.gold}15`, border: `1px solid ${C.gold}66`, color: C.gold,
+                              cursor: internalConflicts.length > 0 ? 'not-allowed' : 'pointer',
+                              minHeight: 42, marginBottom: 12,
+                              background: internalConflicts.length > 0 ? C.black : `${C.gold}15`,
+                              border: `1px solid ${internalConflicts.length > 0 ? C.steel + '33' : C.gold + '66'}`,
+                              color: internalConflicts.length > 0 ? C.steel : C.gold,
+                              opacity: internalConflicts.length > 0 ? 0.6 : 1,
                             }}
                           >
                             <Send size={14} />
-                            Send confirmation ({unconfirmedEvents.length} day{unconfirmedEvents.length > 1 ? 's' : ''})
+                            {internalConflicts.length > 0
+                              ? 'Resolve schedule clash to send'
+                              : `Send confirmation (${unconfirmedEvents.length} day${unconfirmedEvents.length > 1 ? 's' : ''})`}
                           </button>
                         )}
 
