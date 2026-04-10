@@ -649,6 +649,16 @@
   .qq-total__amount {
     font-size: 40px;
   }
+
+  /* Show the sticky total bar on mobile so the price is always visible */
+  .qq-mobile-sticky-total {
+    display: flex !important;
+  }
+
+  /* Add bottom padding to the page so the sticky bar doesn't overlap content */
+  .qq-page {
+    padding-bottom: 80px;
+  }
 }
 
 /* Very small screens — single column job grid */

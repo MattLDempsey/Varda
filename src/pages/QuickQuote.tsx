@@ -193,6 +193,8 @@ export default function QuickQuote() {
   // Quick-spec values for the currently-selected job type
   const [curSpecs, setCurSpecs] = useState<QuickSpecValues>({})
   const curSpecDefs = QUICK_SPECS[curJobTypeId] ?? []
+  // When editing an existing line, this holds its ID. Null = adding new.
+  const [editingLineId, setEditingLineId] = useState<number | null>(null)
 
   // ── Auto-add timer ──
   const autoAddTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -208,11 +210,23 @@ export default function QuickQuote() {
       setNotes(existingQuote.notes)
       setIsEmergency(existingQuote.emergency)
       setIsOutOfHours(existingQuote.outOfHours)
-      // Load as a single line (legacy quotes are single-line)
+      // Restore specs from defaults for this job type. Future: store
+      // specs on the quote so they round-trip exactly. For now, defaults
+      // are close enough and the user can adjust via the edit flow.
+      const specDefs = QUICK_SPECS[existingQuote.jobTypeId]
+      const restoredSpecs: QuickSpecValues = {}
+      if (specDefs) {
+        for (const spec of specDefs) restoredSpecs[spec.key] = spec.default
+        // Override the core quantity spec with the quote's actual quantity
+        // so "6 fittings" restores correctly.
+        const coreSpec = specDefs.find(s => s.type === 'number' && (s.materialsPer || s.labourMinsPer))
+        if (coreSpec) restoredSpecs[coreSpec.key] = existingQuote.quantity
+      }
       const calc = calculateLine(
         existingQuote.jobTypeId, existingQuote.quantity, existingQuote.difficulty,
         existingQuote.hassleFactor, existingQuote.emergency, existingQuote.outOfHours,
         existingQuote.certRequired, existingQuote.customerSuppliesMaterials,
+        undefined, undefined, Object.keys(restoredSpecs).length > 0 ? restoredSpecs : undefined,
       )
       setLines([{
         id: nextLineId++,
@@ -225,6 +239,7 @@ export default function QuickQuote() {
         outOfHours: existingQuote.outOfHours,
         certRequired: existingQuote.certRequired,
         customerSuppliesMaterials: existingQuote.customerSuppliesMaterials,
+        specs: Object.keys(restoredSpecs).length > 0 ? restoredSpecs : undefined,
         ...calc,
       }])
       setLoaded(true)
@@ -298,15 +313,42 @@ export default function QuickQuote() {
     setAutoAddCountdown(null)
   }, [])
 
-  // ── Add current line to quote ──
+  // ── Load an existing line into the form for editing ──
+  const editLine = useCallback((line: LineItem) => {
+    clearAutoAdd()
+    setCurJobTypeId(line.jobTypeId)
+    setCurQuantity(line.quantity)
+    setCurDifficulty(line.difficulty)
+    setCurHassle(line.hassleFactor)
+    setCurCert(line.certRequired)
+    setCurCustMaterials(line.customerSuppliesMaterials)
+    if (line.jobTypeId === 'other') {
+      setCurManualMaterials(line.materials)
+      setCurManualHours(line.estHours)
+    }
+    if (line.specs && Object.keys(line.specs).length > 0) {
+      setCurSpecs(line.specs)
+    } else {
+      const specDefs = QUICK_SPECS[line.jobTypeId]
+      if (specDefs) {
+        const defaults: QuickSpecValues = {}
+        for (const spec of specDefs) defaults[spec.key] = spec.default
+        setCurSpecs(defaults)
+      } else {
+        setCurSpecs({})
+      }
+    }
+    setEditingLineId(line.id)
+  }, [clearAutoAdd])
+
+  // ── Add or update current line ──
   const addLine = useCallback(() => {
     clearAutoAdd()
     const jt = jobTypeConfigs.find(j => j.id === curJobTypeId)
     if (!jt) return
 
     const calc = calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, curSpecs)
-    setLines(prev => [...prev, {
-      id: nextLineId++,
+    const lineData = {
       jobTypeId: curJobTypeId,
       jobTypeName: curJobTypeId === 'other' ? 'Other' : jt.name,
       quantity: curQuantity,
@@ -318,7 +360,16 @@ export default function QuickQuote() {
       customerSuppliesMaterials: curCustMaterials,
       specs: Object.keys(curSpecs).length > 0 ? { ...curSpecs } : undefined,
       ...calc,
-    }])
+    }
+
+    if (editingLineId != null) {
+      // Update existing line in-place
+      setLines(prev => prev.map(l => l.id === editingLineId ? { ...l, ...lineData } : l))
+      setEditingLineId(null)
+    } else {
+      // Add new line
+      setLines(prev => [...prev, { id: nextLineId++, ...lineData }])
+    }
 
     // Reset form for next line
     setCurJobTypeId('')
@@ -357,7 +408,10 @@ export default function QuickQuote() {
     }
     return () => clearAutoAdd()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, curCert, curCustMaterials, curManualMaterials, curManualHours])
+  // curSpecs included so spec changes restart the countdown — prevents
+  // the auto-add from firing while the user is still picking specs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, curCert, curCustMaterials, curManualMaterials, curManualHours, JSON.stringify(curSpecs)])
 
   const removeLine = useCallback((id: number) => {
     setLines(prev => prev.filter(l => l.id !== id))
@@ -482,7 +536,15 @@ export default function QuickQuote() {
       const data = buildQuoteData()
 
       if (activeQuoteIdRef.current) {
-        updateQuote(activeQuoteIdRef.current, data)
+        // If the quote was already sent, mark it as needing a resend
+        // so the system prompts the user to notify the customer about
+        // the updated pricing.
+        const existingQ = quotes.find(q => q.id === activeQuoteIdRef.current)
+        const markResend = existingQ && existingQ.status !== 'Draft'
+        updateQuote(activeQuoteIdRef.current, {
+          ...data,
+          ...(markResend ? { needsResend: true } : {}),
+        })
         if (activeJobIdRef.current) {
           updateJob(activeJobIdRef.current, {
             customerId: data.customerId,
@@ -863,31 +925,43 @@ export default function QuickQuote() {
         {lines.length > 0 && (
           <div className="qq-field">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {lines.map(line => (
+              {lines.map(line => {
+                // Build a short spec summary (e.g. "6 fittings · Downlights · New circuit")
+                const specSummary = line.specs ? Object.entries(line.specs)
+                  .filter(([, v]) => v !== false && v !== '' && v !== 0)
+                  .map(([, v]) => typeof v === 'boolean' ? '✓' : String(v))
+                  .slice(0, 3).join(' · ') : ''
+                const isEditing = editingLineId === line.id
+                return (
                 <div
                   key={line.id}
+                  onClick={() => editLine(line)}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: 'var(--color-black)', borderRadius: 'var(--radius-md)',
-                    padding: '10px 14px', border: '1px solid var(--color-steel)',
+                    background: isEditing ? 'var(--color-gold)12' : 'var(--color-black)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '10px 14px',
+                    border: `1px solid ${isEditing ? 'var(--color-gold)' : 'var(--color-steel)'}`,
+                    cursor: 'pointer',
+                    transition: 'border-color .15s',
                   }}
                 >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
                     <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-white)' }}>
                       {line.jobTypeName}{line.quantity > 1 ? ` x${line.quantity}` : ''}
                     </span>
-                    <span style={{ fontSize: 12, color: 'var(--color-steel-light)' }}>
-                      {line.estHours}h · Diff {line.difficulty} · Hassle {line.hassleFactor}
-                      {line.emergency ? ' · Emergency' : ''}{line.outOfHours ? ' · OOH' : ''}
+                    <span style={{ fontSize: 11, color: 'var(--color-steel-light)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {specSummary || `${line.estHours}h`}
+                      {line.emergency ? ' · 🚨' : ''}{line.outOfHours ? ' · 🌙' : ''}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-gold)' }}>
                       £{fmt(line.lineTotal)}
                     </span>
                     <button
                       type="button"
-                      onClick={() => removeLine(line.id)}
+                      onClick={(e) => { e.stopPropagation(); removeLine(line.id) }}
                       style={{
                         background: 'transparent', border: 'none', color: 'var(--color-steel)',
                         cursor: 'pointer', padding: 4, display: 'flex',
@@ -897,7 +971,8 @@ export default function QuickQuote() {
                     </button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -1119,20 +1194,44 @@ export default function QuickQuote() {
                 </div>
               </div>
 
-              {/* Add Line Button */}
+              {/* Add / Update Line Button */}
               <div style={{ position: 'relative' }}>
-                <button
-                  className="qq-btn qq-btn--primary"
-                  type="button"
-                  onClick={() => { clearAutoAdd(); addLine() }}
-                  style={{ width: '100%', marginTop: 4 }}
-                >
-                  {autoAddedMsg ? (
-                    <><CheckCircle size={18} style={{ marginRight: 6 }} /> Added</>
-                  ) : (
-                    <><Plus size={18} style={{ marginRight: 6 }} /> Add {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name || 'Line'}</>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {editingLineId != null && (
+                    <button
+                      className="qq-btn qq-btn--secondary"
+                      type="button"
+                      onClick={() => {
+                        clearAutoAdd()
+                        setEditingLineId(null)
+                        setCurJobTypeId('')
+                        setCurQuantity(1)
+                        setCurDifficulty(25)
+                        setCurHassle(15)
+                        setCurCert(false)
+                        setCurCustMaterials(false)
+                        setCurSpecs({})
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      Cancel
+                    </button>
                   )}
-                </button>
+                  <button
+                    className="qq-btn qq-btn--primary"
+                    type="button"
+                    onClick={() => { clearAutoAdd(); addLine() }}
+                    style={{ flex: editingLineId != null ? 2 : undefined, width: editingLineId != null ? undefined : '100%', marginTop: editingLineId != null ? 0 : 4 }}
+                  >
+                    {autoAddedMsg ? (
+                      <><CheckCircle size={18} style={{ marginRight: 6 }} /> Added</>
+                    ) : editingLineId != null ? (
+                      <>✓ Update {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name || 'Line'}</>
+                    ) : (
+                      <><Plus size={18} style={{ marginRight: 6 }} /> Add {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name || 'Line'}</>
+                    )}
+                  </button>
+                </div>
                 {autoAddCountdown !== null && (
                   <div style={{
                     textAlign: 'center', fontSize: 11, color: 'var(--color-steel-light)',
@@ -1672,6 +1771,43 @@ export default function QuickQuote() {
           </>
         )
       })()}
+
+      {/* ── Mobile sticky total bar — always visible at the bottom so
+          the electrician can see the running total while scrolling
+          through the form. Hidden on desktop where the right panel
+          is visible side-by-side. ── */}
+      {hasLines && (
+        <div
+          className="qq-mobile-sticky-total"
+          style={{
+            display: 'none', // Shown via CSS media query on mobile
+            position: 'fixed', bottom: 0, left: 0, right: 0,
+            background: 'var(--color-charcoal-light)',
+            borderTop: '1px solid var(--color-steel)',
+            padding: '10px 16px',
+            zIndex: 50,
+            alignItems: 'center', justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-gold)' }}>
+              £{fmt(totals.grandTotal)}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--color-steel-light)' }}>
+              inc. VAT · {lines.length} line{lines.length > 1 ? 's' : ''}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSendModal(true)}
+            className="qq-btn qq-btn--primary"
+            style={{ padding: '10px 20px', fontSize: 13 }}
+          >
+            Send
+          </button>
+        </div>
+      )}
     </div>
   )
 }
