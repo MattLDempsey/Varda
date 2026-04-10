@@ -22,6 +22,40 @@ function fmtDate(iso: string): string {
   return `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}`
 }
 
+/* ── time helpers (HH:MM ↔ minutes) ── */
+
+const SLOT_DEFAULTS: Record<string, { start: string; end: string }> = {
+  morning:   { start: '08:00', end: '12:00' },
+  afternoon: { start: '12:00', end: '17:00' },
+  full:      { start: '08:00', end: '17:00' },
+  quick:     { start: '08:00', end: '09:00' },
+}
+
+function parseHHMM(s: string): number {
+  const [h, m] = s.split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+function formatHHMM(mins: number): string {
+  const h = Math.floor(mins / 60) % 24
+  const m = mins % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/** Resolve an event's effective start/end times, falling back to slot defaults. */
+function eventTimeRange(ev: { slot: string; startTime?: string | null; endTime?: string | null }): { start: number; end: number } {
+  const def = SLOT_DEFAULTS[ev.slot] ?? SLOT_DEFAULTS.morning
+  return {
+    start: parseHHMM(ev.startTime || def.start),
+    end:   parseHHMM(ev.endTime   || def.end),
+  }
+}
+
+function fmtTimeRange(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start || !end) return ''
+  return `${start}–${end}`
+}
+
 function fmtCurrency(n: number): string {
   return '£' + n.toLocaleString('en-GB', { maximumFractionDigits: 0 })
 }
@@ -95,6 +129,9 @@ export default function Jobs() {
   const [dragOverCol, setDragOverCol] = useState<JobStatus | null>(null)
   const [scheduleDate, setScheduleDate] = useState('')
   const [scheduleSlot, setScheduleSlot] = useState<'morning' | 'afternoon' | 'full' | 'quick'>('morning')
+  // Picked start time for the Quick fit-in slot (HH:MM). Quick events
+  // default to a 1-hour duration starting from this value.
+  const [quickStartTime, setQuickStartTime] = useState<string>('08:00')
   // Week-strip picker — anchor day of the 7-day window currently shown
   const [scheduleWeekStart, setScheduleWeekStart] = useState<string>(() => {
     const d = new Date()
@@ -153,6 +190,8 @@ export default function Jobs() {
     setConfirmSentMsg('')
     setConfirmMode('initial')
     setScheduleDate('')
+    setQuickStartTime('08:00')
+    setScheduleSlot('morning')
     // Load attachments for this job
     setAttachmentsLoading(true)
     getJobAttachments(job.id)
@@ -1213,6 +1252,13 @@ export default function Jobs() {
                       }
                     }
                     const selectedDayContext = scheduleDate ? events.filter(e => e.date === scheduleDate && e.jobId !== selectedJob.id) : []
+                    // Which half-day slots are already taken on the picked day
+                    // (across all jobs in the org). Drives the slot disable
+                    // logic so the user can't double-book the same slot.
+                    const eventsOnPickedDay = scheduleDate ? events.filter(e => e.date === scheduleDate) : []
+                    const morningTaken = eventsOnPickedDay.some(e => e.slot === 'morning' || e.slot === 'full')
+                    const afternoonTaken = eventsOnPickedDay.some(e => e.slot === 'afternoon' || e.slot === 'full')
+                    const fullTaken = eventsOnPickedDay.some(e => e.slot === 'morning' || e.slot === 'afternoon' || e.slot === 'full')
 
                     const shiftWeek = (delta: number) => {
                       const d = new Date(scheduleWeekStart)
@@ -1255,9 +1301,59 @@ export default function Jobs() {
                     // customer email via the explicit "Send confirmation" modal.
                     const handleAddDay = () => {
                       if (!scheduleDate) return
+
+                      // Belt-and-braces: refuse to add a half-day slot that's
+                      // already taken on this day. The slot button is also
+                      // disabled in the UI but defend at the call site too.
+                      if (scheduleSlot === 'morning' && morningTaken) return
+                      if (scheduleSlot === 'afternoon' && afternoonTaken) return
+                      if (scheduleSlot === 'full' && fullTaken) return
+
                       const jobType = selectedJob.jobType !== 'TBC'
                         ? selectedJob.jobType
                         : (selectedJob.quoteId ? quotes.find(q => q.id === selectedJob.quoteId)?.jobTypeName || '' : '')
+
+                      // For Quick slots, work out the start/end times and shrink
+                      // any conflicting half-day events on the same day to make
+                      // room. For half-day slots, the times stay null and the
+                      // .ics generator falls back to the slot defaults.
+                      let startTime: string | null = null
+                      let endTime: string | null = null
+
+                      if (scheduleSlot === 'quick') {
+                        const startMins = parseHHMM(quickStartTime)
+                        const endMins = startMins + 60 // 1-hour default duration
+                        startTime = formatHHMM(startMins)
+                        endTime = formatHHMM(endMins)
+
+                        // Auto-shrink any conflicting half-day events on the same day.
+                        // Quicks can stack with each other (each is independent), so
+                        // we only shrink morning/afternoon/full.
+                        for (const ev of eventsOnPickedDay) {
+                          if (ev.slot === 'quick') continue
+                          const range = eventTimeRange(ev)
+                          // No overlap → skip
+                          if (endMins <= range.start || startMins >= range.end) continue
+
+                          // Quick fully covers the existing event — would obliterate
+                          // it. Refuse and bail. Slot disable logic should usually
+                          // prevent this from being reachable in the first place.
+                          if (startMins <= range.start && endMins >= range.end) {
+                            alert(`Can't add a quick fit-in here — it would replace the entire ${slotLabels[ev.slot]} block. Remove that slot first if you want to free the time.`)
+                            return
+                          }
+
+                          // Trim toward the closest side. For a quick at the start
+                          // of an existing block, push the existing's start to the
+                          // quick's end. Otherwise (end or middle), shrink the
+                          // existing's end to the quick's start.
+                          if (startMins <= range.start) {
+                            updateEvent(ev.id, { startTime: formatHHMM(endMins), endTime: formatHHMM(range.end) })
+                          } else {
+                            updateEvent(ev.id, { startTime: formatHHMM(range.start), endTime: formatHHMM(startMins) })
+                          }
+                        }
+                      }
 
                       addEvent({
                         jobId: selectedJob.id,
@@ -1268,6 +1364,8 @@ export default function Jobs() {
                         slot: scheduleSlot,
                         status: 'Scheduled',
                         notes: '',
+                        startTime,
+                        endTime,
                       })
 
                       // Update job's anchor date to the earliest scheduled date so
@@ -1415,6 +1513,7 @@ export default function Jobs() {
                           <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {jobEvents.map(ev => {
                               const isPending = !ev.confirmationSentAt
+                              const timeRange = fmtTimeRange(ev.startTime, ev.endTime)
                               return (
                                 <div key={ev.id} style={{
                                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1423,7 +1522,9 @@ export default function Jobs() {
                                 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: 13, fontWeight: 500, color: C.white }}>{fmtDate(ev.date)}</span>
-                                    <span style={{ fontSize: 12, color: C.steel }}>{slotLabels[ev.slot]}</span>
+                                    <span style={{ fontSize: 12, color: C.steel }}>
+                                      {slotLabels[ev.slot]}{timeRange ? ` · ${timeRange}` : ''}
+                                    </span>
                                     {isPending && (
                                       <span style={{
                                         fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 6,
@@ -1687,60 +1788,111 @@ export default function Jobs() {
                         </div>
 
                         {/* Slot picker — only when a day is selected */}
-                        {scheduleDate && (
-                          <>
-                            {selectedDayContext.length > 0 && (
+                        {scheduleDate && (() => {
+                          const slotDisabled: Record<string, boolean> = {
+                            morning: morningTaken,
+                            afternoon: afternoonTaken,
+                            full: fullTaken,
+                          }
+                          // If the currently selected slot has just become
+                          // disabled by virtue of being already taken, drop the
+                          // selection silently so the user has to pick a free one.
+                          if (slotDisabled[scheduleSlot]) {
+                            // Don't trigger a re-render storm — only fix when needed.
+                            setTimeout(() => {
+                              if (slotDisabled[scheduleSlot]) {
+                                setScheduleSlot(scheduleSlot === 'full' && !morningTaken ? 'morning' : 'quick')
+                              }
+                            }, 0)
+                          }
+                          return (
+                            <>
+                              {selectedDayContext.length > 0 && (
+                                <div style={{
+                                  fontSize: 11, color: C.silver, marginBottom: 8,
+                                  padding: '6px 10px', background: `${C.gold}10`, borderRadius: 6,
+                                }}>
+                                  Already on {fmtDate(scheduleDate)}: {selectedDayContext.map(e => `${e.customerName} (${slotLabels[e.slot]})`).join(', ')}
+                                </div>
+                              )}
                               <div style={{
-                                fontSize: 11, color: C.silver, marginBottom: 8,
-                                padding: '6px 10px', background: `${C.gold}10`, borderRadius: 6,
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr 1fr',
+                                gap: 4,
+                                marginBottom: 6,
                               }}>
-                                Already on {fmtDate(scheduleDate)}: {selectedDayContext.map(e => `${e.customerName} (${slotLabels[e.slot]})`).join(', ')}
+                                {(['morning','afternoon','full'] as const).map(slot => {
+                                  const active = scheduleSlot === slot
+                                  const disabled = slotDisabled[slot]
+                                  return (
+                                    <button
+                                      key={slot}
+                                      onClick={() => { if (!disabled) setScheduleSlot(slot) }}
+                                      disabled={disabled}
+                                      title={disabled ? `${slotLabels[slot]} is already booked on this day` : undefined}
+                                      style={{
+                                        padding: '10px 8px', borderRadius: 10,
+                                        background: active ? C.gold : C.black,
+                                        border: `1px solid ${active ? C.gold : C.steel + '33'}`,
+                                        color: active ? C.charcoal : (disabled ? C.steel : C.white),
+                                        fontSize: 12, fontWeight: 600,
+                                        cursor: disabled ? 'not-allowed' : 'pointer',
+                                        opacity: disabled ? 0.4 : 1,
+                                        textDecoration: disabled ? 'line-through' : 'none',
+                                        minHeight: 38,
+                                      }}
+                                    >
+                                      {slotLabels[slot]}
+                                    </button>
+                                  )
+                                })}
                               </div>
-                            )}
-                            <div style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1fr 1fr 1fr',
-                              gap: 4,
-                              marginBottom: 6,
-                            }}>
-                              {(['morning','afternoon','full'] as const).map(slot => {
-                                const active = scheduleSlot === slot
-                                return (
-                                  <button
-                                    key={slot}
-                                    onClick={() => setScheduleSlot(slot)}
+                              {/* Quick fit-in — full-width separate row so it's
+                                  visually distinct from the half-day blocks. */}
+                              <button
+                                onClick={() => setScheduleSlot('quick')}
+                                style={{
+                                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                  padding: '8px', borderRadius: 10, marginBottom: scheduleSlot === 'quick' ? 6 : 12,
+                                  background: scheduleSlot === 'quick' ? C.gold : C.black,
+                                  border: `1px dashed ${scheduleSlot === 'quick' ? C.gold : C.steel + '55'}`,
+                                  color: scheduleSlot === 'quick' ? C.charcoal : C.silver,
+                                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                                  minHeight: 32,
+                                }}
+                              >
+                                <Clock size={11} /> Quick fit-in (under 1 hour) — won't block the day
+                              </button>
+
+                              {/* Time picker — only visible for Quick slot.
+                                  Adjusting this will auto-shrink any conflicting
+                                  half-day blocks on this day when you click Add. */}
+                              {scheduleSlot === 'quick' && (
+                                <div style={{
+                                  display: 'flex', alignItems: 'center', gap: 8,
+                                  padding: '8px 12px', borderRadius: 10, marginBottom: 12,
+                                  background: C.black, border: `1px solid ${C.steel}33`,
+                                }}>
+                                  <span style={{ fontSize: 11, color: C.steel, fontWeight: 600 }}>START</span>
+                                  <input
+                                    type="time"
+                                    value={quickStartTime}
+                                    onChange={e => setQuickStartTime(e.target.value)}
                                     style={{
-                                      padding: '10px 8px', borderRadius: 10,
-                                      background: active ? C.gold : C.black,
-                                      border: `1px solid ${active ? C.gold : C.steel + '33'}`,
-                                      color: active ? C.charcoal : C.white,
-                                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                                      minHeight: 38,
+                                      flex: 1, padding: '6px 8px', borderRadius: 6,
+                                      background: C.charcoal, border: `1px solid ${C.steel}33`,
+                                      color: C.white, fontSize: 13, outline: 'none',
+                                      colorScheme: 'dark',
                                     }}
-                                  >
-                                    {slotLabels[slot]}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                            {/* Quick fit-in — full-width separate row so it's
-                                visually distinct from the half-day blocks. */}
-                            <button
-                              onClick={() => setScheduleSlot('quick')}
-                              style={{
-                                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                                padding: '8px', borderRadius: 10, marginBottom: 12,
-                                background: scheduleSlot === 'quick' ? C.gold : C.black,
-                                border: `1px dashed ${scheduleSlot === 'quick' ? C.gold : C.steel + '55'}`,
-                                color: scheduleSlot === 'quick' ? C.charcoal : C.silver,
-                                fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                                minHeight: 32,
-                              }}
-                            >
-                              <Clock size={11} /> Quick fit-in (under 1 hour) — won't block the day
-                            </button>
-                          </>
-                        )}
+                                  />
+                                  <span style={{ fontSize: 11, color: C.steel }}>
+                                    → {formatHHMM(parseHHMM(quickStartTime) + 60)}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          )
+                        })()}
 
                         <button
                           onClick={handleAddDay}

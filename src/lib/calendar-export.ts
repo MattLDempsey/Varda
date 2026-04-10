@@ -10,10 +10,26 @@ const SLOT_TIMES: Record<string, { start: string; end: string }> = {
   morning:   { start: '080000', end: '120000' },
   afternoon: { start: '120000', end: '170000' },
   full:      { start: '080000', end: '170000' },
-  // Quick (sub-1hr) jobs default to 7am–8am so they sit clearly before the
-  // main morning block in the customer's calendar. The tradesperson can adjust
-  // in their own calendar afterwards if needed.
-  quick:     { start: '070000', end: '080000' },
+  // Default fallback for Quick if no explicit start/end was set
+  quick:     { start: '080000', end: '090000' },
+}
+
+/** Convert HH:MM into ICS HHMMSS (no colon, with seconds). */
+function hhmmToIcs(hhmm: string): string {
+  return hhmm.replace(':', '') + '00'
+}
+
+/** Resolve effective start/end times for an event in ICS HHMMSS format. */
+function resolveTimes(
+  slot: string,
+  startTime?: string | null,
+  endTime?: string | null,
+): { start: string; end: string } {
+  const def = SLOT_TIMES[slot] ?? SLOT_TIMES.morning
+  return {
+    start: startTime ? hhmmToIcs(startTime) : def.start,
+    end:   endTime   ? hhmmToIcs(endTime)   : def.end,
+  }
 }
 
 /** Format a date string (YYYY-MM-DD) + time (HHMMSS) into ICS datetime */
@@ -58,12 +74,14 @@ export function generateICSEvent(event: {
   description: string
   date: string // YYYY-MM-DD
   slot: 'morning' | 'afternoon' | 'full' | 'quick'
+  startTime?: string | null
+  endTime?: string | null
   customerName: string
   customerPhone?: string
   customerAddress?: string
   jobType: string
 }): string {
-  const times = SLOT_TIMES[event.slot]
+  const times = resolveTimes(event.slot, event.startTime, event.endTime)
   const summary = `${event.jobType} - ${event.customerName}`
 
   const descLines: string[] = [
@@ -126,7 +144,7 @@ export function generateICSCalendar(
   ]
 
   for (const ev of events) {
-    const times = SLOT_TIMES[ev.slot]
+    const times = resolveTimes(ev.slot, ev.startTime, ev.endTime)
     const summary = `${ev.jobType} - ${ev.customerName}`
     const customer = ev.customerId ? customerMap.get(ev.customerId) : undefined
 

@@ -199,6 +199,21 @@ export interface ScheduleEvent {
    * prompt in the job panel and to batch multiple days into a single email.
    */
   confirmationSentAt?: string | null
+  /**
+   * Explicit start time in HH:MM format. Set by:
+   *   - Quick fit-ins (always)
+   *   - Half-day slots that have been auto-shrunk to make room for a quick
+   * When null, the .ics/display layer falls back to the slot's symbolic
+   * default (08:00 morning, 12:00 afternoon, 08:00 full).
+   */
+  startTime?: string | null
+  /**
+   * Explicit end time in HH:MM format. Same lifecycle as startTime — set
+   * for quick events and for half-day slots that have been shrunk by a
+   * conflicting quick. When null, falls back to slot defaults
+   * (12:00 morning, 17:00 afternoon, 17:00 full, +1h after start for quick).
+   */
+  endTime?: string | null
 }
 
 export interface Invoice {
