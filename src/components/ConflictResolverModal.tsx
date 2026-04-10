@@ -68,8 +68,11 @@ const SNAP_MIN = 30
 
 const snap = (mins: number): number => Math.round(mins / SNAP_MIN) * SNAP_MIN
 
+type DragMode = 'move' | 'resize-top' | 'resize-bottom'
+
 interface DragState {
   eventId: string
+  mode: DragMode
   origStart: number
   origEnd: number
   date: string
@@ -156,28 +159,54 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
       if (!d) return
       const deltaY = e.clientY - d.pointerStartY
       const deltaMins = snap(Math.round((deltaY / HOUR_HEIGHT) * 60))
-      const duration = d.origEnd - d.origStart
-      let newStart = d.origStart + deltaMins
-      let newEnd = newStart + duration
+
+      let newStart = d.origStart
+      let newEnd = d.origEnd
+      if (d.mode === 'move') {
+        newStart = d.origStart + deltaMins
+        newEnd = d.origEnd + deltaMins
+      } else if (d.mode === 'resize-top') {
+        // Drag the top edge — moves start, leaves end. Refuse to collapse
+        // below 30 minutes.
+        newStart = Math.min(d.origStart + deltaMins, d.origEnd - SNAP_MIN)
+      } else if (d.mode === 'resize-bottom') {
+        // Drag the bottom edge — moves end, leaves start.
+        newEnd = Math.max(d.origEnd + deltaMins, d.origStart + SNAP_MIN)
+      }
 
       // Clamp to visible range
       const dayMin = DAY_START_HOUR * 60
       const dayMax = DAY_END_HOUR * 60
-      if (newStart < dayMin) { newStart = dayMin; newEnd = newStart + duration }
-      if (newEnd > dayMax)   { newEnd = dayMax; newStart = newEnd - duration }
+      if (newStart < dayMin) {
+        const shift = dayMin - newStart
+        newStart += shift
+        if (d.mode === 'move') newEnd += shift
+      }
+      if (newEnd > dayMax) {
+        const shift = newEnd - dayMax
+        newEnd -= shift
+        if (d.mode === 'move') newStart -= shift
+      }
 
-      // Clamp to the contiguous free gap on this day
+      // Clamp to the contiguous free gap on this day so blocks can't overlap
       const gap = findGap(d.eventId, d.date, newStart, newEnd)
       let clampedTop = false
       let clampedBottom = false
-      if (newStart < gap.floor)   { newStart = gap.floor; newEnd = newStart + duration; clampedTop = true }
-      if (newEnd > gap.ceiling)   { newEnd = gap.ceiling; newStart = newEnd - duration; clampedBottom = true }
-      // If the gap is too small for the duration, refuse the move
-      if (newEnd - newStart > gap.ceiling - gap.floor) {
-        newStart = d.previewStart
-        newEnd = d.previewEnd
-        clampedTop = true
-        clampedBottom = true
+      if (d.mode === 'move') {
+        const duration = newEnd - newStart
+        if (newStart < gap.floor)   { newStart = gap.floor; newEnd = newStart + duration; clampedTop = true }
+        if (newEnd > gap.ceiling)   { newEnd = gap.ceiling; newStart = newEnd - duration; clampedBottom = true }
+        // If the gap is too small for the duration, refuse the move
+        if (newEnd - newStart > gap.ceiling - gap.floor) {
+          newStart = d.previewStart
+          newEnd = d.previewEnd
+          clampedTop = true
+          clampedBottom = true
+        }
+      } else if (d.mode === 'resize-top') {
+        if (newStart < gap.floor) { newStart = gap.floor; clampedTop = true }
+      } else if (d.mode === 'resize-bottom') {
+        if (newEnd > gap.ceiling) { newEnd = gap.ceiling; clampedBottom = true }
       }
 
       setDrag(prev => prev ? {
@@ -208,12 +237,13 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
     }
   }, [drag, events, updateEvent])
 
-  const beginDrag = (ev: ScheduleEvent, e: React.PointerEvent) => {
+  const beginDrag = (ev: ScheduleEvent, mode: DragMode, e: React.PointerEvent) => {
     e.stopPropagation()
     e.preventDefault()
     const r = eventRange(ev)
     setDrag({
       eventId: ev.id,
+      mode,
       origStart: r.startMin,
       origEnd: r.endMin,
       date: ev.date,
@@ -312,9 +342,9 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
 
         <div style={s.helpRow}>
           <strong style={{ color: C.gold }}>★ This job</strong> in gold and{' '}
-          <strong style={{ color: C.silver }}>📌 internal entries</strong> in steel are both draggable —
-          move whichever side makes most sense (e.g. push the job to 10:00 if a supply run has to happen at 09:00).
-          Drops snap to 30 minutes and stop at neighbouring blocks. Other customers' jobs are locked.
+          <strong style={{ color: C.silver }}>📌 internal entries</strong> in steel are both draggable.
+          Drag the body to move, or grab the top/bottom edge to resize.
+          Snaps to 30 minutes and stops at neighbouring blocks. Other customers' jobs are locked.
         </div>
 
         {sortedDays.map(date => {
@@ -408,14 +438,15 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                     }
 
                     // Both the active job's customer event AND any internal
-                    // event are draggable. Different colours so the user can
-                    // tell them apart at a glance.
+                    // event are draggable. Top/bottom edges are resize
+                    // handles; the body is the move handle. Different
+                    // colours so the user can tell them apart at a glance.
                     const accent = isJobEvent ? C.gold : C.silver
                     const bgShade = isJobEvent ? `${C.gold}20` : `${C.steel}33`
                     return (
                       <div
                         key={ev.id}
-                        onPointerDown={(e) => beginDrag(ev, e)}
+                        onPointerDown={(e) => beginDrag(ev, 'move', e)}
                         style={{
                           position: 'absolute', top, height,
                           left: 4, right: 4,
@@ -434,6 +465,16 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                           transition: isDragging ? 'none' : 'border-color .15s',
                         }}
                       >
+                        {/* Top resize handle — flashes red when clamped */}
+                        <div
+                          onPointerDown={(e) => beginDrag(ev, 'resize-top', e)}
+                          style={{
+                            position: 'absolute', top: 0, left: 0, right: 0, height: 6,
+                            cursor: 'ns-resize', touchAction: 'none' as const,
+                            background: flashTop ? '#D46A6A88' : 'transparent',
+                            transition: 'background .15s',
+                          }}
+                        />
                         <div style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4,
                         }}>
@@ -452,6 +493,7 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                               style={{
                                 background: 'transparent', border: 'none', color: C.steel,
                                 cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0,
+                                zIndex: 1,
                               }}
                               title="Delete"
                               aria-label="Delete"
@@ -465,6 +507,16 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                             {formatHHMM(startMin)}–{formatHHMM(endMin)}
                           </div>
                         )}
+                        {/* Bottom resize handle — flashes red when clamped */}
+                        <div
+                          onPointerDown={(e) => beginDrag(ev, 'resize-bottom', e)}
+                          style={{
+                            position: 'absolute', bottom: 0, left: 0, right: 0, height: 6,
+                            cursor: 'ns-resize', touchAction: 'none' as const,
+                            background: flashBottom ? '#D46A6A88' : 'transparent',
+                            transition: 'background .15s',
+                          }}
+                        />
                       </div>
                     )
                   })}
