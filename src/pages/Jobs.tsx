@@ -99,11 +99,20 @@ const invoiceStatusColors: Record<string, string> = {
 
 export default function Jobs() {
   const { C } = useTheme()
-  const { jobs, quotes, customers, invoices, events, settings, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, deleteInvoice, getInvoicesForJob, addEvent, updateEvent, deleteEvent, addComm, softDeleteJob, restoreJob, awaitRealId, isDataLoading } = useData()
+  const { jobs, quotes, customers, invoices, events, settings, teamMembers, moveJob, updateQuote, updateJob, addJob, addInvoice, updateInvoice, deleteInvoice, getInvoicesForJob, addEvent, updateEvent, deleteEvent, addComm, softDeleteJob, restoreJob, awaitRealId, isDataLoading } = useData()
   const { user } = useAuth()
   const { features, plan } = useSubscription()
   const { showUndo } = useUndo()
-  const activeJobCount = useMemo(() => jobs.filter(j => j.status !== 'Paid').length, [jobs])
+
+  // Employee-filtered view: members see only their assigned jobs + unassigned.
+  // Owner/Admin see everything.
+  const userRole = (user?.role ?? 'member') as 'owner' | 'admin' | 'member'
+  const visibleJobs = useMemo(() => {
+    if (userRole === 'owner' || userRole === 'admin') return jobs
+    return jobs.filter(j => !j.assignedTo || j.assignedTo === user?.id)
+  }, [jobs, userRole, user?.id])
+
+  const activeJobCount = useMemo(() => visibleJobs.filter(j => j.status !== 'Paid').length, [visibleJobs])
 
   // History view state (must be declared before useMemos that reference them)
   const [historySearch, setHistorySearch] = useState('')
@@ -112,7 +121,7 @@ export default function Jobs() {
   const [showHistoryFilters, setShowHistoryFilters] = useState(false)
 
   // History view data
-  const paidJobs = useMemo(() => jobs.filter(j => j.status === 'Paid').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [jobs])
+  const paidJobs = useMemo(() => visibleJobs.filter(j => j.status === 'Paid').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [visibleJobs])
   const historyJobTypes = useMemo(() => [...new Set(paidJobs.map(j => j.jobType))].sort(), [paidJobs])
   const historyCustomerNames = useMemo(() => [...new Set(paidJobs.map(j => j.customerName))].sort(), [paidJobs])
   const filteredHistory = useMemo(() => {
@@ -697,7 +706,7 @@ export default function Jobs() {
           gridTemplateColumns: `repeat(${effectiveColumns.length}, minmax(140px, 1fr))`,
         }}>
           {effectiveColumns.map((col) => {
-            const colJobs = jobs.filter((j) => j.status === col)
+            const colJobs = visibleJobs.filter((j) => j.status === col)
             const isOver = dragOverCol === col
             return (
               <div
@@ -745,6 +754,24 @@ export default function Jobs() {
                       <span style={s.cardDate}>{fmtDate(job.date)}</span>
                     </div>
                     {renderCardPaymentBar(job.id, job.value > 0 ? job.value : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.grandTotal || 0 })())}
+                    {/* Assigned member badge */}
+                    {job.assignedTo && (() => {
+                      const assigned = teamMembers.find(m => m.id === job.assignedTo)
+                      if (!assigned) return null
+                      return (
+                        <div style={{ fontSize: 10, color: C.steel, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{
+                            width: 16, height: 16, borderRadius: '50%',
+                            background: `${C.steel}33`, display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                            fontSize: 8, fontWeight: 700, color: C.silver,
+                          }}>
+                            {assigned.displayName.charAt(0).toUpperCase()}
+                          </span>
+                          {assigned.displayName.split(' ')[0]}
+                        </div>
+                      )
+                    })()}
                     {/* Contextual next-action hint */}
                     {job.status === 'Lead' && (
                       <div
@@ -799,7 +826,7 @@ export default function Jobs() {
               </tr>
             </thead>
             <tbody>
-              {jobs.filter(j => j.status !== 'Paid').map((job) => (
+              {visibleJobs.filter(j => j.status !== 'Paid').map((job) => (
                 <tr
                   key={job.id}
                   style={s.tableRow}
@@ -836,12 +863,12 @@ export default function Jobs() {
           collapse to a 6-char tail (#3EAB67) so they don't dominate. */}
       {view === 'table' && isMobile && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {jobs.filter(j => j.status !== 'Paid').length === 0 && (
+          {visibleJobs.filter(j => j.status !== 'Paid').length === 0 && (
             <div style={{ textAlign: 'center', padding: 32, color: C.steel, fontSize: 13 }}>
               No active jobs.
             </div>
           )}
-          {jobs.filter(j => j.status !== 'Paid').map((job) => {
+          {visibleJobs.filter(j => j.status !== 'Paid').map((job) => {
             const warning = getJobWarning(job)
             const shortRef = `#${job.id.slice(-6).toUpperCase()}`
             return (
@@ -1381,6 +1408,37 @@ export default function Jobs() {
                       <div style={s.fieldValue}>{selectedJob.estimatedHours}h</div>
                     </div>
                   </div>
+
+                  {/* Assign to team member */}
+                  {teamMembers.length > 1 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <span style={s.fieldLabel}>Assigned To</span>
+                      <div style={{ position: 'relative' }}>
+                        <select
+                          value={selectedJob.assignedTo ?? ''}
+                          onChange={e => {
+                            const val = e.target.value || null
+                            updateJob(selectedJob.id, { assignedTo: val })
+                            setSelectedJob({ ...selectedJob, assignedTo: val })
+                          }}
+                          style={{
+                            width: '100%', padding: '8px 28px 8px 10px', borderRadius: 8,
+                            background: C.black, border: `1px solid ${C.steel}33`,
+                            color: C.white, fontSize: 13, outline: 'none',
+                            appearance: 'none', WebkitAppearance: 'none' as any,
+                          }}
+                        >
+                          <option value="">Unassigned (visible to all)</option>
+                          {teamMembers.map(m => (
+                            <option key={m.id} value={m.id}>{m.displayName} ({m.role})</option>
+                          ))}
+                        </select>
+                        <div style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.steel }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Workflow actions — guided forward/revert buttons ──
                       These are the one-tap pipeline controls. The forward

@@ -204,6 +204,32 @@ export async function updateQuote(
    Jobs
    ══════════════════════════════════════════════════════ */
 
+/* ══════════════════════════════════════════════════════
+   Team Members
+   ══════════════════════════════════════════════════════ */
+
+export interface TeamMember {
+  id: string
+  displayName: string
+  role: string
+}
+
+export async function fetchTeamMembers(): Promise<TeamMember[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, display_name, role')
+  if (error) throw error
+  return (data ?? []).map(row => ({
+    id: row.id,
+    displayName: row.display_name,
+    role: row.role,
+  }))
+}
+
+/* ══════════════════════════════════════════════════════
+   Jobs
+   ══════════════════════════════════════════════════════ */
+
 export async function fetchJobs(): Promise<Job[]> {
   const { data, error } = await supabase
     .from('jobs')

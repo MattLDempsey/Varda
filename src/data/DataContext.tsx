@@ -323,6 +323,12 @@ export interface CommLog {
 
 const STORAGE_KEY = 'gh-data'
 
+export interface TeamMember {
+  id: string
+  displayName: string
+  role: string
+}
+
 interface DataStore {
   customers: Customer[]
   quotes: Quote[]
@@ -334,6 +340,7 @@ interface DataStore {
   settings: AppSettings
   pricingConfig: PricingConfig
   jobTypeConfigs: JobTypeConfig[]
+  teamMembers: TeamMember[]
 }
 
 function emptyStore(): DataStore {
@@ -348,6 +355,7 @@ function emptyStore(): DataStore {
     settings: DEFAULT_SETTINGS,
     pricingConfig: DEFAULT_PRICING_CONFIG,
     jobTypeConfigs: DEFAULT_JOB_TYPE_CONFIGS,
+    teamMembers: [],
   }
 }
 
@@ -392,6 +400,7 @@ async function loadFromSupabase(): Promise<DataStore> {
     settingsResult,
     pricingResult,
     jobTypeConfigs,
+    teamMembers,
   ] = await Promise.all([
     svc.fetchCustomers(),
     svc.fetchQuotes(),
@@ -403,6 +412,7 @@ async function loadFromSupabase(): Promise<DataStore> {
     svc.fetchSettings(),
     svc.fetchPricingConfig(),
     svc.fetchJobTypeConfigs(),
+    svc.fetchTeamMembers().catch(() => [] as svc.TeamMember[]),
   ])
 
   return {
@@ -416,6 +426,7 @@ async function loadFromSupabase(): Promise<DataStore> {
     settings: settingsResult ?? DEFAULT_SETTINGS,
     pricingConfig: pricingResult ?? DEFAULT_PRICING_CONFIG,
     jobTypeConfigs: jobTypeConfigs.length > 0 ? jobTypeConfigs : DEFAULT_JOB_TYPE_CONFIGS,
+    teamMembers,
   }
 }
 
@@ -461,10 +472,11 @@ interface DataContextValue {
   addExpense: (e: Omit<Expense, 'id'>) => Expense
   updateExpense: (id: string, updates: Partial<Expense>) => void
   deleteExpense: (id: string) => void
-  // settings + pricing
+  // settings + pricing + team
   settings: AppSettings
   pricingConfig: PricingConfig
   jobTypeConfigs: JobTypeConfig[]
+  teamMembers: TeamMember[]
   updateSettings: (path: string, value: any) => void
   updatePricingConfig: (updates: Partial<PricingConfig>) => void
   updateJobTypeConfig: (id: string, updates: Partial<JobTypeConfig>) => void
@@ -907,7 +919,7 @@ export function DataProvider({ orgId, children }: { orgId: string; children: Rea
       addEvent, updateEvent, deleteEvent,
       addComm,
       expenses: store.expenses, addExpense, updateExpense, deleteExpense,
-      settings: store.settings, pricingConfig: store.pricingConfig, jobTypeConfigs: store.jobTypeConfigs,
+      settings: store.settings, pricingConfig: store.pricingConfig, jobTypeConfigs: store.jobTypeConfigs, teamMembers: store.teamMembers,
       updateSettings, updatePricingConfig, updateJobTypeConfig,
       getCustomer, getJobsForCustomer, getQuotesForCustomer, getNextQuoteRef,
       awaitRealId: awaitRealIdCb,
