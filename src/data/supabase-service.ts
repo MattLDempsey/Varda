@@ -135,7 +135,7 @@ const JOB_COLS = new Set([
   'customer_id', 'customer_name', 'quote_id', 'invoice_id', 'job_type', 'value', 'estimated_hours',
   'actual_hours', 'status', 'date', 'notes',
   'is_recurring', 'recurrence_rule', 'recurrence_interval_months', 'next_recurrence_date', 'parent_job_id',
-  'deleted_at', 'started_at',
+  'deleted_at', 'started_at', 'assigned_to',
 ])
 const INVOICE_COLS = new Set([
   'ref', 'job_id', 'quote_id', 'customer_id', 'customer_name', 'job_type_name',

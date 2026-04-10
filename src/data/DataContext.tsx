@@ -207,6 +207,8 @@ export interface Job {
   recurrenceIntervalMonths?: number
   nextRecurrenceDate?: string
   parentJobId?: string
+  /** Profile ID of the team member this job is assigned to. Null = unassigned (visible to all). */
+  assignedTo?: string | null
   /** ISO timestamp set when job is soft-deleted; null/undefined for active jobs */
   deletedAt?: string | null
   /** ISO timestamp set when the user explicitly marks the job as started.
