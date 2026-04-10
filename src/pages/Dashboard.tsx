@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef, useLayoutEffect } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FileText, Briefcase, PoundSterling, Clock, TrendingUp,
@@ -69,20 +69,6 @@ export default function Dashboard() {
   const { quotes, jobs, events, invoices, settings, customers, addComm, updateJob, moveJob, isDataLoading } = useData()
   const [actionPage, setActionPage] = useState(0)
   const ACTIONS_PER_PAGE = 3
-  // Measure the Action Items panel height and apply it to Schedule
-  // so Action Items is always the height driver.
-  const actionPanelRef = useRef<HTMLDivElement>(null)
-  const [actionPanelHeight, setActionPanelHeight] = useState<number>(0)
-  useLayoutEffect(() => {
-    if (!actionPanelRef.current) return
-    const ro = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        setActionPanelHeight(entry.contentRect.height + 40) // +padding
-      }
-    })
-    ro.observe(actionPanelRef.current)
-    return () => ro.disconnect()
-  }, [])
   const { user } = useAuth()
   const isMobile = useIsMobile()
   const today = todayStr()
@@ -468,36 +454,25 @@ export default function Dashboard() {
           card format dynamically (expanded vs compact) rather than
           scrolling, so both panels feel like peers on the same row
           without either one pushing the layout. */}
-      <div style={s.columns}>
-        {/* Today's Schedule — height is constrained to match Action
-            Items via a measured ref. Content adapts its format
-            dynamically: expanded for 1–2 events, compact for 3+. */}
-        <div style={{
-          ...s.panel,
-          ...(actionPanelHeight > 0 ? { height: actionPanelHeight, overflow: 'hidden' } : {}),
-          display: 'flex', flexDirection: 'column',
-        }}>
+      <div style={{ ...s.columns, alignItems: 'stretch' }}>
+        {/* Today's Schedule — always compact so Action Items drives
+            the row height. Shows time + type + status + Start on a
+            single row per event. Detail lives in the calendar. */}
+        <div style={s.panel}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
             <span style={s.panelLink} onClick={() => navigate('/calendar')}>
               View Calendar <ChevronRight size={14} />
             </span>
           </div>
-          <div style={{ flex: 1 }}>
           {todaysEvents.length === 0 && (
             <div style={s.empty}>Nothing scheduled today.</div>
           )}
           {todaysEvents.map((ev) => {
             const isInternal = !!ev.category
             const linkedJob = !isInternal && ev.jobId ? jobs.find(j => j.id === ev.jobId) : undefined
-            const linkedCustomer = !isInternal && ev.customerId ? customers.find(c => c.id === ev.customerId) : undefined
             const canStart = !!linkedJob && linkedJob.status === 'Scheduled'
             const inProgress = !!linkedJob && linkedJob.status === 'In Progress'
-            // Only expand cards when 1–2 events — this guarantees the
-            // schedule panel stays shorter than action items (which
-            // reserves 3 × 56px = 168px + header + pagination ≈ 280px).
-            // With 3+ events, compact mode keeps things tight.
-            const expanded = todaysEvents.length <= 2
             const handleStart = (e: React.MouseEvent) => {
               e.stopPropagation()
               if (!linkedJob) return
@@ -505,81 +480,6 @@ export default function Dashboard() {
               updateJob(linkedJob.id, { startedAt: ts })
               moveJob(linkedJob.id, 'In Progress')
             }
-
-            if (expanded) {
-              // Expanded card — more detail, fills the space
-              const SLOT_DEFAULTS_HHMM: Record<string, { start: string; end: string }> = {
-                morning: { start: '08:00', end: '12:00' },
-                afternoon: { start: '12:00', end: '17:00' },
-                full: { start: '08:00', end: '17:00' },
-                quick: { start: '08:00', end: '09:00' },
-              }
-              const def = SLOT_DEFAULTS_HHMM[ev.slot] ?? SLOT_DEFAULTS_HHMM.morning
-              const startTime = ev.startTime || def.start
-              const endTime = ev.endTime || def.end
-              const address = linkedCustomer
-                ? [linkedCustomer.address1, linkedCustomer.city, linkedCustomer.postcode].filter(Boolean).join(', ')
-                : ''
-              return (
-                <div
-                  key={ev.id}
-                  onClick={() => navigate('/calendar')}
-                  style={{
-                    padding: '14px 16px', borderRadius: 10, marginBottom: 8,
-                    background: C.black, cursor: 'pointer',
-                    borderLeft: `3px solid ${inProgress ? C.gold : statusColor[ev.status]}`,
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '22')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = C.black)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: C.white }}>{ev.customerName}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {canStart && (
-                        <button onClick={handleStart} style={{
-                          display: 'flex', alignItems: 'center', gap: 4,
-                          padding: '6px 10px', borderRadius: 8,
-                          background: `${C.gold}15`, border: `1px solid ${C.gold}66`,
-                          color: C.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer', minHeight: 30,
-                        }}>
-                          <Play size={11} fill="currentColor" /> Start
-                        </button>
-                      )}
-                      <span style={{
-                        ...s.badge,
-                        color: inProgress ? C.gold : statusColor[ev.status],
-                        background: (inProgress ? C.gold : statusColor[ev.status]) + '1A',
-                      }}>
-                        {linkedJob?.status ?? ev.status}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.silver, marginBottom: 4 }}>
-                    <Clock size={12} color={C.steel} />
-                    <span>{startTime}–{endTime}</span>
-                    <span style={{ color: C.steel }}>·</span>
-                    <span>{isInternal ? 'Internal' : ev.jobType}</span>
-                  </div>
-                  {address && (
-                    <div style={{ fontSize: 11, color: C.steel, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      📍 {address}
-                    </div>
-                  )}
-                  {linkedCustomer?.phone && (
-                    <div style={{ fontSize: 11, color: C.steel }}>
-                      📱 {linkedCustomer.phone}
-                    </div>
-                  )}
-                  {linkedJob && linkedJob.value > 0 && (
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, marginTop: 6 }}>
-                      {fmtCurrency(linkedJob.value)}
-                    </div>
-                  )}
-                </div>
-              )
-            }
-
-            // Compact card — current behaviour for busy days
             return (
               <div
                 key={ev.id}
@@ -591,8 +491,9 @@ export default function Dashboard() {
                 <div style={s.listLeft}>
                   <span style={s.listName}>{ev.customerName}</span>
                   <span style={s.listMeta}>
-                    {isInternal ? 'Internal' : ev.jobType} &middot;{' '}
-                    {ev.startTime || slotLabel(ev.slot)}
+                    {ev.startTime || slotLabel(ev.slot)} &middot;{' '}
+                    {isInternal ? 'Internal' : ev.jobType}
+                    {linkedJob && linkedJob.value > 0 ? ` · ${fmtCurrency(linkedJob.value)}` : ''}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -617,13 +518,10 @@ export default function Dashboard() {
               </div>
             )
           })}
-          </div>
         </div>
 
-        {/* Action Items — shows top 3 per page with pagination.
-            This panel's measured height drives the Schedule panel's
-            height constraint. */}
-        <div ref={actionPanelRef} style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
+        {/* Action Items — shows top 3 per page with pagination. */}
+        <div style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
           <div style={s.panelHeader}>
             <h2 style={{ ...s.panelTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Bell size={18} /> Action Items
