@@ -977,21 +977,57 @@ export default function Jobs() {
             <div style={{ textAlign: 'center', padding: 60, color: C.steel, fontSize: 14 }}>
               {paidJobs.length === 0 ? 'No completed jobs yet.' : 'No matches found.'}
             </div>
+          ) : isMobile ? (
+            /* Mobile: card list — same pattern as the active jobs mobile view */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {filteredHistory.map(job => {
+                const jobType = job.jobType !== 'TBC' ? job.jobType : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.jobTypeName || 'TBC' })()
+                const value = job.value > 0 ? job.value : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.netTotal || 0 })()
+                const lastPaidInv = invoices.filter(i => i.jobId === job.id && i.status === 'Paid' && i.paidAt).sort((a, b) => (b.paidAt ?? '').localeCompare(a.paidAt ?? ''))[0]
+                return (
+                  <div
+                    key={job.id}
+                    onClick={() => selectJob(job)}
+                    style={{
+                      background: C.charcoalLight, borderRadius: 10,
+                      borderLeft: `3px solid #4CAF50`,
+                      padding: '10px 12px', cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: C.white }}>{job.customerName}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: C.gold }}>{fmtCurrency(value)}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.silver, marginTop: 3 }}>
+                      {jobType} · <span style={{ fontFamily: 'ui-monospace, monospace', color: C.steel }}>#{job.id.slice(-6).toUpperCase()}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: C.steel, marginTop: 2, display: 'flex', gap: 12 }}>
+                      <span>Work: {fmtDate(job.date)}</span>
+                      {lastPaidInv?.paidAt && <span>Paid: {fmtDate(lastPaidInv.paidAt)}</span>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           ) : (
+            /* Desktop: clean table with short refs */
             <div style={{ borderRadius: 12, overflow: 'hidden' }}>
               <table style={s.table}>
                 <thead>
                   <tr>
-                    <th style={s.th}>Job #</th>
+                    <th style={s.th}>Ref</th>
                     <th style={s.th}>Customer</th>
                     <th style={s.th}>Type</th>
                     <th style={s.th}>Value</th>
-                    <th style={s.th}>Date</th>
+                    <th style={s.th}>Work Date</th>
+                    <th style={s.th}>Paid</th>
                     <th style={{ ...s.th, width: 40 }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredHistory.map(job => (
+                  {filteredHistory.map(job => {
+                    const lastPaidInv = invoices.filter(i => i.jobId === job.id && i.status === 'Paid' && i.paidAt).sort((a, b) => (b.paidAt ?? '').localeCompare(a.paidAt ?? ''))[0]
+                    return (
                     <tr
                       key={job.id}
                       style={s.tableRow}
@@ -999,7 +1035,7 @@ export default function Jobs() {
                       onMouseEnter={e => { e.currentTarget.style.background = C.steel + '22' }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                     >
-                      <td style={{ ...s.td, color: C.gold, fontWeight: 600 }}>{job.id}</td>
+                      <td style={{ ...s.td, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: C.steel }}>#{job.id.slice(-6).toUpperCase()}</td>
                       <td style={{ ...s.td, fontWeight: 500 }}>
                         {job.customerName}
                         {(() => { const cust = customers.find(c => c.id === job.customerId); return cust?.postcode ? <span style={{ color: C.steel, fontWeight: 400, marginLeft: 6, fontSize: 12 }}>{cust.postcode}</span> : null })()}
@@ -1007,9 +1043,11 @@ export default function Jobs() {
                       <td style={s.td}>{job.jobType !== 'TBC' ? job.jobType : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.jobTypeName || 'TBC' })()}</td>
                       <td style={{ ...s.td, fontWeight: 600, color: C.gold }}>{fmtCurrency(job.value > 0 ? job.value : (() => { const q = job.quoteId ? quotes.find(qq => qq.id === job.quoteId) : undefined; return q?.netTotal || 0 })())}</td>
                       <td style={{ ...s.td, color: C.silver }}>{fmtDate(job.date)}</td>
+                      <td style={{ ...s.td, color: '#4CAF50', fontSize: 12 }}>{lastPaidInv?.paidAt ? fmtDate(lastPaidInv.paidAt) : '—'}</td>
                       <td style={s.td}><ChevronRight size={14} color={C.steel} /></td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
