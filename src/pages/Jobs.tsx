@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, isEventConfirmed, customerGreetingName, type JobStatus, type Job, type InvoiceType } from '../data/DataContext'
 import { useAuth } from '../auth/AuthContext'
+import { logActivity } from '../lib/activity-log'
 import { generateQuotePDF, generateInvoicePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { uploadJobFile, deleteJobFile, getJobAttachments, formatFileSize, type Attachment } from '../lib/file-upload'
 import { sendEmail, buildFromName } from '../lib/send-email'
@@ -1365,6 +1366,7 @@ export default function Jobs() {
                             value={selectedJob.status}
                             onChange={e => {
                               let newStatus = e.target.value as JobStatus
+                              if (user?.orgId) logActivity({ orgId: user.orgId, userId: user.id, userName: user.displayName, action: 'job.statusChanged', entityType: 'job', entityId: selectedJob.id, details: { from: selectedJob.status, to: newStatus } })
 
                               // Auto-advance: if moving to Invoiced (or Complete)
                               // and all active invoices are already Paid, advance
@@ -3647,6 +3649,7 @@ export default function Jobs() {
                               status: 'Draft',
                               dueDate,
                             })
+                            if (user?.orgId) logActivity({ orgId: user.orgId, userId: user.id, userName: user.displayName, action: 'invoice.created', entityType: 'invoice', entityId: selectedJob.id, details: { type: newInvType, amount } })
 
                             const newTotalInvoiced = totalInvoiced + amount
                             if (selectedJob.status === 'Complete' && newTotalInvoiced >= quotedTotal) {

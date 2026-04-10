@@ -909,16 +909,17 @@ export default function Insights() {
               {revenueChart.map((m) => {
                 const costsH = (m.costs / maxChartValue) * 160
                 const profitH = (m.profit / maxChartValue) * 160
+                const isFut = !!m.isFuture
                 return (
-                  <div key={m.label + m.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div key={m.label + m.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', opacity: isFut ? 0.3 : 1 }}>
                     <div style={s.barValue as CSSProperties}>
-                      {m.revenue >= 1000 ? `£${(m.revenue / 1000).toFixed(1)}k` : `£${Math.round(m.revenue)}`}
+                      {isFut ? '—' : m.revenue >= 1000 ? `£${(m.revenue / 1000).toFixed(1)}k` : `£${Math.round(m.revenue)}`}
                     </div>
                     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                      <div style={{ width: '100%', height: Math.max(profitH, 0), borderRadius: '6px 6px 0 0', background: C.green, transition: 'height .3s ease' }} />
-                      <div style={{ width: '100%', height: Math.max(costsH, 0), background: '#D46A6A', transition: 'height .3s ease' }} />
+                      <div style={{ width: '100%', height: Math.max(profitH, 0), borderRadius: '6px 6px 0 0', background: isFut ? `${C.steel}33` : C.green, transition: 'height .3s ease', borderTop: isFut ? `1px dashed ${C.steel}66` : 'none' }} />
+                      <div style={{ width: '100%', height: Math.max(costsH, 0), background: isFut ? `${C.steel}22` : '#D46A6A', transition: 'height .3s ease' }} />
                     </div>
-                    <div style={s.barLabel as CSSProperties}>{m.label}</div>
+                    <div style={{ ...(s.barLabel as object), color: isFut ? `${C.steel}88` : C.steel }}>{m.label}</div>
                   </div>
                 )
               })}

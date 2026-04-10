@@ -1,17 +1,18 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Save, Building2, Clock, FileText, Bell, Link, Copy, Check, MessageSquare, Mail, MessageCircle, Smartphone, ChevronDown, RotateCcw, Shield, Briefcase, Plus, Trash2 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useAuth } from '../auth/AuthContext'
 import { useData } from '../data/DataContext'
 import SettingsNav from '../components/SettingsNav'
+import { supabase } from '../lib/supabase'
 import type { AppSettings } from '../data/DataContext'
 import { loadTemplates, saveTemplate, resetTemplate, DEFAULT_TEMPLATES } from '../data/templates'
 import type { MessageTemplate } from '../data/templates'
 import { PERMISSION_GROUPS, hasPermission } from '../data/permissions'
 
 /* ── types ── */
-type SettingsTab = 'business' | 'hours' | 'quotes' | 'notifications' | 'templates' | 'permissions' | 'jobtypes'
+type SettingsTab = 'business' | 'hours' | 'quotes' | 'notifications' | 'templates' | 'permissions' | 'jobtypes' | 'activity'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -146,6 +147,7 @@ export default function SettingsPage() {
     { id: 'templates', label: 'Templates', icon: <MessageSquare size={18} /> },
     { id: 'permissions', label: 'Permissions', icon: <Shield size={18} /> },
     { id: 'jobtypes', label: 'Job Types', icon: <Briefcase size={18} /> },
+    { id: 'activity', label: 'Activity Log', icon: <Clock size={18} /> },
   ]
 
   return (
@@ -599,11 +601,38 @@ export default function SettingsPage() {
           {/* ════════════════════════════════════════════════
               PERMISSIONS TAB
               ════════════════════════════════════════════════ */}
-          {activeTab === 'permissions' && (
+          {activeTab === 'permissions' && (() => {
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            const [permOverrides, setPermOverrides] = useState<Record<string, Record<string, boolean>>>({})
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            const [permLoaded, setPermLoaded] = useState(false)
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            useEffect(() => {
+              if (permLoaded) return
+              supabase.from('org_permissions').select('role, permission, allowed').then(({ data }) => {
+                const overrides: Record<string, Record<string, boolean>> = {}
+                for (const row of (data ?? [])) {
+                  if (!overrides[row.role]) overrides[row.role] = {}
+                  overrides[row.role][row.permission] = row.allowed
+                }
+                setPermOverrides(overrides)
+                setPermLoaded(true)
+              })
+            }, [permLoaded])
+            const togglePerm = (role: string, permission: string) => {
+              const current = hasPermission(role as any, permission as any, permOverrides[role])
+              const newVal = !current
+              setPermOverrides(prev => ({ ...prev, [role]: { ...(prev[role] ?? {}), [permission]: newVal } }))
+              // Upsert to DB
+              supabase.from('org_permissions').upsert({
+                org_id: user?.orgId, role, permission, allowed: newVal,
+              }, { onConflict: 'org_id,role,permission' }).then(() => {}, () => {})
+            }
+            return (
             <div style={s.panel}>
               <div style={s.panelTitle}>Role Permissions</div>
               <div style={s.panelSub}>
-                Control what each role can do. Owner always has full access. Changes take effect immediately.
+                Control what each role can do. Owner always has full access. Click a checkbox to toggle.
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -633,22 +662,30 @@ export default function SettingsPage() {
                                 {p.label}
                               </td>
                               <td style={{ textAlign: 'center', padding: '8px 14px', borderBottom: `1px solid ${C.steel}11` }}>
-                                <span style={{
-                                  display: 'inline-block', width: 18, height: 18, borderRadius: 4,
-                                  background: hasPermission('admin', p.key) ? '#6ABF8A' : C.black,
-                                  border: `1px solid ${hasPermission('admin', p.key) ? '#6ABF8A' : C.steel}`,
-                                  color: hasPermission('admin', p.key) ? '#fff' : 'transparent',
-                                  fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center',
-                                }}>✓</span>
+                                <button
+                                  onClick={() => togglePerm('admin', p.key)}
+                                  style={{
+                                    display: 'inline-block', width: 20, height: 20, borderRadius: 4,
+                                    background: hasPermission('admin', p.key as any, permOverrides.admin) ? '#6ABF8A' : C.black,
+                                    border: `1px solid ${hasPermission('admin', p.key as any, permOverrides.admin) ? '#6ABF8A' : C.steel}`,
+                                    color: hasPermission('admin', p.key as any, permOverrides.admin) ? '#fff' : 'transparent',
+                                    fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center',
+                                    cursor: 'pointer', padding: 0,
+                                  }}
+                                >✓</button>
                               </td>
                               <td style={{ textAlign: 'center', padding: '8px 14px', borderBottom: `1px solid ${C.steel}11` }}>
-                                <span style={{
-                                  display: 'inline-block', width: 18, height: 18, borderRadius: 4,
-                                  background: hasPermission('member', p.key) ? C.gold : C.black,
-                                  border: `1px solid ${hasPermission('member', p.key) ? C.gold : C.steel}`,
-                                  color: hasPermission('member', p.key) ? C.charcoal : 'transparent',
-                                  fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center',
-                                }}>✓</span>
+                                <button
+                                  onClick={() => togglePerm('member', p.key)}
+                                  style={{
+                                    display: 'inline-block', width: 20, height: 20, borderRadius: 4,
+                                    background: hasPermission('member', p.key as any, permOverrides.member) ? C.gold : C.black,
+                                    border: `1px solid ${hasPermission('member', p.key as any, permOverrides.member) ? C.gold : C.steel}`,
+                                    color: hasPermission('member', p.key as any, permOverrides.member) ? C.charcoal : 'transparent',
+                                    fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center',
+                                    cursor: 'pointer', padding: 0,
+                                  }}
+                                >✓</button>
                               </td>
                             </tr>
                           ))}
@@ -659,10 +696,11 @@ export default function SettingsPage() {
                 </table>
               </div>
               <div style={{ fontSize: 12, color: C.steel, marginTop: 16, fontStyle: 'italic' }}>
-                Custom per-org permission overrides coming soon. Currently showing the default permission matrix.
+                Click any checkbox to customise permissions for your organisation. Changes save automatically.
               </div>
             </div>
-          )}
+            )
+          })()}
 
           {/* ════════════════════════════════════════════════
               JOB TYPES TAB
@@ -742,10 +780,84 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 12, color: C.steel, marginTop: 16, fontStyle: 'italic' }}>
-                Custom job types (add your own beyond the defaults) available on the Business plan.
-              </div>
+              <button
+                onClick={() => {
+                  const name = window.prompt('New job type name:')
+                  if (!name?.trim()) return
+                  const id = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+                  if (data.jobTypeConfigs.find(jt => jt.id === id)) { alert('A job type with that name already exists.'); return }
+                  data.updateJobTypeConfig(id, { id, name: name.trim(), baseMaterialCost: 0, baseHours: 1, certRequired: false, isPerUnit: false, minCharge: 0 } as any)
+                }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', minHeight: 42, marginTop: 12,
+                  background: 'transparent', border: `1px dashed ${C.gold}44`, color: C.gold,
+                }}
+              >
+                <Plus size={14} /> Add Custom Job Type
+              </button>
             </div>
+            )
+          })()}
+
+          {/* ════════════════════════════════════════════════
+              ACTIVITY LOG TAB
+              ════════════════════════════════════════════════ */}
+          {activeTab === 'activity' && (() => {
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            const [logs, setLogs] = useState<Array<{ id: string; user_name: string; action: string; entity_type: string; entity_id: string; details: any; created_at: string }>>([])
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            const [logsLoading, setLogsLoading] = useState(true)
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            useEffect(() => {
+              supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(50)
+                .then(({ data }) => { setLogs(data ?? []); setLogsLoading(false) })
+            }, [])
+            const actionLabels: Record<string, string> = {
+              'job.created': 'Created job', 'job.updated': 'Updated job', 'job.statusChanged': 'Changed status',
+              'job.deleted': 'Deleted job', 'job.assigned': 'Assigned job',
+              'quote.created': 'Created quote', 'quote.sent': 'Sent quote', 'quote.updated': 'Updated quote',
+              'invoice.created': 'Created invoice', 'invoice.sent': 'Sent invoice', 'invoice.paid': 'Marked paid',
+              'invoice.voided': 'Voided invoice', 'invoice.deleted': 'Deleted invoice',
+              'customer.created': 'Added customer', 'customer.updated': 'Updated customer',
+              'event.created': 'Scheduled event', 'schedule.confirmed': 'Sent confirmation',
+              'settings.updated': 'Updated settings',
+            }
+            return (
+              <div style={s.panel}>
+                <div style={s.panelTitle}>Activity Log</div>
+                <div style={s.panelSub}>Recent activity across your organisation. Shows the last 50 actions.</div>
+                {logsLoading && <div style={{ color: C.steel, fontSize: 13, padding: 20, textAlign: 'center' }}>Loading...</div>}
+                {!logsLoading && logs.length === 0 && <div style={{ color: C.steel, fontSize: 13, padding: 20, textAlign: 'center' }}>No activity recorded yet.</div>}
+                {logs.map(log => (
+                  <div key={log.id} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12,
+                    padding: '10px 0', borderBottom: `1px solid ${C.steel}11`,
+                  }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                      background: C.black, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 12, fontWeight: 700, color: C.gold, border: `1px solid ${C.steel}33`,
+                    }}>
+                      {(log.user_name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: C.white }}>
+                        <strong>{log.user_name || 'System'}</strong>{' '}
+                        <span style={{ color: C.silver }}>{actionLabels[log.action] || log.action}</span>
+                        {log.details?.from && log.details?.to && (
+                          <span style={{ color: C.steel }}> ({log.details.from} → {log.details.to})</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.steel, marginTop: 2 }}>
+                        {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        {log.entity_type && <span> · {log.entity_type}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )
           })()}
         </div>
