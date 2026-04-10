@@ -1276,7 +1276,16 @@ export default function Jobs() {
                           <select
                             value={selectedJob.status}
                             onChange={e => {
-                              const newStatus = e.target.value as typeof selectedJob.status
+                              let newStatus = e.target.value as JobStatus
+
+                              // Auto-advance: if moving to Invoiced but all active
+                              // invoices are already Paid, skip straight to Paid so
+                              // the job doesn't get stuck in the Invoiced column.
+                              if (newStatus === 'Invoiced' && activeInvoices.length > 0) {
+                                const allPaid = activeInvoices.every(i => i.status === 'Paid')
+                                if (allPaid) newStatus = 'Paid'
+                              }
+
                               moveJob(selectedJob.id, newStatus)
                               setSelectedJob({ ...selectedJob, status: newStatus })
                             }}
@@ -1368,6 +1377,7 @@ export default function Jobs() {
                       'In Progress': { label: 'Back to Scheduled',   target: 'Scheduled' },
                       Complete:      { label: 'Back to In Progress', target: 'In Progress' },
                       Invoiced:      { label: 'Back to Complete',    target: 'Complete' },
+                      Paid:          { label: 'Back to Invoiced',    target: 'Invoiced' },
                     }
                     const revert = revertMap[st]
 
@@ -3125,15 +3135,26 @@ export default function Jobs() {
                                     <Send size={12} /> Send
                                   </button>
                                 )}
-                                {inv.status !== 'Paid' && (
+                                {inv.status !== 'Paid' && inv.status !== 'Voided' && (
                                   <button
                                     onClick={() => {
                                       updateInvoice(inv.id, { status: 'Paid', paidAt: new Date().toISOString().split('T')[0] })
-                                      const updatedPaid = totalPaid + inv.grandTotal
-                                      const allPaidAfter = jobInvoices.every(i => i.id === inv.id || i.status === 'Paid')
-                                      if (allPaidAfter && updatedPaid >= quotedTotal) {
+                                      // Check if ALL active invoices are now paid
+                                      const allPaidAfter = activeInvoices
+                                        .filter(i => i.id !== inv.id)
+                                        .every(i => i.status === 'Paid')
+                                      if (allPaidAfter) {
+                                        // Auto-advance: Complete → Invoiced → Paid (skip
+                                        // Invoiced visually, go straight to Paid) OR
+                                        // Invoiced → Paid. This handles the case where
+                                        // invoices are paid before the job reaches Invoiced.
                                         moveJob(selectedJob.id, 'Paid')
                                         setSelectedJob({ ...selectedJob, status: 'Paid' })
+                                      } else if (selectedJob.status === 'Complete') {
+                                        // Some invoices still unpaid but we just created a
+                                        // payment — advance from Complete to Invoiced
+                                        moveJob(selectedJob.id, 'Invoiced')
+                                        setSelectedJob({ ...selectedJob, status: 'Invoiced' })
                                       }
                                     }}
                                     style={{
@@ -3164,12 +3185,20 @@ export default function Jobs() {
                                         )
                                         if (!ok) return
                                         updateInvoice(inv.id, { status: 'Voided' })
-                                        // Revert job from Paid back to Invoiced/Complete
-                                        if (selectedJob.status === 'Paid') {
-                                          const stillActive = activeInvoices.filter(i => i.id !== inv.id && i.status !== 'Voided')
-                                          const target = stillActive.length > 0 ? 'Invoiced' : 'Complete'
-                                          moveJob(selectedJob.id, target)
-                                          setSelectedJob({ ...selectedJob, status: target })
+                                        // Revert job from Paid/Invoiced back based on
+                                        // what's left after voiding. Use jobInvoices (not
+                                        // the stale activeInvoices snapshot) and exclude
+                                        // the invoice being voided.
+                                        if (['Paid', 'Invoiced'].includes(selectedJob.status)) {
+                                          const stillActive = jobInvoices.filter(i => i.id !== inv.id && i.status !== 'Voided')
+                                          const stillUnpaid = stillActive.some(i => i.status !== 'Paid')
+                                          let target: JobStatus = selectedJob.status
+                                          if (stillActive.length === 0) target = 'Complete'
+                                          else if (selectedJob.status === 'Paid' && stillUnpaid) target = 'Invoiced'
+                                          if (target !== selectedJob.status) {
+                                            moveJob(selectedJob.id, target)
+                                            setSelectedJob({ ...selectedJob, status: target })
+                                          }
                                         }
                                       } else {
                                         // Hard delete
