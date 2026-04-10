@@ -246,30 +246,59 @@ export default function Dashboard() {
     statsRow: {
       display: 'grid',
       gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fit, minmax(140px, 1fr))',
-      gap: isMobile ? 8 : 12,
-      marginBottom: isMobile ? 16 : 28,
+      gap: isMobile ? 6 : 12,
+      marginBottom: isMobile ? 12 : 28,
+      alignItems: 'stretch',
     },
     statCard: {
       background: C.charcoalLight, borderRadius: isMobile ? 10 : 12,
-      padding: isMobile ? '12px 10px 10px' : '20px 20px 16px',
+      padding: isMobile ? '8px 8px 6px' : '20px 20px 16px',
       borderLeft: `${isMobile ? 3 : 4}px solid ${C.gold}`,
-      display: 'flex', flexDirection: 'column', gap: isMobile ? 3 : 6,
+      display: 'flex', flexDirection: 'column',
+      justifyContent: 'space-between',
+      gap: isMobile ? 2 : 6,
     },
-    statValue: { fontSize: isMobile ? 18 : 28, fontWeight: 700, color: C.white, lineHeight: 1 },
-    statLabel: { fontSize: isMobile ? 10 : 12, color: C.silver, display: 'flex', alignItems: 'center', gap: 4 },
-    columns: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 24, marginBottom: 28 },
-    panel: { background: C.charcoalLight, borderRadius: 12, padding: '20px 24px' },
-    panelHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-    panelTitle: { fontSize: 16, fontWeight: 600, color: C.white },
-    panelLink: { fontSize: 12, color: C.gold, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' },
-    listItem: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 12px', borderRadius: 8, cursor: 'pointer', minHeight: 44, transition: 'background .15s' },
-    listLeft: { display: 'flex', flexDirection: 'column', gap: 2 },
-    listName: { fontSize: 14, fontWeight: 500, color: C.white },
-    listMeta: { fontSize: 12, color: C.silver },
-    listRight: { display: 'flex', alignItems: 'center', gap: 12 },
-    badge: { fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
-    amount: { fontSize: 14, fontWeight: 600, color: C.gold },
-    empty: { textAlign: 'center' as const, padding: '32px 16px', color: C.steel, fontSize: 13 },
+    statValue: { fontSize: isMobile ? 16 : 28, fontWeight: 700, color: C.white, lineHeight: 1 },
+    statLabel: {
+      fontSize: isMobile ? 9 : 12, color: C.silver,
+      display: 'flex', alignItems: 'center', gap: 3,
+      lineHeight: 1.2,
+    },
+    columns: {
+      display: 'grid',
+      gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+      gap: isMobile ? 12 : 24,
+      marginBottom: isMobile ? 16 : 28,
+    },
+    panel: {
+      background: C.charcoalLight,
+      borderRadius: isMobile ? 10 : 12,
+      padding: isMobile ? '14px 14px' : '20px 24px',
+    },
+    panelHeader: {
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      marginBottom: isMobile ? 10 : 16,
+    },
+    panelTitle: { fontSize: isMobile ? 14 : 16, fontWeight: 600, color: C.white },
+    panelLink: { fontSize: isMobile ? 11 : 12, color: C.gold, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' },
+    listItem: {
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: isMobile ? '8px 8px' : '12px 12px',
+      borderRadius: 8, cursor: 'pointer',
+      minHeight: isMobile ? 38 : 44,
+      transition: 'background .15s',
+    },
+    listLeft: { display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 2 },
+    listName: { fontSize: isMobile ? 13 : 14, fontWeight: 500, color: C.white },
+    listMeta: { fontSize: isMobile ? 11 : 12, color: C.silver },
+    listRight: { display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12 },
+    badge: {
+      fontSize: isMobile ? 9 : 11, fontWeight: 600,
+      padding: isMobile ? '2px 7px' : '3px 10px',
+      borderRadius: 20, textTransform: 'uppercase' as const, letterSpacing: 0.5,
+    },
+    amount: { fontSize: isMobile ? 12 : 14, fontWeight: 600, color: C.gold },
+    empty: { textAlign: 'center' as const, padding: isMobile ? '20px 12px' : '32px 16px', color: C.steel, fontSize: isMobile ? 12 : 13 },
   }
 
   /* ── Onboarding checklist ── */
@@ -611,7 +640,7 @@ export default function Dashboard() {
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
                           <span style={{ color, flexShrink: 0 }}>{icon}</span>
-                          <span style={{ fontSize: 13, color: C.white }}>{item.message}</span>
+                          <span style={{ fontSize: isMobile ? 12 : 13, color: C.white }}>{item.message}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <button
@@ -758,14 +787,14 @@ export default function Dashboard() {
           </div>
 
           {/* Pipeline value summary */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-            <span style={{ fontSize: 13, color: C.silver }}>{pipeline.totalCount} jobs in pipeline</span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: C.gold }}>{fmtCurrency(pipeline.totalValue)}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: isMobile ? 10 : 16 }}>
+            <span style={{ fontSize: isMobile ? 11 : 13, color: C.silver }}>{pipeline.totalCount} jobs in pipeline</span>
+            <span style={{ fontSize: isMobile ? 12 : 14, fontWeight: 600, color: C.gold }}>{fmtCurrency(pipeline.totalValue)}</span>
           </div>
 
           {/* Horizontal bar */}
           {pipeline.totalCount > 0 && (
-            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 24, marginBottom: 20 }}>
+            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: isMobile ? 20 : 24, marginBottom: isMobile ? 12 : 20 }}>
               {pipeline.stages
                 .filter(st => st.count > 0)
                 .map(st => (
@@ -786,7 +815,7 @@ export default function Dashboard() {
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                   >
                     {st.count > 0 && (
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{st.count}</span>
+                      <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: '#fff' }}>{st.count}</span>
                     )}
                   </div>
                 ))}
@@ -801,8 +830,8 @@ export default function Dashboard() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '8px 12px',
-                borderRadius: 8,
+                padding: isMobile ? '5px 8px' : '8px 12px',
+                borderRadius: 6,
                 cursor: 'pointer',
                 transition: 'background .15s',
               }}
@@ -810,13 +839,13 @@ export default function Dashboard() {
               onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 3, background: st.color }} />
-                <span style={{ fontSize: 13, color: C.white }}>{st.label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10 }}>
+                <div style={{ width: isMobile ? 8 : 10, height: isMobile ? 8 : 10, borderRadius: 2, background: st.color }} />
+                <span style={{ fontSize: isMobile ? 11 : 13, color: C.white }}>{st.label}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{st.count}</span>
-                <span style={{ fontSize: 12, color: C.silver, minWidth: 60, textAlign: 'right' as const }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16 }}>
+                <span style={{ fontSize: isMobile ? 11 : 13, fontWeight: 600, color: C.white }}>{st.count}</span>
+                <span style={{ fontSize: isMobile ? 10 : 12, color: C.silver, minWidth: isMobile ? 44 : 60, textAlign: 'right' as const }}>
                   {fmtCurrency(st.value)}
                 </span>
               </div>
