@@ -4,6 +4,7 @@ import InsightModal from '../components/InsightModal'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useSubscription } from '../subscription/SubscriptionContext'
 
 import FeatureGate from '../components/FeatureGate'
 import type { CSSProperties } from 'react'
@@ -30,6 +31,7 @@ function shortMonth(key: string): string {
 export default function Insights() {
   const { C } = useTheme()
   const { jobs, quotes, customers, expenses, invoices } = useData()
+  const { canUse } = useSubscription()
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year' | 'overall'>('year')
   const [selectedYear, setSelectedYear] = useState('')
   const [expandedJobType, setExpandedJobType] = useState<string | null>(null)
@@ -1062,8 +1064,8 @@ export default function Insights() {
           </div>
         </div>
 
-        {/* ── Smart Alerts — computed from real business data ── */}
-        {smartAlerts.length > 0 && (
+        {/* ── Smart Alerts — Pro+ only ── */}
+        {smartAlerts.length > 0 && canUse('smartAlerts') && (
         <div style={{ ...s.panel, marginTop: 24 }}>
           <div style={s.panelTitle}>Smart Alerts</div>
           {smartAlerts.map((a, i) => (

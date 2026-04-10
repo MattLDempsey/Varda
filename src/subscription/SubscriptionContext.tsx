@@ -17,16 +17,22 @@ export interface PlanFeatures {
   maxCustomers: number | null
   multiLineQuotes: boolean
   invoicing: boolean
+  multiInvoice: boolean        // deposit, progress, final (Pro+)
   expenses: boolean
   insightsBasic: boolean
   insightsAdvanced: boolean
+  smartAlerts: boolean          // pricing intelligence alerts (Pro+)
   communications: boolean
   teamManagement: boolean
+  jobAssignment: boolean        // assign jobs to team members (Business)
+  activityLog: boolean          // audit trail (Business)
+  customJobTypes: boolean       // add custom job types (Business)
   csvExport: boolean
   pdfInvoices: boolean
   customerQuotePage: boolean
   pricingRules: boolean
   calendarFull: boolean
+  calendarDrag: boolean         // drag/resize on calendar (Pro+)
 }
 
 export interface SubscriptionContextValue {
@@ -40,11 +46,14 @@ export interface SubscriptionContextValue {
 }
 
 const _DEFAULT_FEATURES: PlanFeatures = {
-  maxUsers: 1, maxActiveJobs: 20, maxCustomers: 50,
-  multiLineQuotes: false, invoicing: false, expenses: false,
-  insightsBasic: false, insightsAdvanced: false, communications: false,
-  teamManagement: false, csvExport: false, pdfInvoices: false,
-  customerQuotePage: false, pricingRules: false, calendarFull: false,
+  maxUsers: 1, maxActiveJobs: null, maxCustomers: null,
+  multiLineQuotes: false, invoicing: true, multiInvoice: false,
+  expenses: false, insightsBasic: false, insightsAdvanced: false,
+  smartAlerts: false, communications: false,
+  teamManagement: false, jobAssignment: false, activityLog: false,
+  customJobTypes: false, csvExport: false, pdfInvoices: true,
+  customerQuotePage: true, pricingRules: false,
+  calendarFull: false, calendarDrag: false,
 }
 
 const SubscriptionContext = createContext<SubscriptionContextValue>({
@@ -86,21 +95,27 @@ export function SubscriptionProvider({ orgId, children }: { orgId: string; child
 
           if (feat) {
             setFeatures({
-              maxUsers: feat.max_users,
-              maxActiveJobs: feat.max_active_jobs,
-              maxCustomers: feat.max_customers,
-              multiLineQuotes: feat.multi_line_quotes,
-              invoicing: feat.invoicing,
-              expenses: feat.expenses,
-              insightsBasic: feat.insights_basic,
-              insightsAdvanced: feat.insights_advanced,
-              communications: feat.communications,
-              teamManagement: feat.team_management,
-              csvExport: feat.csv_export,
-              pdfInvoices: feat.pdf_invoices,
-              customerQuotePage: feat.customer_quote_page,
-              pricingRules: feat.pricing_rules,
-              calendarFull: feat.calendar_full,
+              maxUsers: feat.max_users ?? 1,
+              maxActiveJobs: feat.max_active_jobs ?? null,
+              maxCustomers: feat.max_customers ?? null,
+              multiLineQuotes: feat.multi_line_quotes ?? false,
+              invoicing: feat.invoicing ?? true,
+              multiInvoice: feat.multi_invoice ?? false,
+              expenses: feat.expenses ?? false,
+              insightsBasic: feat.insights_basic ?? false,
+              insightsAdvanced: feat.insights_advanced ?? false,
+              smartAlerts: feat.smart_alerts ?? false,
+              communications: feat.communications ?? false,
+              teamManagement: feat.team_management ?? false,
+              jobAssignment: feat.job_assignment ?? false,
+              activityLog: feat.activity_log ?? false,
+              customJobTypes: feat.custom_job_types ?? false,
+              csvExport: feat.csv_export ?? false,
+              pdfInvoices: feat.pdf_invoices ?? true,
+              customerQuotePage: feat.customer_quote_page ?? true,
+              pricingRules: feat.pricing_rules ?? false,
+              calendarFull: feat.calendar_full ?? false,
+              calendarDrag: feat.calendar_drag ?? false,
             })
           }
         }

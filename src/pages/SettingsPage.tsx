@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useData } from '../data/DataContext'
 import SettingsNav from '../components/SettingsNav'
 import { supabase } from '../lib/supabase'
+import { useSubscription } from '../subscription/SubscriptionContext'
 import type { AppSettings } from '../data/DataContext'
 import { loadTemplates, saveTemplate, resetTemplate, DEFAULT_TEMPLATES } from '../data/templates'
 import type { MessageTemplate } from '../data/templates'
@@ -19,6 +20,7 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 export default function SettingsPage() {
   const { C } = useTheme()
   const { user } = useAuth()
+  const { canUse } = useSubscription()
   const data = useData()
   const { settings, updateSettings } = data
   const [activeTab, setActiveTab] = useState<SettingsTab>('business')
@@ -787,23 +789,29 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
-              <button
-                onClick={() => {
-                  const name = window.prompt('New job type name:')
-                  if (!name?.trim()) return
-                  const id = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
-                  if (data.jobTypeConfigs.find(jt => jt.id === id)) { alert('A job type with that name already exists.'); return }
-                  data.updateJobTypeConfig(id, { id, name: name.trim(), baseMaterialCost: 0, baseHours: 1, certRequired: false, isPerUnit: false, minCharge: 0 } as any)
-                }}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer', minHeight: 42, marginTop: 12,
-                  background: 'transparent', border: `1px dashed ${C.gold}44`, color: C.gold,
-                }}
-              >
-                <Plus size={14} /> Add Custom Job Type
-              </button>
+              {canUse('customJobTypes') ? (
+                <button
+                  onClick={() => {
+                    const name = window.prompt('New job type name:')
+                    if (!name?.trim()) return
+                    const id = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+                    if (data.jobTypeConfigs.find(jt => jt.id === id)) { alert('A job type with that name already exists.'); return }
+                    data.updateJobTypeConfig(id, { id, name: name.trim(), baseMaterialCost: 0, baseHours: 1, certRequired: false, isPerUnit: false, minCharge: 0 } as any)
+                  }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                    cursor: 'pointer', minHeight: 42, marginTop: 12,
+                    background: 'transparent', border: `1px dashed ${C.gold}44`, color: C.gold,
+                  }}
+                >
+                  <Plus size={14} /> Add Custom Job Type
+                </button>
+              ) : (
+                <div style={{ fontSize: 12, color: C.steel, marginTop: 12, fontStyle: 'italic', textAlign: 'center' }}>
+                  Custom job types available on the Business plan.
+                </div>
+              )}
             </div>
             )
           })()}

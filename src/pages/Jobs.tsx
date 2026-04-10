@@ -1411,8 +1411,8 @@ export default function Jobs() {
                     </div>
                   </div>
 
-                  {/* Assign to team member */}
-                  {teamMembers.length > 1 && (
+                  {/* Assign to team member — Business plan */}
+                  {teamMembers.length > 1 && features?.jobAssignment && (
                     <div style={{ marginBottom: 16 }}>
                       <span style={s.fieldLabel}>Assigned To</span>
                       <div style={{ position: 'relative' }}>
@@ -3499,7 +3499,7 @@ export default function Jobs() {
                         {/* Type selector */}
                         <span style={{ ...s.fieldLabel, fontSize: 11 }}>Type</span>
                         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                          {(['Deposit', 'Progress', 'Final', 'Custom'] as InvoiceType[]).map(t => (
+                          {(features?.multiInvoice ? ['Deposit', 'Progress', 'Final', 'Custom'] as InvoiceType[] : ['Final'] as InvoiceType[]).map(t => (
                             <button
                               key={t}
                               onClick={() => {
