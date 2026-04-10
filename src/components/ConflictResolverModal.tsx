@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
-import { X } from 'lucide-react'
+import { X, CheckCircle } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData, type ScheduleEvent } from '../data/DataContext'
 
@@ -102,45 +102,45 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
     )
     for (const o of overlapping) conflicts.push({ jobEvent: je, internal: o })
   }
-  const conflictsLength = conflicts.length
+  // We deliberately do NOT auto-close when conflicts hit zero — the user
+  // should explicitly hit Save & close so they have a moment to review the
+  // arrangement and tweak it further if they want.
+  const allClear = conflicts.length === 0
 
-  // Auto-close when nothing left to resolve
-  useEffect(() => {
-    if (conflictsLength === 0) {
-      const t = setTimeout(onClose, 50)
-      return () => clearTimeout(t)
-    }
-  }, [conflictsLength, onClose])
-
-  // ── Group conflicts by day so we can show one mini grid per affected day ──
-  const dayMap = new Map<string, { jobEvents: ScheduleEvent[]; allEvents: ScheduleEvent[] }>()
+  // ── Group by day so we can show one mini grid per affected day. We seed
+  //    the day map from the conflict list, then if everything's resolved we
+  //    fall back to showing the days the user's job actually runs across so
+  //    the grid stays useful while they review the arrangement. ──
+  const dayMap = new Map<string, { allEvents: ScheduleEvent[] }>()
   for (const c of conflicts) {
-    if (!dayMap.has(c.jobEvent.date)) {
-      dayMap.set(c.jobEvent.date, { jobEvents: [], allEvents: [] })
-    }
-    const entry = dayMap.get(c.jobEvent.date)!
-    if (!entry.jobEvents.find(e => e.id === c.jobEvent.id)) entry.jobEvents.push(c.jobEvent)
+    if (!dayMap.has(c.jobEvent.date)) dayMap.set(c.jobEvent.date, { allEvents: [] })
   }
-  // Pull every event on each affected day so the grid shows context
+  if (dayMap.size === 0) {
+    // No conflicts left — keep showing the job's days so the user can verify
+    // and tweak before closing.
+    for (const je of jobEvents) {
+      if (!dayMap.has(je.date)) dayMap.set(je.date, { allEvents: [] })
+    }
+  }
   for (const [date, entry] of dayMap) {
     entry.allEvents = events.filter(e => e.date === date)
   }
   const sortedDays = Array.from(dayMap.keys()).sort()
 
-  // ── Find the contiguous free gap that an internal event currently sits in.
-  //    Customer events (no category) are the constraints — internal events
-  //    don't block each other in this mini grid because the goal is to move
-  //    them out of the customer's way. ──
-  const findGapForInternal = (excludeId: string, date: string, candidateStart: number, candidateEnd: number) => {
+  // ── Find the contiguous free gap around the candidate position. In the
+  //    resolver we treat ALL other events on the day as constraints (both
+  //    customer and internal) because the explicit goal is to find a
+  //    non-overlapping arrangement. The kind-aware soft-conflict rules
+  //    only apply on the main calendar. ──
+  const findGap = (excludeId: string, date: string, candidateStart: number, candidateEnd: number) => {
     let floor = DAY_START_HOUR * 60
     let ceiling = DAY_END_HOUR * 60
-    const customerOnly = events.filter(e =>
+    const others = events.filter(e =>
       e.id !== excludeId
       && e.date === date
-      && !e.category
     )
     const mid = (candidateStart + candidateEnd) / 2
-    for (const e of customerOnly) {
+    for (const e of others) {
       const t = eventRange(e)
       if (t.endMin <= mid && t.endMin > floor) floor = t.endMin
       if (t.startMin >= mid && t.startMin < ceiling) ceiling = t.startMin
@@ -166,8 +166,8 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
       if (newStart < dayMin) { newStart = dayMin; newEnd = newStart + duration }
       if (newEnd > dayMax)   { newEnd = dayMax; newStart = newEnd - duration }
 
-      // Clamp to free gap (customer events only)
-      const gap = findGapForInternal(d.eventId, d.date, newStart, newEnd)
+      // Clamp to the contiguous free gap on this day
+      const gap = findGap(d.eventId, d.date, newStart, newEnd)
       let clampedTop = false
       let clampedBottom = false
       if (newStart < gap.floor)   { newStart = gap.floor; newEnd = newStart + duration; clampedTop = true }
@@ -275,13 +275,20 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
     eventsCol: {
       background: C.charcoal, position: 'relative', height: dayGridHeight,
     },
-    doneBtn: {
+    saveBtn: {
       width: '100%', padding: '12px', borderRadius: 10,
-      background: C.gold, border: 'none', color: C.charcoal,
-      fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 4, minHeight: 44,
+      border: 'none', color: C.charcoal,
+      fontSize: 13, fontWeight: 700, cursor: 'pointer', minHeight: 44, marginTop: 4,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
     },
     helpRow: {
       fontSize: 11, color: C.steel, marginBottom: 12, lineHeight: 1.5,
+    },
+    resolvedBanner: {
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '12px 14px', borderRadius: 10, marginTop: 4, marginBottom: 12,
+      background: '#6ABF8A12', border: '1px solid #6ABF8A66',
+      color: C.silver, fontSize: 12, lineHeight: 1.5,
     },
   }
 
@@ -293,7 +300,9 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
           <div>
             <div style={s.title}>Resolve schedule clashes</div>
             <div style={s.sub}>
-              {conflicts.length} clash{conflicts.length === 1 ? '' : 'es'} — drag the internal entries out of the gold customer blocks.
+              {allClear
+                ? 'All clear — review the arrangement and save when you\'re happy.'
+                : `${conflicts.length} clash${conflicts.length === 1 ? '' : 'es'} — drag any block to move it out of the way.`}
             </div>
           </div>
           <button onClick={onClose} style={s.closeBtn} aria-label="Close">
@@ -302,7 +311,10 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
         </div>
 
         <div style={s.helpRow}>
-          Customer time is shown in <strong style={{ color: C.gold }}>gold</strong> and locked in place. Drag the steel blocks vertically to move them, or tap × to delete. Drops snap to 30 minutes and stop at the customer block.
+          <strong style={{ color: C.gold }}>★ This job</strong> in gold and{' '}
+          <strong style={{ color: C.silver }}>📌 internal entries</strong> in steel are both draggable —
+          move whichever side makes most sense (e.g. push the job to 10:00 if a supply run has to happen at 09:00).
+          Drops snap to 30 minutes and stop at neighbouring blocks. Other customers' jobs are locked.
         </div>
 
         {sortedDays.map(date => {
@@ -357,20 +369,22 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                     const height = Math.max(((visEnd - visStart) / 60) * HOUR_HEIGHT, 22)
                     const isCustomer = !ev.category
                     const isJobEvent = isCustomer && ev.jobId === jobId
+                    const isOtherCustomer = isCustomer && !isJobEvent
+                    const flashTop = isDragging && drag!.clampedTop
+                    const flashBottom = isDragging && drag!.clampedBottom
 
-                    if (isCustomer) {
-                      // Locked customer event — gold for the active job, steel
-                      // for any other customer event sharing the day.
-                      const accent = isJobEvent ? C.gold : C.silver
+                    // Other customers' jobs (not the one we're resolving) are
+                    // genuinely off-limits — leave them locked.
+                    if (isOtherCustomer) {
                       return (
                         <div
                           key={ev.id}
                           style={{
                             position: 'absolute', top, height,
                             left: 4, right: 4,
-                            background: accent + (isJobEvent ? '20' : '10'),
-                            border: `1px solid ${accent}66`,
-                            borderLeft: `3px solid ${accent}`,
+                            background: `${C.silver}10`,
+                            border: `1px solid ${C.silver}66`,
+                            borderLeft: `3px solid ${C.silver}`,
                             borderRadius: 6,
                             padding: '4px 8px',
                             overflow: 'hidden',
@@ -378,16 +392,12 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                             cursor: 'not-allowed',
                             zIndex: 1,
                           }}
-                          title={isJobEvent ? 'This customer time is locked' : ev.customerName}
+                          title={`${ev.customerName} — another customer, locked`}
                         >
                           <div style={{
                             fontSize: 11, fontWeight: 700, color: C.white,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            display: 'flex', alignItems: 'center', gap: 4,
-                          }}>
-                            {isJobEvent && <span style={{ color: C.gold }}>★</span>}
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.customerName}</span>
-                          </div>
+                          }}>{ev.customerName}</div>
                           {height >= 32 && (
                             <div style={{ fontSize: 10, color: C.silver }}>
                               {formatHHMM(r.startMin)}–{formatHHMM(r.endMin)}
@@ -397,9 +407,11 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                       )
                     }
 
-                    // Internal event — draggable, deletable
-                    const flashTop = isDragging && drag!.clampedTop
-                    const flashBottom = isDragging && drag!.clampedBottom
+                    // Both the active job's customer event AND any internal
+                    // event are draggable. Different colours so the user can
+                    // tell them apart at a glance.
+                    const accent = isJobEvent ? C.gold : C.silver
+                    const bgShade = isJobEvent ? `${C.gold}20` : `${C.steel}33`
                     return (
                       <div
                         key={ev.id}
@@ -407,9 +419,9 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                         style={{
                           position: 'absolute', top, height,
                           left: 4, right: 4,
-                          background: `${C.steel}33`,
-                          border: `1px solid ${flashTop || flashBottom ? '#D46A6A88' : C.steel + '88'}`,
-                          borderLeft: `3px solid ${C.silver}`,
+                          background: bgShade,
+                          border: `1px solid ${flashTop || flashBottom ? '#D46A6A88' : accent + '88'}`,
+                          borderLeft: `3px solid ${accent}`,
                           borderRadius: 6,
                           padding: '4px 8px',
                           overflow: 'hidden',
@@ -428,23 +440,25 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
                           <div style={{
                             fontSize: 11, fontWeight: 700, color: C.white,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            display: 'flex', alignItems: 'center', gap: 3,
+                            display: 'flex', alignItems: 'center', gap: 3, minWidth: 0,
                           }}>
-                            <span>📌</span>
+                            <span>{isJobEvent ? '★' : '📌'}</span>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.customerName}</span>
                           </div>
-                          <button
-                            onClick={(e) => handleDelete(ev, e)}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            style={{
-                              background: 'transparent', border: 'none', color: C.steel,
-                              cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0,
-                            }}
-                            title="Delete"
-                            aria-label="Delete"
-                          >
-                            <X size={12} />
-                          </button>
+                          {!isJobEvent && (
+                            <button
+                              onClick={(e) => handleDelete(ev, e)}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              style={{
+                                background: 'transparent', border: 'none', color: C.steel,
+                                cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0,
+                              }}
+                              title="Delete"
+                              aria-label="Delete"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
                         </div>
                         {height >= 32 && (
                           <div style={{ fontSize: 10, color: C.silver }}>
@@ -460,8 +474,24 @@ export default function ConflictResolverModal({ jobId, onClose }: Props) {
           )
         })}
 
-        <button style={s.doneBtn} onClick={onClose}>
-          Done
+        {allClear && (
+          <div style={s.resolvedBanner}>
+            <CheckCircle size={16} color="#6ABF8A" style={{ flexShrink: 0 }} />
+            <div>
+              <strong style={{ color: C.white }}>Conflict resolved.</strong> Hit Save &amp; close to send the customer their confirmation, or keep adjusting if you want to fine-tune the arrangement.
+            </div>
+          </div>
+        )}
+
+        <button
+          style={{
+            ...s.saveBtn,
+            background: allClear ? '#6ABF8A' : C.gold,
+          }}
+          onClick={onClose}
+        >
+          {allClear && <CheckCircle size={14} />}
+          Save &amp; close
         </button>
       </div>
     </>
