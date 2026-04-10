@@ -274,11 +274,34 @@ export default function Jobs() {
       return 'Schedule changed — customer needs new confirmation'
     }
 
+    // Unpaid invoices (Deposit, Progress, Custom) on jobs approaching
+    // their start date. Any pre-work payment should be collected before
+    // the tradesperson turns up — warn 5 days out to give chase time.
+    const todayStr = new Date().toISOString().split('T')[0]
+    if (['Accepted', 'Scheduled'].includes(job.status)) {
+      const unpaidInvoice = jobInvoices.find(i => i.status !== 'Paid')
+      if (unpaidInvoice && job.date) {
+        const msPerDay = 86400000
+        const daysUntilStart = Math.floor(
+          (new Date(job.date).getTime() - new Date(todayStr).getTime()) / msPerDay
+        )
+        const typeLabel = unpaidInvoice.type === 'Deposit' ? 'Deposit'
+          : unpaidInvoice.type === 'Progress' ? 'Progress payment'
+          : `Invoice ${unpaidInvoice.ref}`
+        if (daysUntilStart <= 0) {
+          return `${typeLabel} NOT PAID — job starts today`
+        } else if (daysUntilStart <= 3) {
+          return `${typeLabel} unpaid — job starts in ${daysUntilStart} day${daysUntilStart === 1 ? '' : 's'}`
+        } else if (daysUntilStart <= 5) {
+          return `Chase ${typeLabel.toLowerCase()} — job starts in ${daysUntilStart} days`
+        }
+      }
+    }
+
     // Backstop: a job that was scheduled for a date in the past but is
     // still sitting in Scheduled probably needs its status updated. The
     // user might have done the work and forgotten, or it might have been
     // cancelled. Either way, the kanban shouldn't lie about it.
-    const todayStr = new Date().toISOString().split('T')[0]
     if (job.status === 'Scheduled' && job.date && job.date < todayStr) {
       return 'Was this job done? Update its status'
     }
@@ -1292,10 +1315,19 @@ export default function Jobs() {
                         action: () => { setSelectedJob(null); navigate(selectedJob.quoteId ? `/quote?quoteId=${selectedJob.quoteId}` : '/quote') },
                       }
                     } else if (st === 'Scheduled' && selectedJob.date <= todayStr) {
+                      const unpaidPre = getInvoicesForJob(selectedJob.id).find(i => i.status !== 'Paid')
                       forward = {
-                        label: 'Start this job now',
-                        icon: '▶',
+                        label: unpaidPre
+                          ? `Start (${unpaidPre.type === 'Deposit' ? 'deposit' : 'invoice'} unpaid)`
+                          : 'Start this job now',
+                        icon: unpaidPre ? '⚠' : '▶',
                         action: () => {
+                          if (unpaidPre) {
+                            const ok = window.confirm(
+                              `${unpaidPre.type === 'Deposit' ? 'Deposit' : `Invoice ${unpaidPre.ref}`} hasn't been paid yet.\n\nStart the job anyway?`
+                            )
+                            if (!ok) return
+                          }
                           const ts = new Date().toISOString()
                           updateJob(selectedJob.id, { startedAt: ts })
                           moveJob(selectedJob.id, 'In Progress')

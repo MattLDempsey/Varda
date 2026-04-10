@@ -168,7 +168,40 @@ export function computeFollowUps(
       }
     })
 
-  // 7. Stale leads — Lead for > 7 days with no linked quote created
+  // 7. Unpaid invoices on jobs approaching their start date — deposits,
+  //    progress payments, custom invoices that need collecting before
+  //    the tradesperson turns up. 5-day warning window.
+  jobs
+    .filter(j => (j.status === 'Accepted' || j.status === 'Scheduled') && j.date)
+    .forEach(j => {
+      const jobInvs = invoices.filter(i => i.jobId === j.id && i.status !== 'Paid')
+      if (jobInvs.length === 0) return
+      const daysUntilStart = daysBetween(today, j.date)
+      if (daysUntilStart > 5) return
+      const inv = jobInvs[0]
+      const typeLabel = inv.type === 'Deposit' ? 'Deposit'
+        : inv.type === 'Progress' ? 'Progress payment'
+        : `Invoice ${inv.ref}`
+      if (daysUntilStart <= 0) {
+        items.push({
+          id: `followup-prepay-overdue-${inv.id}`,
+          priority: 'high',
+          message: `${typeLabel} for ${j.customerName} NOT PAID — job starts today`,
+          route: '/jobs',
+          urgency: 0,
+        })
+      } else {
+        items.push({
+          id: `followup-prepay-${inv.id}`,
+          priority: daysUntilStart <= 3 ? 'high' : 'medium',
+          message: `Chase ${typeLabel.toLowerCase()} for ${j.customerName} — job starts in ${daysUntilStart} day${daysUntilStart === 1 ? '' : 's'}`,
+          route: '/jobs',
+          urgency: daysUntilStart <= 3 ? 0.5 : 2,
+        })
+      }
+    })
+
+  // 8. Stale leads — Lead for > 7 days with no linked quote created
   jobs
     .filter(j => j.status === 'Lead' && !j.quoteId)
     .forEach(j => {
