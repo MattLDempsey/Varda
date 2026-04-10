@@ -7,6 +7,7 @@ import { useSubscription } from '../subscription/SubscriptionContext'
 import { generateQuotePDF, settingsToBusinessInfo } from '../lib/pdf-generator'
 import { validateEmail, validatePhone } from '../lib/validation'
 import { sendEmail, buildFromName } from '../lib/send-email'
+import { QUICK_SPECS, computeSpecAdjustments, type QuickSpecValues } from '../data/quick-specs'
 import { buildQuoteEmail } from '../lib/email-templates'
 import PricingSuggestion from '../components/PricingSuggestion'
 import { estimateDistance, getDistanceHassleAdjustment } from '../lib/postcode-distance'
@@ -27,6 +28,8 @@ interface LineItem {
   outOfHours: boolean
   certRequired: boolean
   customerSuppliesMaterials: boolean
+  /** Quick-spec values captured during quoting (e.g. { fittings: 6, newCircuit: true }) */
+  specs?: Record<string, number | boolean | string>
   // calculated
   materials: number
   labour: number
@@ -81,16 +84,40 @@ export default function QuickQuote() {
     jobTypeId: string, quantity: number, difficulty: number, hassleFactor: number,
     emergency: boolean, outOfHours: boolean, certRequired: boolean, customerSuppliesMaterials: boolean,
     manualMaterials?: number, manualHours?: number,
-  ): Omit<LineItem, 'id' | 'jobTypeId' | 'jobTypeName' | 'quantity' | 'difficulty' | 'hassleFactor' | 'emergency' | 'outOfHours' | 'certRequired' | 'customerSuppliesMaterials'> => {
+    specs?: QuickSpecValues,
+  ): Omit<LineItem, 'id' | 'jobTypeId' | 'jobTypeName' | 'quantity' | 'difficulty' | 'hassleFactor' | 'emergency' | 'outOfHours' | 'certRequired' | 'customerSuppliesMaterials' | 'specs'> => {
     const jobType = jobTypeConfigs.find(j => j.id === jobTypeId)
     if (!jobType) return { materials: 0, labour: 0, certificates: 0, waste: 0, adjustments: 0, lineTotal: 0, estHours: 0 }
 
     const isManual = jobTypeId === 'other'
-    const qty = quantity
-    const baseMat = isManual ? (manualMaterials || 0) : jobType.baseMaterialCost
-    const baseHrs = isManual ? (manualHours || 1) : jobType.baseHours
-    const materials = customerSuppliesMaterials ? 0 : baseMat * qty
-    const hours = baseHrs * qty
+    const specDefs = QUICK_SPECS[jobTypeId]
+
+    let materials: number
+    let hours: number
+
+    if (isManual) {
+      // Manual entry — use the user's own numbers
+      materials = customerSuppliesMaterials ? 0 : (manualMaterials || 0)
+      hours = manualHours || 1
+    } else if (specDefs && specs && Object.keys(specs).length > 0) {
+      // Spec-driven pricing — specs define materials and labour
+      const adj = computeSpecAdjustments(specDefs, specs)
+      const qty = adj.coreQuantity ?? quantity
+      // Base cost per unit from the job type config PLUS spec adjustments.
+      // For spec-driven types the specAdjustments already include per-unit
+      // costs so we only add the base when there's no core-quantity spec
+      // (meaning the base cost is the whole-job flat rate, e.g. fault finding).
+      const baseMat = adj.coreQuantity != null ? 0 : jobType.baseMaterialCost * qty
+      const baseHrs = adj.coreQuantity != null ? 0 : jobType.baseHours * qty
+      materials = customerSuppliesMaterials ? 0 : (baseMat + adj.materialsAdj)
+      hours = baseHrs + adj.labourMinsAdj / 60
+    } else {
+      // Legacy path — no specs, use base costs × quantity
+      const qty = quantity
+      materials = customerSuppliesMaterials ? 0 : jobType.baseMaterialCost * qty
+      hours = jobType.baseHours * qty
+    }
+
     const labour = hours * pricingConfig.labourRate
     const certificates = certRequired ? pricingConfig.certFee : 0
     const waste = materials * pricingConfig.wastePct
@@ -163,6 +190,9 @@ export default function QuickQuote() {
   const [curCustMaterials, setCurCustMaterials] = useState(false)
   const [curManualMaterials, setCurManualMaterials] = useState(0)
   const [curManualHours, setCurManualHours] = useState(1)
+  // Quick-spec values for the currently-selected job type
+  const [curSpecs, setCurSpecs] = useState<QuickSpecValues>({})
+  const curSpecDefs = QUICK_SPECS[curJobTypeId] ?? []
 
   // ── Auto-add timer ──
   const autoAddTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -243,11 +273,22 @@ export default function QuickQuote() {
     }
   }, [customerParam, loaded, editQuoteId, duplicateFromId, customers])
 
-  // ── Auto-set cert when job type changes ──
+  // ── Auto-set cert + initialise quick specs when job type changes ──
   const handleJobTypeSelect = useCallback((id: string) => {
     setCurJobTypeId(id)
     const jt = jobTypeConfigs.find(j => j.id === id)
     if (jt) setCurCert(jt.certRequired)
+    // Initialise quick specs with defaults for this job type
+    const specDefs = QUICK_SPECS[id]
+    if (specDefs) {
+      const defaults: QuickSpecValues = {}
+      for (const spec of specDefs) {
+        defaults[spec.key] = spec.default
+      }
+      setCurSpecs(defaults)
+    } else {
+      setCurSpecs({})
+    }
   }, [jobTypeConfigs])
 
   // ── Auto-add helpers ──
@@ -263,7 +304,7 @@ export default function QuickQuote() {
     const jt = jobTypeConfigs.find(j => j.id === curJobTypeId)
     if (!jt) return
 
-    const calc = calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours)
+    const calc = calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, curSpecs)
     setLines(prev => [...prev, {
       id: nextLineId++,
       jobTypeId: curJobTypeId,
@@ -275,6 +316,7 @@ export default function QuickQuote() {
       outOfHours: isOutOfHours,
       certRequired: curCert,
       customerSuppliesMaterials: curCustMaterials,
+      specs: Object.keys(curSpecs).length > 0 ? { ...curSpecs } : undefined,
       ...calc,
     }])
 
@@ -287,6 +329,7 @@ export default function QuickQuote() {
     setCurCustMaterials(false)
     setCurManualMaterials(0)
     setCurManualHours(1)
+    setCurSpecs({})
   }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine, jobTypeConfigs, clearAutoAdd])
 
   // ── Wire auto-add timer: start when job type selected, clear/restart on config changes ──
@@ -355,7 +398,7 @@ export default function QuickQuote() {
   // ── Current line preview ──
   const curPreview = useMemo(() => {
     if (!curJobTypeId) return null
-    return calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours)
+    return calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, curSpecs)
   }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine])
 
   // ── Grand total including current unsaved line ──
@@ -700,11 +743,11 @@ export default function QuickQuote() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
                 <div>
                   <span className="qq-label">Phone</span>
-                  <input className="qq-input" type="tel" placeholder="07XXX XXX XXX" value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)} />
+                  <input className="qq-input" type="tel" inputMode="tel" placeholder="07XXX XXX XXX" value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)} />
                 </div>
                 <div>
                   <span className="qq-label">Email</span>
-                  <input className="qq-input" type="email" placeholder="email@example.com" value={newCustEmail} onChange={e => setNewCustEmail(e.target.value)} />
+                  <input className="qq-input" type="email" inputMode="email" placeholder="email@example.com" value={newCustEmail} onChange={e => setNewCustEmail(e.target.value)} />
                 </div>
                 <div>
                   <span className="qq-label">Postcode</span>
@@ -799,20 +842,22 @@ export default function QuickQuote() {
             )}
           </div>
         )}
+        {/* Emergency / Out of Hours — at the top so the user can flag
+            these immediately when the customer says "it's urgent" without
+            scrolling past the form. */}
+        <div className="qq-field">
+          <div className="qq-toggles-row">
+            <Toggle label="🚨 Emergency" on={isEmergency} onToggle={() => setIsEmergency(!isEmergency)} />
+            <Toggle label="🌙 Out of hours" on={isOutOfHours} onToggle={() => setIsOutOfHours(!isOutOfHours)} />
+          </div>
+        </div>
+
         </>}
         </div>{/* end qq-section: Customer & Job Info */}
 
         {/* ── SECTION 2: Line Items ── */}
         <div className="qq-section">
         <div className="qq-section-header">Job Details</div>
-
-        {/* Quote-level options */}
-        <div className="qq-field">
-          <div className="qq-toggles-row">
-            <Toggle label="Emergency" on={isEmergency} onToggle={() => setIsEmergency(!isEmergency)} />
-            <Toggle label="Out of hours" on={isOutOfHours} onToggle={() => setIsOutOfHours(!isOutOfHours)} />
-          </div>
-        </div>
 
         {/* ── Added Lines ── */}
         {lines.length > 0 && (
@@ -939,29 +984,131 @@ export default function QuickQuote() {
                 </div>
               )}
 
-              {/* Difficulty */}
-              <div className="qq-field">
-                <div className="qq-slider-wrap">
-                  <div className="qq-slider-header">
-                    <span className="qq-label">Difficulty</span>
-                    <span className="qq-slider-value">{curDifficulty}</span>
-                  </div>
-                  <input className="qq-slider" type="range" min={0} max={100} value={curDifficulty} onChange={e => setCurDifficulty(Number(e.target.value))} />
-                  <div className="qq-slider-labels"><span>Easy</span><span>Hard</span></div>
+              {/* ── Quick Specs — inline fields specific to this job type.
+                  Replace the abstract difficulty/hassle sliders with
+                  concrete questions the electrician would ask the customer
+                  on the phone. ── */}
+              {curSpecDefs.length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                  gap: 8,
+                  marginBottom: 4,
+                }}>
+                  {curSpecDefs.map(spec => {
+                    const val = curSpecs[spec.key] ?? spec.default
+                    if (spec.type === 'number') {
+                      return (
+                        <div key={spec.key} className="qq-field">
+                          <span className="qq-label">{spec.label}</span>
+                          <div className="qq-stepper">
+                            <button
+                              className="qq-stepper__btn" type="button"
+                              onClick={() => setCurSpecs(prev => ({
+                                ...prev,
+                                [spec.key]: Math.max(spec.min ?? 1, (Number(prev[spec.key] ?? spec.default) || 0) - 1),
+                              }))}
+                            >&minus;</button>
+                            <span className="qq-stepper__value">{val}</span>
+                            <button
+                              className="qq-stepper__btn" type="button"
+                              onClick={() => setCurSpecs(prev => ({
+                                ...prev,
+                                [spec.key]: Math.min(spec.max ?? 99, (Number(prev[spec.key] ?? spec.default) || 0) + 1),
+                              }))}
+                            >+</button>
+                          </div>
+                          {spec.hint && <span style={{ fontSize: 10, color: 'var(--color-steel)', marginTop: 2 }}>{spec.hint}</span>}
+                        </div>
+                      )
+                    }
+                    if (spec.type === 'toggle') {
+                      return (
+                        <div key={spec.key} className="qq-field">
+                          <span className="qq-label">{spec.label}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCurSpecs(prev => ({ ...prev, [spec.key]: !prev[spec.key] }))}
+                            style={{
+                              padding: '8px 12px', borderRadius: 8, border: 'none',
+                              background: val ? 'var(--color-gold)' : 'var(--color-black)',
+                              color: val ? 'var(--color-charcoal)' : 'var(--color-steel-light)',
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                              minHeight: 38, width: '100%',
+                              transition: 'background .15s',
+                            }}
+                          >
+                            {val ? '✓ Yes' : 'No'}
+                          </button>
+                          {spec.hint && <span style={{ fontSize: 10, color: 'var(--color-steel)', marginTop: 2 }}>{spec.hint}</span>}
+                        </div>
+                      )
+                    }
+                    if (spec.type === 'select' && spec.options) {
+                      return (
+                        <div key={spec.key} className="qq-field">
+                          <span className="qq-label">{spec.label}</span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {spec.options.map(opt => {
+                              const active = String(val) === opt.value
+                              return (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => setCurSpecs(prev => ({ ...prev, [spec.key]: opt.value }))}
+                                  style={{
+                                    flex: 1, minWidth: 0,
+                                    padding: '6px 6px', borderRadius: 6,
+                                    border: `1px solid ${active ? 'var(--color-gold)' : 'var(--color-steel)'}`,
+                                    background: active ? 'var(--color-gold)' : 'transparent',
+                                    color: active ? 'var(--color-charcoal)' : 'var(--color-white)',
+                                    fontSize: 11, fontWeight: active ? 700 : 500,
+                                    cursor: 'pointer', whiteSpace: 'nowrap',
+                                    minHeight: 32,
+                                  }}
+                                >
+                                  {opt.label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  })}
                 </div>
-              </div>
+              )}
 
-              {/* Hassle */}
-              <div className="qq-field">
-                <div className="qq-slider-wrap">
-                  <div className="qq-slider-header">
-                    <span className="qq-label">Hassle Factor</span>
-                    <span className="qq-slider-value">{curHassle}</span>
+              {/* Difficulty / Hassle sliders — shown only when there are
+                  no quick specs (i.e. legacy "Other" type or custom types
+                  without spec definitions). When specs exist, difficulty
+                  and hassle are left at their defaults since the specs
+                  capture the concrete factors that affect pricing. */}
+              {curSpecDefs.length === 0 && curJobTypeId !== 'other' && (
+                <>
+                  <div className="qq-field">
+                    <div className="qq-slider-wrap">
+                      <div className="qq-slider-header">
+                        <span className="qq-label">Difficulty</span>
+                        <span className="qq-slider-value">{curDifficulty}</span>
+                      </div>
+                      <input className="qq-slider" type="range" min={0} max={100} value={curDifficulty} onChange={e => setCurDifficulty(Number(e.target.value))} />
+                      <div className="qq-slider-labels"><span>Easy</span><span>Hard</span></div>
+                    </div>
                   </div>
-                  <input className="qq-slider" type="range" min={0} max={100} value={curHassle} onChange={e => { setCurHassle(Number(e.target.value)); setHassleManuallyOverridden(true) }} />
-                  <div className="qq-slider-labels"><span>Straightforward</span><span>Complex</span></div>
-                </div>
-              </div>
+                  <div className="qq-field">
+                    <div className="qq-slider-wrap">
+                      <div className="qq-slider-header">
+                        <span className="qq-label">Hassle Factor</span>
+                        <span className="qq-slider-value">{curHassle}</span>
+                      </div>
+                      <input className="qq-slider" type="range" min={0} max={100} value={curHassle} onChange={e => { setCurHassle(Number(e.target.value)); setHassleManuallyOverridden(true) }} />
+                      <div className="qq-slider-labels"><span>Straightforward</span><span>Complex</span></div>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Toggles */}
               <div className="qq-field">
