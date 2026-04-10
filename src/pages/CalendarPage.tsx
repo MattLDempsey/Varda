@@ -428,61 +428,136 @@ export default function CalendarPage() {
 
       {/* week view */}
       {view === 'week' && (
-        <div style={s.grid}>
-          {/* day headers */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '64px repeat(7, 1fr)',
+          background: `${C.steel}22`,
+          borderRadius: 12,
+          overflow: 'hidden',
+          gap: 1,
+        }}>
+          {/* Top-left empty cell + day headers */}
+          <div style={{ background: C.charcoalLight, padding: '12px 8px', minHeight: 44 }} />
           {weekDates.map((d, i) => (
             <div
               key={`h-${i}`}
-              style={{
-                ...s.dayHeader,
-                ...(formatDate(d) === today ? { color: C.gold } : {}),
-                cursor: 'pointer',
-              }}
               onClick={() => { setCurrentDate(d); setView('day') }}
+              style={{
+                background: C.charcoalLight,
+                padding: '12px 8px', minHeight: 44,
+                fontSize: 11, fontWeight: 700, color: formatDate(d) === today ? C.gold : C.silver,
+                textTransform: 'uppercase', letterSpacing: 0.8,
+                cursor: 'pointer', textAlign: 'center',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
             >
-              {DAYS[i]} {d.getDate()}
+              {DAYS[i]} <span style={{ fontSize: 13, fontWeight: 700 }}>{d.getDate()}</span>
             </div>
           ))}
 
-          {/* day cells */}
+          {/* Hour labels column (first column, full grid height) */}
+          <div style={{
+            background: C.charcoalLight, position: 'relative',
+            height: DAY_GRID_HEIGHT,
+            gridColumn: '1 / 2',
+          }}>
+            {dayGridHours.map(hour => (
+              <div
+                key={`week-label-${hour}`}
+                style={{
+                  position: 'absolute',
+                  top: (hour - DAY_START_HOUR) * HOUR_HEIGHT,
+                  right: 8,
+                  fontSize: 11, fontWeight: 500, color: C.steel,
+                  transform: 'translateY(-6px)',
+                }}
+              >
+                {String(hour).padStart(2, '0')}:00
+              </div>
+            ))}
+          </div>
+
+          {/* One day column per weekday */}
           {weekDates.map((d, i) => {
             const dateStr = formatDate(d)
-            const dayEvts = events.filter(e => e.date === dateStr)
             const isToday = dateStr === today
-
+            const dayEvts = events.filter(e => e.date === dateStr)
             return (
-              <div key={`c-${i}`} style={{ ...s.dayCell, ...(isToday ? s.dayCellToday : {}) }}>
-                {dayEvts.length === 0 && (
-                  <div style={{ color: C.steel, fontSize: 11, textAlign: 'center', padding: '20px 0' }}>—</div>
-                )}
-                {dayEvts.map(ev => {
-                  const val = getEventValue(ev)
-                  return (
+              <div
+                key={`day-${i}`}
+                style={{
+                  position: 'relative',
+                  background: isToday ? `${C.gold}08` : C.charcoal,
+                  height: DAY_GRID_HEIGHT,
+                  borderLeft: isToday ? `2px solid ${C.gold}44` : 'none',
+                }}
+              >
+                {/* Hour grid lines */}
+                {dayGridHours.map(hour => (
                   <div
-                    key={ev.id}
+                    key={`week-line-${i}-${hour}`}
                     style={{
-                      ...s.eventCard,
-                      borderLeftColor: statusColor[ev.status],
-                      background: statusColor[ev.status] + '15',
+                      position: 'absolute', left: 0, right: 0,
+                      top: (hour - DAY_START_HOUR) * HOUR_HEIGHT,
+                      borderTop: `1px solid ${C.steel}22`,
+                      pointerEvents: 'none',
                     }}
-                    onClick={() => setSelectedEvent(ev)}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none' }}
-                  >
-                    <div style={s.eventCustomer}>{ev.customerName}</div>
-                    <div style={s.eventJob}>{ev.jobType}</div>
-                    {val > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: C.gold, marginTop: 1 }}>{'\u00A3'}{val.toLocaleString('en-GB')}</div>}
-                    <div style={s.eventSlot as CSSProperties}>
-                      <Clock size={10} />
-                      {ev.slot === 'full'
-                        ? 'Full day'
-                        : ev.slot === 'morning'
-                          ? 'AM'
-                          : ev.slot === 'afternoon'
-                            ? 'PM'
-                            : (ev.startTime || 'Quick')}
+                  />
+                ))}
+
+                {/* Time-positioned event cards */}
+                {dayEvts.map(ev => {
+                  const { startMin, endMin, start, end } = eventTimes(ev)
+                  const dayStartMin = DAY_START_HOUR * 60
+                  const dayEndMin = DAY_END_HOUR * 60
+                  const visibleStart = Math.max(startMin, dayStartMin)
+                  const visibleEnd = Math.min(endMin, dayEndMin)
+                  if (visibleEnd <= visibleStart) return null
+                  const top = ((visibleStart - dayStartMin) / 60) * HOUR_HEIGHT
+                  const height = Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT, 24)
+                  const isQuick = ev.slot === 'quick'
+                  return (
+                    <div
+                      key={ev.id}
+                      onClick={() => setSelectedEvent(ev)}
+                      style={{
+                        position: 'absolute',
+                        top, height,
+                        left: 4, right: 4,
+                        background: statusColor[ev.status] + (isQuick ? '22' : '15'),
+                        border: `1px solid ${statusColor[ev.status]}55`,
+                        borderLeft: `3px solid ${statusColor[ev.status]}`,
+                        borderRadius: 6,
+                        padding: '4px 6px',
+                        cursor: 'pointer',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 1,
+                        transition: 'transform .12s, box-shadow .12s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.3)' }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
+                    >
+                      <div style={{
+                        fontSize: 11, fontWeight: 700, color: C.white,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>{ev.customerName}</div>
+                      {height >= 36 && (
+                        <div style={{
+                          fontSize: 10, color: C.silver,
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>
+                          {start}–{end}{isQuick ? ' · Quick' : ''}
+                        </div>
+                      )}
+                      {height >= 56 && (
+                        <div style={{
+                          fontSize: 10, color: C.steel,
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>{ev.jobType}</div>
+                      )}
                     </div>
-                  </div>
                   )
                 })}
               </div>
