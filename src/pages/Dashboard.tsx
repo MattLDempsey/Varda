@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FileText, Briefcase, PoundSterling, Clock, TrendingUp,
-  CalendarCheck, CheckCircle, AlertTriangle, ChevronRight,
+  CalendarCheck, CheckCircle, AlertTriangle, ChevronRight, ChevronLeft,
   Calendar, Bell, X, Square, CheckSquare,
   PenLine, UserPlus, ClipboardList, Play,
 } from 'lucide-react'
@@ -67,7 +67,8 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { C } = useTheme()
   const { quotes, jobs, events, invoices, settings, customers, addComm, updateJob, moveJob, isDataLoading } = useData()
-  const [showAllActions, setShowAllActions] = useState(false)
+  const [actionPage, setActionPage] = useState(0)
+  const ACTIONS_PER_PAGE = 3
   const { user } = useAuth()
   const isMobile = useIsMobile()
   const today = todayStr()
@@ -623,78 +624,127 @@ export default function Dashboard() {
               </button>
             )}
           </div>
-          <div style={{ flex: 1 }}>
-          {visibleFollowUps.length === 0 && (
-            <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
-              <CheckCircle size={32} color={C.green} />
-              <span>All clear — nothing needs attention</span>
-            </div>
-          )}
-          {visibleFollowUps.slice(0, showAllActions ? undefined : 3).map((item) => {
-            const color = priorityColor(item.priority)
-            const icon = item.priority === 'high'
-              ? <AlertTriangle size={16} />
-              : item.priority === 'medium'
-                ? <Clock size={16} />
-                : <FileText size={16} />
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(visibleFollowUps.length / ACTIONS_PER_PAGE))
+            // Clamp current page if items were dismissed
+            const page = Math.min(actionPage, totalPages - 1)
+            if (page !== actionPage) setTimeout(() => setActionPage(page), 0)
+            const pageItems = visibleFollowUps.slice(page * ACTIONS_PER_PAGE, (page + 1) * ACTIONS_PER_PAGE)
+
             return (
-              <div
-                key={item.id}
-                style={{
-                  ...s.listItem,
-                  borderLeft: `3px solid ${color}`,
-                  marginBottom: 4,
-                }}
-                onClick={() => {
-                  if (item.id.startsWith('followup-reminder-')) {
-                    const eventId = item.id.replace('followup-reminder-', '')
-                    sendOneReminder(eventId)
-                  } else {
-                    navigate(item.route)
-                  }
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-                  <span style={{ color, flexShrink: 0 }}>{icon}</span>
-                  <span style={{ fontSize: 13, color: C.white }}>{item.message}</span>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1 }}>
+                  {visibleFollowUps.length === 0 && (
+                    <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
+                      <CheckCircle size={32} color={C.green} />
+                      <span>All clear — nothing needs attention</span>
+                    </div>
+                  )}
+                  {pageItems.map((item) => {
+                    const color = priorityColor(item.priority)
+                    const icon = item.priority === 'high'
+                      ? <AlertTriangle size={16} />
+                      : item.priority === 'medium'
+                        ? <Clock size={16} />
+                        : <FileText size={16} />
+                    return (
+                      <div
+                        key={item.id}
+                        style={{
+                          ...s.listItem,
+                          borderLeft: `3px solid ${color}`,
+                          marginBottom: 4,
+                        }}
+                        onClick={() => {
+                          if (item.id.startsWith('followup-reminder-')) {
+                            const eventId = item.id.replace('followup-reminder-', '')
+                            sendOneReminder(eventId)
+                          } else {
+                            navigate(item.route)
+                          }
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                          <span style={{ color, flexShrink: 0 }}>{icon}</span>
+                          <span style={{ fontSize: 13, color: C.white }}>{item.message}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <button
+                            onClick={(e) => handleDismiss(item.id, e)}
+                            title="Dismiss"
+                            style={{
+                              background: 'transparent', border: 'none', cursor: 'pointer',
+                              color: C.steel, padding: 4, display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', borderRadius: 4, minWidth: 28, minHeight: 28,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = C.silver)}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = C.steel)}
+                          >
+                            <X size={14} />
+                          </button>
+                          <ChevronRight size={16} color={C.steel} />
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <button
-                    onClick={(e) => handleDismiss(item.id, e)}
-                    title="Dismiss"
-                    style={{
-                      background: 'transparent', border: 'none', cursor: 'pointer',
-                      color: C.steel, padding: 4, display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', borderRadius: 4, minWidth: 28, minHeight: 28,
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = C.silver)}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = C.steel)}
-                  >
-                    <X size={14} />
-                  </button>
-                  <ChevronRight size={16} color={C.steel} />
-                </div>
+
+                {/* Pagination: prev/next arrows + dot indicators */}
+                {totalPages > 1 && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 12, paddingTop: 10,
+                  }}>
+                    <button
+                      onClick={() => setActionPage(Math.max(0, page - 1))}
+                      disabled={page === 0}
+                      style={{
+                        background: 'transparent', border: 'none',
+                        color: page === 0 ? C.steel : C.silver, cursor: page === 0 ? 'default' : 'pointer',
+                        padding: 4, display: 'flex', opacity: page === 0 ? 0.3 : 1,
+                      }}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {Array.from({ length: totalPages }).map((_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setActionPage(i)}
+                          style={{
+                            width: i === page ? 18 : 8,
+                            height: 8,
+                            borderRadius: 4,
+                            border: 'none',
+                            background: i === page ? C.gold : `${C.steel}66`,
+                            cursor: 'pointer',
+                            padding: 0,
+                            transition: 'width .2s, background .2s',
+                          }}
+                          aria-label={`Page ${i + 1}`}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setActionPage(Math.min(totalPages - 1, page + 1))}
+                      disabled={page >= totalPages - 1}
+                      style={{
+                        background: 'transparent', border: 'none',
+                        color: page >= totalPages - 1 ? C.steel : C.silver,
+                        cursor: page >= totalPages - 1 ? 'default' : 'pointer',
+                        padding: 4, display: 'flex',
+                        opacity: page >= totalPages - 1 ? 0.3 : 1,
+                      }}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
             )
-          })}
-          {visibleFollowUps.length > 3 && (
-            <button
-              onClick={() => setShowAllActions(!showAllActions)}
-              style={{
-                width: '100%', padding: '8px', borderRadius: 8, marginTop: 4,
-                background: 'transparent', border: `1px solid ${C.steel}33`,
-                color: C.silver, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = C.gold; e.currentTarget.style.borderColor = `${C.gold}44` }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = C.silver; e.currentTarget.style.borderColor = `${C.steel}33` }}
-            >
-              {showAllActions ? 'Show less' : `Show ${visibleFollowUps.length - 3} more`}
-            </button>
-          )}
-          </div>
+          })()}
         </div>
       </div>
 
