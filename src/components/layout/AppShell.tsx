@@ -75,7 +75,8 @@ function hasMinRole(userRole: string, minRole: string): boolean {
 }
 
 const allNavItems: NavItem[] = [
-  { to: '/quote',     icon: <FileText size={24} />,  label: 'Quick Quote' },
+  { to: '/',          icon: <LayoutDashboard size={24} />, label: 'Home' },
+  { to: '/quote',     icon: <FileText size={24} />,  label: 'Quote' },
   { to: '/jobs',      icon: <Briefcase size={24} />, label: 'Jobs' },
   { to: '/calendar',  icon: <Calendar size={24} />,  label: 'Calendar' },
   { to: '/customers', icon: <Users size={24} />,     label: 'Customers' },
@@ -346,8 +347,8 @@ export default function AppShell() {
   }
 
   // Mobile bottom nav items (primary 4 + More)
-  const mobileNavItems = navItems.slice(0, 4) // Dashboard, Quick Quote, Jobs, Calendar
-  const mobileMoreItems = navItems.slice(4)    // Customers, Expenses, Insights, Pricing, etc.
+  const mobileNavItems = navItems.filter(n => ['/', '/quote', '/jobs', '/calendar'].includes(n.to))
+  const mobileMoreItems = navItems.filter(n => !['/', '/quote', '/jobs', '/calendar'].includes(n.to))
 
   return (
     <div className="app-shell">
@@ -491,6 +492,16 @@ export default function AppShell() {
                 <span>{item.label}</span>
               </NavLink>
             ))}
+            {isAdmin && (
+              <NavLink
+                to="/settings"
+                className="mobile-more-item"
+                onClick={() => setShowMobileMore(false)}
+              >
+                <Settings size={20} />
+                <span>Settings</span>
+              </NavLink>
+            )}
             <button
               className="mobile-more-item"
               onClick={toggle}

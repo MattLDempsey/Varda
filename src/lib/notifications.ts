@@ -38,8 +38,8 @@ export function showNotification(
   try {
     const n = new Notification(title, {
       body,
-      icon: '/varda-192.png',
-      badge: '/varda-192.png',
+      icon: '/icon-192x192.png',
+      badge: '/icon-96x96.png',
       tag: title, // prevents duplicate notifications with same title
     })
     if (options?.url) {

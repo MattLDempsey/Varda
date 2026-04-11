@@ -294,3 +294,34 @@
     padding: 24px;
   }
 }
+
+/* ══════════════════════════════════════════════════
+   PWA / iOS STANDALONE MODE
+   ══════════════════════════════════════════════════ */
+
+/* When installed as PWA, account for safe areas */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .app-shell {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Prevent overscroll bounce in PWA mode */
+@media (display-mode: standalone) {
+  html, body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Extra bottom padding on mobile for home indicator */
+  @media (max-width: 768px) {
+    .mobile-bottom-nav {
+      height: calc(64px + env(safe-area-inset-bottom, 0));
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    .main-content {
+      padding-bottom: calc(80px + env(safe-area-inset-bottom, 0));
+    }
+  }
+}
