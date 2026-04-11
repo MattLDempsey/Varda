@@ -58,7 +58,12 @@ export default function Onboarding() {
           if (profile?.org_id) {
             await supabase.from('pricing_config').upsert({
               org_id: profile.org_id,
-              config_json: { labourRate: rate, emergencyMult: 1.5, outOfHoursMult: 1.3, wastePct: 0.05, certFee: 85, emergencyMinCharge: 150 },
+              config_json: {
+                labourRate: rate, vatRate: 0.20, certFee: 85, wastePct: 0.05,
+                marginTarget: 0.30, emergencyMult: 1.5, outOfHoursMult: 1.25,
+                difficultyMin: 1.0, difficultyMax: 2.0, hassleMin: 1.0, hassleMax: 1.6,
+                emergencyMinCharge: 150,
+              },
             }, { onConflict: 'org_id' })
           }
         }

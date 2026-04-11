@@ -1,12 +1,74 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { useData } from '../data/DataContext'
 import { CheckCircle, Clock, FileText, Phone, Mail, Globe, AlertTriangle, Banknote, CreditCard } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { CSSProperties } from 'react'
 
+/**
+ * Public invoice view — rendered for `/invoice/:invoiceId`. Lives outside the
+ * authenticated DataProvider tree so it must fetch its own data via the
+ * `get_public_invoice` SECURITY DEFINER RPC.
+ */
+
+interface PublicInvoice {
+  id: string
+  ref: string
+  customer_name: string
+  job_type_name: string
+  description: string
+  type: string | null
+  net_total: number
+  vat: number
+  grand_total: number
+  status: 'Draft' | 'Sent' | 'Viewed' | 'Paid' | 'Voided'
+  created_at: string
+  sent_at: string | null
+  paid_at: string | null
+  due_date: string
+}
+
+interface PublicCustomer {
+  name: string
+  address1: string | null
+  address2: string | null
+  city: string | null
+  postcode: string | null
+}
+
+interface PublicQuoteInfo {
+  certificates: number
+}
+
+interface PublicBusiness {
+  businessName?: string
+  ownerName?: string
+  phone?: string
+  email?: string
+  website?: string
+  address1?: string
+  city?: string
+  county?: string
+  postcode?: string
+}
+
+interface PublicQuoteConfig {
+  bankName?: string
+  sortCode?: string
+  accountNumber?: string
+  paymentTerms?: number
+  footer?: string
+}
+
+interface PublicInvoicePayload {
+  invoice: PublicInvoice
+  customer: PublicCustomer | null
+  quote: PublicQuoteInfo | null
+  business: PublicBusiness
+  quoteConfig: PublicQuoteConfig
+}
+
 function fmtCurrency(n: number): string {
-  return '£' + n.toFixed(2)
+  return '£' + Number(n).toFixed(2)
 }
 
 function fmtDate(iso: string): string {
@@ -18,14 +80,52 @@ export default function InvoiceView() {
   const { invoiceId } = useParams<{ invoiceId: string }>()
   const [searchParams] = useSearchParams()
   const justPaid = searchParams.get('paid') === 'true'
-  const { invoices, quotes, customers, settings } = useData()
+
+  const [payload, setPayload] = useState<PublicInvoicePayload | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
   const [payError, setPayError] = useState('')
   const [showBankFallback, setShowBankFallback] = useState(false)
 
-  const invoice = invoices.find(i => i.id === invoiceId)
+  // Fetch the invoice on mount
+  useEffect(() => {
+    if (!invoiceId) {
+      setNotFound(true)
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.rpc('get_public_invoice', { p_invoice_id: invoiceId })
+      if (cancelled) return
+      if (error || !data) {
+        console.error('[InvoiceView] failed to load invoice', error)
+        setNotFound(true)
+        setLoading(false)
+        return
+      }
+      setPayload(data as PublicInvoicePayload)
+      setLoading(false)
+      // Mark as viewed (best-effort)
+      if ((data as PublicInvoicePayload).invoice.status === 'Sent') {
+        void supabase.rpc('mark_invoice_viewed', { p_invoice_id: invoiceId }).then(() => {}, () => {})
+      }
+    })()
+    return () => { cancelled = true }
+  }, [invoiceId])
 
-  if (!invoice) {
+  // ── Loading / not-found states ──
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#1A1C20', color: '#C9CDD2', gap: 12 }}>
+        <FileText size={48} color="#4B5057" />
+        <div style={{ fontSize: 16, color: '#4B5057' }}>Loading invoice…</div>
+      </div>
+    )
+  }
+
+  if (notFound || !payload) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#1A1C20', color: '#C9CDD2', gap: 12 }}>
         <FileText size={48} color="#4B5057" />
@@ -35,12 +135,12 @@ export default function InvoiceView() {
     )
   }
 
-  const customer = invoice.customerId ? customers.find(c => c.id === invoice.customerId) : undefined
-  const linkedQuote = invoice.quoteId ? quotes.find(q => q.id === invoice.quoteId) : undefined
+  const { invoice, customer, quote, business, quoteConfig } = payload
+  const businessName = business.businessName || 'Business'
 
   // Determine if overdue
   const today = new Date().toISOString().split('T')[0]
-  const isOverdue = invoice.status !== 'Paid' && invoice.dueDate < today
+  const isOverdue = invoice.status !== 'Paid' && invoice.due_date < today
   const isPaid = invoice.status === 'Paid'
   const isDraft = invoice.status === 'Draft'
 
@@ -57,7 +157,6 @@ export default function InvoiceView() {
   const s: Record<string, CSSProperties> = {
     page: { minHeight: '100vh', background: bg, padding: '40px 20px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' },
     card: { width: '100%', maxWidth: 680, background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.5)' },
-    // status banner
     paidBanner: {
       width: '100%', padding: '14px 40px', background: `${green}18`,
       borderBottom: `2px solid ${green}44`, fontSize: 15, fontWeight: 700, color: green,
@@ -78,7 +177,6 @@ export default function InvoiceView() {
       borderBottom: `2px solid ${green}44`, fontSize: 15, fontWeight: 700, color: green,
       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
     },
-    // header band
     headerBand: { background: `linear-gradient(135deg, #2B2E34 0%, #33363D 100%)`, padding: '36px 40px 32px', borderBottom: `3px solid ${gold}` },
     headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
     brand: { fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: gold, letterSpacing: 0.5 },
@@ -86,46 +184,38 @@ export default function InvoiceView() {
     docBadge: { textAlign: 'right' },
     docTitle: { fontSize: 12, fontWeight: 600, color: steel, textTransform: 'uppercase', letterSpacing: 1.5 },
     docRef: { fontSize: 22, fontWeight: 700, color: white, marginTop: 2 },
-    // body
     body: { padding: '32px 40px 36px' },
-    // addresses
-    addressRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginBottom: 28 },
+    addressRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 32, marginBottom: 28 },
     addressBlock: {},
     addressLabel: { fontSize: 10, fontWeight: 700, color: gold, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 },
     addressName: { fontSize: 16, fontWeight: 600, color: white, marginBottom: 4 },
     addressLine: { fontSize: 13, color: silver, lineHeight: 1.6 },
-    // dates
     dateRow: {
       background: cardLight, borderRadius: 12, padding: '14px 20px',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      marginBottom: 28, border: `1px solid ${steel}33`,
+      marginBottom: 28, border: `1px solid ${steel}33`, gap: 12, flexWrap: 'wrap' as const,
     },
     dateLabel: { fontSize: 12, color: steel, fontWeight: 500 },
     dateValue: { fontSize: 13, color: gold, fontWeight: 600 },
-    // line items
-    lineItem: { display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${steel}1A`, alignItems: 'flex-start' },
-    lineDesc: { flex: 1 },
+    lineItem: { display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${steel}1A`, alignItems: 'flex-start', gap: 12 },
+    lineDesc: { flex: 1, minWidth: 0 },
     lineTitle: { fontSize: 15, fontWeight: 600, color: white },
     lineSub: { fontSize: 12, color: steel, marginTop: 2 },
     lineAmount: { fontSize: 15, fontWeight: 600, color: white, textAlign: 'right', minWidth: 90 },
-    // totals
     totalsWrap: { marginTop: 20, marginLeft: 'auto', maxWidth: 300 },
     totalRow: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 14, color: silver },
     grandRow: {
       display: 'flex', justifyContent: 'space-between', padding: '14px 0 0',
       fontSize: 24, fontWeight: 700, color: gold, borderTop: `3px solid ${gold}`, marginTop: 8,
     },
-    // payment details
     paymentBox: { background: cardLight, borderRadius: 12, padding: '20px', marginTop: 24, border: `1px solid ${steel}22` },
     paymentLabel: { fontSize: 10, fontWeight: 700, color: gold, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 },
     paymentGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px' },
     paymentFieldLabel: { fontSize: 11, color: steel, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 },
     paymentFieldValue: { fontSize: 14, color: white, marginBottom: 8 },
-    // notes
     notesBox: { background: cardLight, borderRadius: 12, padding: '16px 20px', marginTop: 24, border: `1px solid ${steel}22` },
     notesLabel: { fontSize: 10, fontWeight: 700, color: steel, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
     notesText: { fontSize: 13, color: silver, lineHeight: 1.7, whiteSpace: 'pre-wrap' },
-    // footer
     footer: {
       background: cardLight, padding: '20px 40px', display: 'flex', alignItems: 'center',
       justifyContent: 'center', gap: 24, flexWrap: 'wrap',
@@ -134,20 +224,22 @@ export default function InvoiceView() {
   }
 
   // Certification amount from linked quote, if available
-  const certAmount = linkedQuote && linkedQuote.certificates > 0 ? linkedQuote.certificates : 0
-  const jobAmount = invoice.netTotal - certAmount
+  const certAmount = quote && quote.certificates > 0 ? quote.certificates : 0
+  const jobAmount = invoice.net_total - certAmount
+
+  const websiteDisplay = (business.website || '').replace('https://', '').replace('http://', '')
 
   return (
     <div style={s.page}>
       <div style={s.card}>
-        {/* ── Payment Success Banner (from Stripe redirect) ── */}
+        {/* Payment Success Banner (from Stripe redirect) */}
         {justPaid && !isPaid && (
           <div style={s.successBanner}>
             <CheckCircle size={18} /> Payment successful — thank you! Your invoice will be updated shortly.
           </div>
         )}
 
-        {/* ── Status Banner ── */}
+        {/* Status Banner */}
         {isPaid && (
           <div style={s.paidBanner}>
             <CheckCircle size={18} /> Payment Received — Thank you
@@ -155,20 +247,20 @@ export default function InvoiceView() {
         )}
         {isOverdue && !isPaid && (
           <div style={s.overdueBanner}>
-            <AlertTriangle size={18} /> Payment Overdue — was due {fmtDate(invoice.dueDate)}
+            <AlertTriangle size={18} /> Payment Overdue — was due {fmtDate(invoice.due_date)}
           </div>
         )}
         {!isPaid && !isOverdue && (isDraft || invoice.status === 'Sent' || invoice.status === 'Viewed') && (
           <div style={s.pendingBanner}>
-            <Clock size={18} /> Payment Due — {fmtDate(invoice.dueDate)}
+            <Clock size={18} /> Payment Due — {fmtDate(invoice.due_date)}
           </div>
         )}
 
-        {/* ── Header Band ── */}
+        {/* Header Band */}
         <div style={s.headerBand}>
           <div style={s.headerRow}>
             <div>
-              <div style={s.brand}>{settings.business.businessName.replace(' Electrical', '')}</div>
+              <div style={s.brand}>{businessName.replace(' Electrical', '')}</div>
               <div style={s.brandSub}>Electrical Services</div>
             </div>
             <div style={s.docBadge as CSSProperties}>
@@ -178,13 +270,13 @@ export default function InvoiceView() {
           </div>
         </div>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <div style={s.body}>
           {/* Addresses */}
           <div style={s.addressRow}>
             <div style={s.addressBlock}>
               <div style={s.addressLabel}>Invoice To</div>
-              <div style={s.addressName}>{invoice.customerName}</div>
+              <div style={s.addressName}>{invoice.customer_name}</div>
               {customer && (
                 <div style={s.addressLine}>
                   {customer.address1 && <>{customer.address1}<br /></>}
@@ -196,13 +288,13 @@ export default function InvoiceView() {
             </div>
             <div style={{ ...s.addressBlock, textAlign: 'right' } as CSSProperties}>
               <div style={s.addressLabel}>From</div>
-              <div style={s.addressName}>{settings.business.businessName}</div>
+              <div style={s.addressName}>{businessName}</div>
               <div style={s.addressLine}>
-                {settings.business.address1 && <>{settings.business.address1}<br /></>}
-                {settings.business.city}{settings.business.county ? `, ${settings.business.county}` : ''}<br />
-                {settings.business.postcode && <>{settings.business.postcode}<br /></>}
-                {settings.business.email}<br />
-                {settings.business.website.replace('https://', '')}
+                {business.address1 && <>{business.address1}<br /></>}
+                {business.city}{business.county ? `, ${business.county}` : ''}<br />
+                {business.postcode && <>{business.postcode}<br /></>}
+                {business.email}<br />
+                {websiteDisplay}
               </div>
             </div>
           </div>
@@ -211,15 +303,15 @@ export default function InvoiceView() {
           <div style={s.dateRow}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Clock size={14} color={steel} />
-              <span style={s.dateLabel}>Invoice Date: <span style={s.dateValue}>{fmtDate(invoice.createdAt)}</span></span>
+              <span style={s.dateLabel}>Invoice Date: <span style={s.dateValue}>{fmtDate(invoice.created_at)}</span></span>
             </div>
-            <span style={s.dateLabel}>Due: <span style={s.dateValue}>{fmtDate(invoice.dueDate)}</span></span>
+            <span style={s.dateLabel}>Due: <span style={s.dateValue}>{fmtDate(invoice.due_date)}</span></span>
           </div>
 
-          {/* Job line item — single price, no breakdown */}
+          {/* Job line item */}
           <div style={s.lineItem}>
             <div style={s.lineDesc}>
-              <div style={s.lineTitle}>{invoice.jobTypeName}</div>
+              <div style={s.lineTitle}>{invoice.job_type_name}</div>
               {invoice.description && <div style={s.lineSub}>{invoice.description}</div>}
             </div>
             <div style={s.lineAmount as CSSProperties}>{fmtCurrency(jobAmount)}</div>
@@ -237,9 +329,9 @@ export default function InvoiceView() {
 
           {/* Totals */}
           <div style={s.totalsWrap}>
-            <div style={s.totalRow}><span>Subtotal</span><span style={{ color: white }}>{fmtCurrency(invoice.netTotal)}</span></div>
+            <div style={s.totalRow}><span>Subtotal</span><span style={{ color: white }}>{fmtCurrency(invoice.net_total)}</span></div>
             <div style={s.totalRow}><span>VAT (20%)</span><span style={{ color: white }}>{fmtCurrency(invoice.vat)}</span></div>
-            <div style={s.grandRow}><span>Total</span><span>{fmtCurrency(invoice.grandTotal)}</span></div>
+            <div style={s.grandRow}><span>Total</span><span>{fmtCurrency(invoice.grand_total)}</span></div>
           </div>
 
           {/* Pay Now button for unpaid invoices */}
@@ -251,11 +343,7 @@ export default function InvoiceView() {
                   setPayError('')
                   try {
                     const { data, error } = await supabase.functions.invoke('create-invoice-payment', {
-                      body: {
-                        invoiceId: invoice.id,
-                        // The Edge Function resolves the org from the invoice
-                        // row server-side — no auth context on this public page.
-                      },
+                      body: { invoiceId: invoice.id },
                     })
                     if (error) throw error
                     if (data?.url) {
@@ -283,7 +371,7 @@ export default function InvoiceView() {
                 onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = `0 4px 16px ${gold}44` }}
               >
                 <CreditCard size={22} />
-                {payLoading ? 'Processing...' : `Pay Now — £${invoice.grandTotal.toFixed(2)}`}
+                {payLoading ? 'Processing...' : `Pay Now — £${Number(invoice.grand_total).toFixed(2)}`}
               </button>
 
               {payError && (
@@ -297,8 +385,8 @@ export default function InvoiceView() {
             </div>
           )}
 
-          {/* Bank transfer details — always show for unpaid, or show as fallback */}
-          {!isPaid && (showBankFallback || settings.quoteConfig.bankName || settings.quoteConfig.sortCode || settings.quoteConfig.accountNumber) && (
+          {/* Bank transfer details */}
+          {!isPaid && (showBankFallback || quoteConfig.bankName || quoteConfig.sortCode || quoteConfig.accountNumber) && (
             <div style={{ ...s.paymentBox, marginTop: payError ? 12 : 24 }}>
               <div style={s.paymentLabel}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -306,22 +394,22 @@ export default function InvoiceView() {
                 </span>
               </div>
               <div style={s.paymentGrid}>
-                {settings.quoteConfig.bankName && (
+                {quoteConfig.bankName && (
                   <>
                     <div style={s.paymentFieldLabel}>Bank</div>
-                    <div style={s.paymentFieldValue}>{settings.quoteConfig.bankName}</div>
+                    <div style={s.paymentFieldValue}>{quoteConfig.bankName}</div>
                   </>
                 )}
-                {settings.quoteConfig.sortCode && (
+                {quoteConfig.sortCode && (
                   <>
                     <div style={s.paymentFieldLabel}>Sort Code</div>
-                    <div style={s.paymentFieldValue}>{settings.quoteConfig.sortCode}</div>
+                    <div style={s.paymentFieldValue}>{quoteConfig.sortCode}</div>
                   </>
                 )}
-                {settings.quoteConfig.accountNumber && (
+                {quoteConfig.accountNumber && (
                   <>
                     <div style={s.paymentFieldLabel}>Account Number</div>
-                    <div style={s.paymentFieldValue}>{settings.quoteConfig.accountNumber}</div>
+                    <div style={s.paymentFieldValue}>{quoteConfig.accountNumber}</div>
                   </>
                 )}
                 <div style={s.paymentFieldLabel}>Payment Reference</div>
@@ -334,23 +422,23 @@ export default function InvoiceView() {
           <div style={s.notesBox}>
             <div style={s.notesLabel}>Terms & Conditions</div>
             <div style={s.notesText}>
-              Payment is due within {settings.quoteConfig.paymentTerms || 14} days of the invoice date. All electrical work has been carried out in accordance with BS 7671 (18th Edition) and relevant Part P Building Regulations. Work is guaranteed for 12 months from completion. Late payments may incur additional charges.
+              Payment is due within {quoteConfig.paymentTerms || 14} days of the invoice date. All electrical work has been carried out in accordance with BS 7671 (18th Edition) and relevant Part P Building Regulations. Work is guaranteed for 12 months from completion. Late payments may incur additional charges.
             </div>
           </div>
 
           {/* Footer text */}
-          {settings.quoteConfig.footer && (
+          {quoteConfig.footer && (
             <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: steel, fontStyle: 'italic' } as CSSProperties}>
-              {settings.quoteConfig.footer}
+              {quoteConfig.footer}
             </div>
           )}
         </div>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div style={s.footer as CSSProperties}>
-          <span style={s.footerItem}><Phone size={12} /> {settings.business.phone}</span>
-          <span style={s.footerItem}><Mail size={12} /> {settings.business.email}</span>
-          <span style={s.footerItem}><Globe size={12} /> {settings.business.website.replace('https://', '')}</span>
+          {business.phone && <span style={s.footerItem}><Phone size={12} /> {business.phone}</span>}
+          {business.email && <span style={s.footerItem}><Mail size={12} /> {business.email}</span>}
+          {websiteDisplay && <span style={s.footerItem}><Globe size={12} /> {websiteDisplay}</span>}
         </div>
       </div>
     </div>

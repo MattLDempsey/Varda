@@ -10,19 +10,10 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { apiVersion: '202
 
 // Map plans to Stripe Price IDs — set these up in your Stripe Dashboard
 // For now, use placeholder IDs. Replace with real ones after creating products in Stripe.
-const PLAN_PRICES: Record<string, { monthly: string; annual: string }> = {
-  starter: {
-    monthly: Deno.env.get('STRIPE_PRICE_STARTER_MONTHLY') || 'price_starter_monthly',
-    annual: Deno.env.get('STRIPE_PRICE_STARTER_ANNUAL') || 'price_starter_annual',
-  },
-  pro: {
-    monthly: Deno.env.get('STRIPE_PRICE_PRO_MONTHLY') || 'price_pro_monthly',
-    annual: Deno.env.get('STRIPE_PRICE_PRO_ANNUAL') || 'price_pro_annual',
-  },
-  business: {
-    monthly: Deno.env.get('STRIPE_PRICE_BUSINESS_MONTHLY') || 'price_business_monthly',
-    annual: Deno.env.get('STRIPE_PRICE_BUSINESS_ANNUAL') || 'price_business_annual',
-  },
+const PLAN_PRICES: Record<string, string> = {
+  starter: 'price_1TKoMe2dbjKVWsxl6bpPc2hd',
+  pro: 'price_1TKoMs2dbjKVWsxl6wiZmeWV',
+  business: 'price_1TKoN72dbjKVWsxlBum25lzV',
 }
 
 const corsHeaders = {
@@ -37,7 +28,7 @@ serve(async (req) => {
   }
 
   try {
-    const { plan, billing } = await req.json() as { plan: string; billing: 'monthly' | 'annual' }
+    const { plan } = await req.json() as { plan: string }
 
     if (!plan || !PLAN_PRICES[plan]) {
       return new Response(JSON.stringify({ error: 'Invalid plan' }), {
@@ -101,7 +92,7 @@ serve(async (req) => {
         .eq('org_id', profile.org_id)
     }
 
-    const priceId = PLAN_PRICES[plan][billing]
+    const priceId = PLAN_PRICES[plan]
 
     // Create Checkout Session
     const session = await stripe.checkout.sessions.create({

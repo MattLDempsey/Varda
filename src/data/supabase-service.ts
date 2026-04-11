@@ -487,7 +487,9 @@ export async function fetchPricingConfig(): Promise<PricingConfig | null> {
     if (error.code === 'PGRST116') return null
     throw error
   }
-  return data.config_json as PricingConfig
+  // Merge with defaults so any missing fields (e.g. vatRate) don't produce NaN
+  const { DEFAULT_PRICING_CONFIG } = await import('./DataContext')
+  return { ...DEFAULT_PRICING_CONFIG, ...data.config_json } as PricingConfig
 }
 
 export async function upsertPricingConfig(

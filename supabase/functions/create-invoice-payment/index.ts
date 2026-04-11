@@ -23,10 +23,10 @@ serve(async (req) => {
   }
 
   try {
-    const { invoiceId, orgId } = await req.json() as { invoiceId: string; orgId: string }
+    const { invoiceId } = await req.json() as { invoiceId: string }
 
-    if (!invoiceId || !orgId) {
-      return new Response(JSON.stringify({ error: 'Missing invoiceId or orgId' }), {
+    if (!invoiceId) {
+      return new Response(JSON.stringify({ error: 'Missing invoiceId' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -36,13 +36,14 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Look up the invoice
+    // Look up the invoice — resolve org_id server-side, never trust the client
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
-      .select('id, ref, grand_total, status, customer_name, job_type_name')
+      .select('id, ref, grand_total, status, customer_name, job_type_name, org_id')
       .eq('id', invoiceId)
-      .eq('org_id', orgId)
       .single()
+
+    const orgId = invoice?.org_id
 
     if (invoiceError || !invoice) {
       return new Response(JSON.stringify({ error: 'Invoice not found' }), {

@@ -14,7 +14,7 @@ const RESEND_API_URL = 'https://api.resend.com/emails'
 // All emails are sent from this verified Resend domain. The display name (the
 // "Friendly Name" customers see in their inbox) is overridden per request via
 // the `fromName` parameter, so quotes appear to come from the business owner.
-const FROM_EMAIL = 'noreply@vardaos.app'
+const FROM_EMAIL = 'noreply@vardaapp.com'
 const DEFAULT_FROM_NAME = 'Varda'
 
 /**
