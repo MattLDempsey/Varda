@@ -618,8 +618,8 @@
   }
 
   .qq-panel {
-    min-width: 100vw;
-    max-width: 100vw;
+    min-width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
     scroll-snap-align: start;
     padding: var(--space-4);
     gap: var(--space-3);

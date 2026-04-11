@@ -175,10 +175,7 @@ export default function QuickQuote() {
   const [newCustIsBusiness, setNewCustIsBusiness] = useState(false)
   const [newCustContactName, setNewCustContactName] = useState('')
   // Collapsible sections — customer collapses once selected, notes starts collapsed
-  const [sectionsOpen, setSectionsOpen] = useState(() => {
-    const mobile = typeof window !== 'undefined' && window.innerWidth <= 768
-    return { customer: !mobile, notes: false, jobDetails: !mobile, addLine: true }
-  })
+  const [sectionsOpen, setSectionsOpen] = useState({ customer: true, notes: false, jobDetails: true, addLine: true })
   const [activePanel, setActivePanel] = useState(0)
   const pageRef = useRef<HTMLDivElement>(null)
 
@@ -204,10 +201,6 @@ export default function QuickQuote() {
   const [editingLineId, setEditingLineId] = useState<number | null>(null)
 
   // ── Auto-add timer ──
-  const autoAddTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [autoAddCountdown, setAutoAddCountdown] = useState<number | null>(null)
-  const [autoAddedMsg, setAutoAddedMsg] = useState(false)
-  const autoAddCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── Load existing quote ──
   useEffect(() => {
@@ -313,16 +306,9 @@ export default function QuickQuote() {
     }
   }, [jobTypeConfigs])
 
-  // ── Auto-add helpers ──
-  const clearAutoAdd = useCallback(() => {
-    if (autoAddTimerRef.current) { clearTimeout(autoAddTimerRef.current); autoAddTimerRef.current = null }
-    if (autoAddCountdownRef.current) { clearInterval(autoAddCountdownRef.current); autoAddCountdownRef.current = null }
-    setAutoAddCountdown(null)
-  }, [])
 
   // ── Load an existing line into the form for editing ──
   const editLine = useCallback((line: LineItem) => {
-    clearAutoAdd()
     setCurJobTypeId(line.jobTypeId)
     setCurQuantity(line.quantity)
     setCurDifficulty(line.difficulty)
@@ -346,11 +332,10 @@ export default function QuickQuote() {
       }
     }
     setEditingLineId(line.id)
-  }, [clearAutoAdd])
+  }, [])
 
   // ── Add or update current line ──
   const addLine = useCallback(() => {
-    clearAutoAdd()
     const jt = jobTypeConfigs.find(j => j.id === curJobTypeId)
     if (!jt) return
 
@@ -388,37 +373,8 @@ export default function QuickQuote() {
     setCurManualMaterials(0)
     setCurManualHours(1)
     setCurSpecs({})
-  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine, jobTypeConfigs, clearAutoAdd])
+  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine, jobTypeConfigs])
 
-  // ── Wire auto-add timer: start when job type selected, clear/restart on config changes ──
-  const addLineRef = useRef(addLine)
-  addLineRef.current = addLine
-
-  useEffect(() => {
-    if (curJobTypeId) {
-      // Start auto-add countdown
-      clearAutoAdd()
-      setAutoAddedMsg(false)
-      setAutoAddCountdown(3)
-      autoAddCountdownRef.current = setInterval(() => {
-        setAutoAddCountdown(prev => (prev !== null && prev > 1) ? prev - 1 : prev)
-      }, 1000)
-      autoAddTimerRef.current = setTimeout(() => {
-        if (autoAddCountdownRef.current) { clearInterval(autoAddCountdownRef.current); autoAddCountdownRef.current = null }
-        setAutoAddCountdown(null)
-        addLineRef.current()
-        setAutoAddedMsg(true)
-        setTimeout(() => setAutoAddedMsg(false), 1500)
-      }, 3000)
-    } else {
-      clearAutoAdd()
-    }
-    return () => clearAutoAdd()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  // curSpecs included so spec changes restart the countdown — prevents
-  // the auto-add from firing while the user is still picking specs.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, curCert, curCustMaterials, curManualMaterials, curManualHours, JSON.stringify(curSpecs)])
 
   const removeLine = useCallback((id: number) => {
     setLines(prev => prev.filter(l => l.id !== id))
@@ -1223,7 +1179,6 @@ export default function QuickQuote() {
                       className="qq-btn qq-btn--secondary"
                       type="button"
                       onClick={() => {
-                        clearAutoAdd()
                         setEditingLineId(null)
                         setCurJobTypeId('')
                         setCurQuantity(1)
@@ -1241,26 +1196,16 @@ export default function QuickQuote() {
                   <button
                     className="qq-btn qq-btn--primary"
                     type="button"
-                    onClick={() => { clearAutoAdd(); addLine() }}
+                    onClick={() => addLine()}
                     style={{ flex: editingLineId != null ? 2 : undefined, width: editingLineId != null ? undefined : '100%', marginTop: editingLineId != null ? 0 : 4 }}
                   >
-                    {autoAddedMsg ? (
-                      <><CheckCircle size={18} style={{ marginRight: 6 }} /> Added</>
-                    ) : editingLineId != null ? (
+                    {editingLineId != null ? (
                       <>✓ Update {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name || 'Line'}</>
                     ) : (
                       <><Plus size={18} style={{ marginRight: 6 }} /> Add {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name || 'Line'}</>
                     )}
                   </button>
                 </div>
-                {autoAddCountdown !== null && (
-                  <div style={{
-                    textAlign: 'center', fontSize: 11, color: 'var(--color-steel-light)',
-                    marginTop: 4, opacity: 0.7, transition: 'opacity .3s',
-                  }}>
-                    Auto-adding in {autoAddCountdown}s...
-                  </div>
-                )}
               </div>
             </>
           )}
@@ -1815,23 +1760,20 @@ export default function QuickQuote() {
         }}
       >
         {/* Panel dots */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
-          {['Build', 'Preview'].map((label, i) => (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '2px 0' }}>
+          {[0, 1].map(i => (
             <button
-              key={label}
+              key={i}
               onClick={() => {
                 pageRef.current?.scrollTo({ left: i * (pageRef.current?.clientWidth ?? 0), behavior: 'smooth' })
               }}
               style={{
-                padding: '3px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                border: 'none', cursor: 'pointer',
-                background: activePanel === i ? 'var(--color-gold)' : 'rgba(75,80,87,0.4)',
-                color: activePanel === i ? 'var(--color-black)' : 'var(--color-steel-light)',
-                transition: 'all .2s',
+                width: activePanel === i ? 20 : 8, height: 8, borderRadius: 4,
+                border: 'none', cursor: 'pointer', padding: 0,
+                background: activePanel === i ? 'var(--color-gold)' : 'rgba(75,80,87,0.5)',
+                transition: 'width .2s, background .2s',
               }}
-            >
-              {label}
-            </button>
+            />
           ))}
         </div>
         {/* Total + send */}
