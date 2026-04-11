@@ -495,7 +495,7 @@ export default function QuickQuote() {
     const allJobNames = lines.map(l => `${l.jobTypeName}${l.quantity > 1 ? ` x${l.quantity}` : ''}`).join(' + ')
     return {
       customerId: customer?.id || '',
-      customerName: customerName || 'Walk-in',
+      customerName: customerName || 'New Lead',
       jobTypeId: primaryLine?.jobTypeId || '',
       jobTypeName: allJobNames || '',
       description,

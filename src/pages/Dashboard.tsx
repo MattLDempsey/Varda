@@ -344,8 +344,12 @@ export default function Dashboard() {
 
   return (
     <div style={s.page}>
-      <h1 style={s.heading}>Dashboard</h1>
-      <p style={s.subheading}>Your business at a glance.</p>
+      {!isMobile && (
+        <>
+          <h1 style={s.heading}>Dashboard</h1>
+          <p style={s.subheading}>Your business at a glance.</p>
+        </>
+      )}
 
       {/* ── Quick Actions (only when onboarding is not showing) ── */}
       {!showOnboarding && (
@@ -607,7 +611,7 @@ export default function Dashboard() {
                     ACTIONS_PER_PAGE items so the pagination dots stay
                     in the same position regardless of how many items
                     are on the current page. */}
-                <div style={{ flex: 1, minHeight: ACTIONS_PER_PAGE * 56 }}>
+                <div style={{ flex: 1, minHeight: isMobile ? undefined : ACTIONS_PER_PAGE * 56 }}>
                   {visibleFollowUps.length === 0 && (
                     <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
                       <CheckCircle size={32} color={C.green} />
@@ -825,34 +829,57 @@ export default function Dashboard() {
           )}
 
           {/* Stage breakdown */}
-          {pipeline.stages.map(st => (
-            <div
-              key={st.status}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: isMobile ? '5px 8px' : '8px 12px',
-                borderRadius: 6,
-                cursor: 'pointer',
-                transition: 'background .15s',
-              }}
-              onClick={() => navigate('/jobs')}
-              onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10 }}>
-                <div style={{ width: isMobile ? 8 : 10, height: isMobile ? 8 : 10, borderRadius: 2, background: st.color }} />
-                <span style={{ fontSize: isMobile ? 11 : 13, color: C.white }}>{st.label}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16 }}>
-                <span style={{ fontSize: isMobile ? 11 : 13, fontWeight: 600, color: C.white }}>{st.count}</span>
-                <span style={{ fontSize: isMobile ? 10 : 12, color: C.silver, minWidth: isMobile ? 44 : 60, textAlign: 'right' as const }}>
-                  {fmtCurrency(st.value)}
-                </span>
-              </div>
+          {isMobile ? (
+            /* Mobile: compact cards, hide zero-count stages */
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+              {pipeline.stages.filter(st => st.count > 0).map(st => (
+                <div
+                  key={st.status}
+                  onClick={() => navigate('/jobs')}
+                  style={{
+                    background: C.black, borderRadius: 8, padding: '10px 12px',
+                    borderLeft: `3px solid ${st.color}`, cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: C.silver, marginBottom: 2 }}>{st.label}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: C.white }}>{st.count}</span>
+                    <span style={{ fontSize: 11, color: C.gold }}>{fmtCurrency(st.value)}</span>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            /* Desktop: full rows */
+            pipeline.stages.map(st => (
+              <div
+                key={st.status}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  transition: 'background .15s',
+                }}
+                onClick={() => navigate('/jobs')}
+                onMouseEnter={(e) => (e.currentTarget.style.background = C.steel + '33')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, background: st.color }} />
+                  <span style={{ fontSize: 13, color: C.white }}>{st.label}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{st.count}</span>
+                  <span style={{ fontSize: 12, color: C.silver, minWidth: 60, textAlign: 'right' as const }}>
+                    {fmtCurrency(st.value)}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
 
           {pipeline.totalCount === 0 && (
             <div style={s.empty}>No active jobs in pipeline.</div>

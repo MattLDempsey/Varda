@@ -346,9 +346,10 @@ export default function AppShell() {
     emptyText: { fontSize: 13, color: C.silver, fontStyle: 'italic' as const },
   }
 
-  // Mobile bottom nav items (primary 4 + More)
-  const mobileNavItems = navItems.filter(n => ['/', '/quote', '/jobs', '/calendar'].includes(n.to))
-  const mobileMoreItems = navItems.filter(n => !['/', '/quote', '/jobs', '/calendar'].includes(n.to))
+  // Mobile bottom nav: 5 core items, rest in the More slide-up
+  const mobileCorePaths = ['/', '/quote', '/jobs', '/calendar', '/customers']
+  const mobileNavItems = navItems.filter(n => mobileCorePaths.includes(n.to))
+  const mobileMoreItems = navItems.filter(n => !mobileCorePaths.includes(n.to))
 
   return (
     <div className="app-shell">
@@ -454,13 +455,15 @@ export default function AppShell() {
             )}
           </NavLink>
         ))}
-        <button
-          className={`mobile-nav-item${showMobileMore ? ' mobile-nav-item--active' : ''}`}
-          onClick={() => setShowMobileMore(prev => !prev)}
-        >
-          <MoreHorizontal size={24} />
-          <span className="mobile-nav-label">More</span>
-        </button>
+        {(mobileMoreItems.length > 0 || isAdmin) && (
+          <button
+            className={`mobile-nav-item${showMobileMore ? ' mobile-nav-item--active' : ''}`}
+            onClick={() => setShowMobileMore(prev => !prev)}
+          >
+            <MoreHorizontal size={24} />
+            <span className="mobile-nav-label">More</span>
+          </button>
+        )}
       </nav>
 
       {/* Mobile "More" slide-up menu */}
@@ -474,13 +477,6 @@ export default function AppShell() {
                 <X size={20} />
               </button>
             </div>
-            <button
-              className="mobile-more-item"
-              onClick={() => { setShowMobileMore(false); setShowSearch(true) }}
-            >
-              <Search size={20} />
-              <span>Search</span>
-            </button>
             {mobileMoreItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -509,18 +505,39 @@ export default function AppShell() {
               {mode === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
               <span>{mode === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
             </button>
-            <button
-              className="mobile-more-item"
-              onClick={() => { setShowMobileMore(false); setShowProfile(true) }}
-            >
-              <Users size={20} />
-              <span>Profile</span>
-            </button>
           </div>
         </>
       )}
 
       <main className="main-content" aria-label="Main content">
+        {/* Mobile top bar — profile & settings access */}
+        <div className="mobile-top-bar">
+          <div
+            className="sidebar-avatar"
+            role="button"
+            tabIndex={0}
+            onClick={() => setShowProfile(true)}
+            style={{ width: 36, height: 36, minWidth: 36, minHeight: 36, fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+          >
+            {initials}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => setShowSearch(true)}
+              style={{ background: 'none', border: 'none', color: C.steel, cursor: 'pointer', padding: 6, display: 'flex' }}
+            >
+              <Search size={20} />
+            </button>
+            {isAdmin && (
+              <button
+                onClick={() => navigate('/settings')}
+                style={{ background: 'none', border: 'none', color: C.steel, cursor: 'pointer', padding: 6, display: 'flex' }}
+              >
+                <Settings size={20} />
+              </button>
+            )}
+          </div>
+        </div>
         <TrialBanner />
         <Outlet />
       </main>

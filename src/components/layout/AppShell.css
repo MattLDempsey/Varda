@@ -142,6 +142,11 @@
   background-color: var(--color-black);
 }
 
+/* ── Mobile top bar (hidden on desktop) ─────── */
+.mobile-top-bar {
+  display: none;
+}
+
 /* ── Mobile Bottom Nav (hidden on desktop) ─────── */
 .mobile-bottom-nav {
   display: none;
@@ -162,6 +167,14 @@
   /* Hide desktop sidebar */
   .sidebar--desktop {
     display: none;
+  }
+
+  /* Show mobile top bar */
+  .mobile-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
   }
 
   /* Main content takes full width */
@@ -196,7 +209,7 @@
     justify-content: center;
     gap: 2px;
     padding: 6px 0;
-    min-width: 56px;
+    min-width: 48px;
     color: var(--color-steel-light);
     text-decoration: none;
     transition: color 0.15s ease;
