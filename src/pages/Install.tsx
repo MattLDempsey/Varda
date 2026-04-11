@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Share, PlusSquare, Monitor, Smartphone, Tablet, Chrome, MoreVertical, Download } from 'lucide-react'
+import { ArrowLeft, Share, PlusSquare, Monitor, Smartphone, Tablet, Globe, MoreVertical, Download } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
 import type { CSSProperties } from 'react'
 
