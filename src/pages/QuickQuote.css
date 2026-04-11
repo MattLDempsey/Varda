@@ -602,19 +602,36 @@
    MOBILE — screens < 768px
    ══════════════════════════════════════════════════ */
 @media (max-width: 768px) {
+  /* Swipeable two-panel layout */
   .qq-page {
-    grid-template-columns: 1fr;
-    height: auto;
-    gap: var(--space-4);
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    height: calc(100dvh - 60px);
+    gap: 0;
+  }
+
+  .qq-page::-webkit-scrollbar {
+    display: none;
   }
 
   .qq-panel {
+    min-width: 100vw;
+    max-width: 100vw;
+    scroll-snap-align: start;
     padding: var(--space-4);
     gap: var(--space-3);
+    height: 100%;
+    overflow-y: auto;
+    border: none;
+    border-radius: 0;
+    box-sizing: border-box;
   }
 
   .qq-section {
-    padding: var(--space-4);
+    padding: var(--space-3);
     gap: var(--space-3);
   }
 
@@ -642,7 +659,7 @@
   }
 
   .qq-metrics {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: var(--space-2);
   }
 
@@ -650,14 +667,14 @@
     font-size: 40px;
   }
 
-  /* Show the sticky total bar on mobile so the price is always visible */
+  /* Show the sticky bar on mobile — panel switcher + total */
   .qq-mobile-sticky-total {
     display: flex !important;
   }
 
-  /* Add bottom padding to the page so the sticky bar doesn't overlap content */
-  .qq-page {
-    padding-bottom: 80px;
+  /* Add bottom padding so sticky bar doesn't overlap content */
+  .qq-panel {
+    padding-bottom: calc(var(--space-4) + 90px) !important;
   }
 }
 

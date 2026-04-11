@@ -78,6 +78,7 @@ export default function QuickQuote() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { canUse } = useSubscription()
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
   const canMultiLine = canUse('multiLineQuotes')
 
   // ── Pricing engine (uses DataContext values) ──
@@ -174,7 +175,12 @@ export default function QuickQuote() {
   const [newCustIsBusiness, setNewCustIsBusiness] = useState(false)
   const [newCustContactName, setNewCustContactName] = useState('')
   // Collapsible sections — customer collapses once selected, notes starts collapsed
-  const [sectionsOpen, setSectionsOpen] = useState({ customer: true, notes: false })
+  const [sectionsOpen, setSectionsOpen] = useState(() => {
+    const mobile = typeof window !== 'undefined' && window.innerWidth <= 768
+    return { customer: !mobile, notes: false, jobDetails: !mobile, addLine: true }
+  })
+  const [activePanel, setActivePanel] = useState(0)
+  const pageRef = useRef<HTMLDivElement>(null)
 
   // ── Job site postcode & distance pricing ──
   const [jobPostcode, setJobPostcode] = useState('')
@@ -657,7 +663,13 @@ export default function QuickQuote() {
 
   // ── Render ──
   return (
-    <div className="qq-page">
+    <div className="qq-page" ref={pageRef} onScroll={() => {
+      if (pageRef.current && isMobile) {
+        const scrollLeft = pageRef.current.scrollLeft
+        const width = pageRef.current.clientWidth
+        setActivePanel(scrollLeft > width * 0.5 ? 1 : 0)
+      }
+    }}>
       {/* ─── LEFT PANEL: Build Quote ─────────────────── */}
       <div className="qq-panel">
 
@@ -920,10 +932,18 @@ export default function QuickQuote() {
 
         {/* ── SECTION 2: Line Items ── */}
         <div className="qq-section">
-        <div className="qq-section-header">Job Details</div>
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: isMobile ? 'pointer' : 'default' }}
+          onClick={() => { if (isMobile) setSectionsOpen(p => ({ ...p, jobDetails: !p.jobDetails })) }}
+        >
+          <div className="qq-section-header">Job Details</div>
+          {isMobile && (
+            <ChevronDown size={16} style={{ color: 'var(--color-steel)', transition: 'transform .2s', transform: sectionsOpen.jobDetails ? 'rotate(0)' : 'rotate(-90deg)' }} />
+          )}
+        </div>
 
         {/* ── Added Lines ── */}
-        {lines.length > 0 && (
+        {(sectionsOpen.jobDetails || !isMobile) && lines.length > 0 && (
           <div className="qq-field">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {lines.map(line => {
@@ -1779,42 +1799,63 @@ export default function QuickQuote() {
         )
       })()}
 
-      {/* ── Mobile sticky total bar — always visible at the bottom so
-          the electrician can see the running total while scrolling
-          through the form. Hidden on desktop where the right panel
-          is visible side-by-side. ── */}
-      {hasLines && (
-        <div
-          className="qq-mobile-sticky-total"
-          style={{
-            display: 'none', // Shown via CSS media query on mobile
-            position: 'fixed', bottom: 0, left: 0, right: 0,
-            background: 'var(--color-charcoal-light)',
-            borderTop: '1px solid var(--color-steel)',
-            padding: '10px 16px',
-            zIndex: 50,
-            alignItems: 'center', justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-gold)' }}>
-              £{fmt(totals.grandTotal)}
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--color-steel-light)' }}>
-              inc. VAT · {lines.length} line{lines.length > 1 ? 's' : ''}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowSendModal(true)}
-            className="qq-btn qq-btn--primary"
-            style={{ padding: '10px 20px', fontSize: 13 }}
-          >
-            Send
-          </button>
+      {/* ── Mobile sticky bar: panel dots + total ── */}
+      <div
+        className="qq-mobile-sticky-total"
+        style={{
+          display: 'none', // Shown via CSS media query on mobile
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: 'var(--color-charcoal)',
+          borderTop: '1px solid var(--color-steel)',
+          padding: '8px 16px',
+          paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0))',
+          zIndex: 50,
+          flexDirection: 'column',
+          gap: 6,
+        }}
+      >
+        {/* Panel dots */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+          {['Build', 'Preview'].map((label, i) => (
+            <button
+              key={label}
+              onClick={() => {
+                pageRef.current?.scrollTo({ left: i * (pageRef.current?.clientWidth ?? 0), behavior: 'smooth' })
+              }}
+              style={{
+                padding: '3px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                border: 'none', cursor: 'pointer',
+                background: activePanel === i ? 'var(--color-gold)' : 'rgba(75,80,87,0.4)',
+                color: activePanel === i ? 'var(--color-black)' : 'var(--color-steel-light)',
+                transition: 'all .2s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-      )}
+        {/* Total + send */}
+        {hasLines && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-gold)' }}>
+                £{fmt(totals.grandTotal)}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--color-steel-light)' }}>
+                inc. VAT · {lines.length} line{lines.length > 1 ? 's' : ''}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSendModal(true)}
+              className="qq-btn qq-btn--primary"
+              style={{ padding: '8px 20px', fontSize: 13 }}
+            >
+              Send
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
