@@ -3,6 +3,7 @@ import { Mail, MessageCircle, Send, Clock, CheckCircle2, Copy, ChevronRight, X, 
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useData } from '../data/DataContext'
+import { copyToClipboard } from '../lib/clipboard'
 import { buildSMSLink, isMobileDevice } from '../lib/sms-templates'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -300,7 +301,7 @@ export default function Comms() {
         window.open(smsUrl, '_self')
       } else {
         // Desktop: copy to clipboard instead
-        navigator.clipboard.writeText(composeBody)
+        copyToClipboard(composeBody)
         setSmsCopied(true)
         setTimeout(() => setSmsCopied(false), 3000)
       }
@@ -534,7 +535,7 @@ export default function Comms() {
                 </button>
                 <button
                   style={{ ...s.btn, background: `${C.steel}33`, color: C.silver }}
-                  onClick={() => { navigator.clipboard.writeText(template.body); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+                  onClick={() => { copyToClipboard(template.body); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
                 >
                   <Copy size={16} /> Copy Text
                 </button>
@@ -695,7 +696,7 @@ export default function Comms() {
                 )}
                 <button
                   style={{ ...s.btn, background: `${C.steel}33`, color: C.silver }}
-                  onClick={() => { navigator.clipboard.writeText(composeBody); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+                  onClick={() => { copyToClipboard(composeBody); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
                 >
                   <Copy size={16} /> Copy Text
                 </button>

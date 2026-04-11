@@ -3,6 +3,7 @@ import { Save, Building2, Clock, FileText, Bell, Link, Copy, Check, MessageSquar
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
 import { useAuth } from '../auth/AuthContext'
+import { copyToClipboard } from '../lib/clipboard'
 import { useData } from '../data/DataContext'
 import SettingsNav from '../components/SettingsNav'
 import { supabase } from '../lib/supabase'
@@ -65,7 +66,7 @@ export default function SettingsPage() {
   const bookingUrl = user?.orgId ? `${window.location.origin}/book/${user.orgId}` : ''
   const handleCopyBookingLink = () => {
     if (!bookingUrl) return
-    navigator.clipboard.writeText(bookingUrl)
+    copyToClipboard(bookingUrl)
     setLinkCopied(true)
     setTimeout(() => setLinkCopied(false), 2500)
   }

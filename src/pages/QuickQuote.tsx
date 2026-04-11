@@ -11,6 +11,7 @@ import { QUICK_SPECS, computeSpecAdjustments, type QuickSpecValues } from '../da
 import { buildQuoteEmail } from '../lib/email-templates'
 import PricingSuggestion from '../components/PricingSuggestion'
 import { estimateDistance, getDistanceHassleAdjustment } from '../lib/postcode-distance'
+import { copyToClipboard } from '../lib/clipboard'
 import './QuickQuote.css'
 
 /* ──────────────────────────────────────────────────────
@@ -1551,7 +1552,7 @@ export default function QuickQuote() {
 
           if (sendVia.link) {
             try {
-              await navigator.clipboard.writeText(safeUrl)
+              await copyToClipboard(safeUrl)
               usedMethods.push('Link copied')
             } catch {
               hadFailure = true

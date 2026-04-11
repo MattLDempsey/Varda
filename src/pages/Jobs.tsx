@@ -13,6 +13,7 @@ import { buildQuoteEmail, buildInvoiceEmail, buildBookingConfirmationEmail } fro
 import { generateICSCalendar } from '../lib/calendar-export'
 import { useSubscription } from '../subscription/SubscriptionContext'
 import { useUndo } from '../hooks/useUndo'
+import { copyToClipboard } from '../lib/clipboard'
 import { LimitWarning } from '../components/FeatureGate'
 import { SkeletonKanban } from '../components/Skeleton'
 import ConflictResolverModal from '../components/ConflictResolverModal'
@@ -3079,7 +3080,7 @@ export default function Jobs() {
                               </button>
                               <button style={btnStyle} onClick={() => {
                                 const url = `${window.location.origin}/q/${linkedQuote.id}`
-                                navigator.clipboard.writeText(url)
+                                copyToClipboard(url)
                                 alert(`Quote link copied:\n${url}`)
                               }}>
                                 <Link2 size={14} /> Link
@@ -3095,7 +3096,7 @@ export default function Jobs() {
                               onClick={async () => {
                                 const realQuoteId = await awaitRealId(linkedQuote.id)
                                 const url = `${window.location.origin}/q/${realQuoteId}`
-                                navigator.clipboard.writeText(url)
+                                copyToClipboard(url)
 
                                 // Sending (or resending) always normalises the quote to a
                                 // Sent state and clears the needs-resend flag.
@@ -3248,7 +3249,7 @@ export default function Jobs() {
                                     onClick={async () => {
                                       updateInvoice(inv.id, { status: 'Sent', sentAt: new Date().toISOString().split('T')[0] })
                                       const url = `${window.location.origin}/inv/${inv.id}`
-                                      navigator.clipboard.writeText(url)
+                                      copyToClipboard(url)
                                       addComm({
                                         customerId: selectedJob.customerId, customerName: selectedJob.customerName,
                                         templateName: 'Send Invoice', channel: 'email', status: 'Sent',

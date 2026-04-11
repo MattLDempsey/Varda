@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { copyToClipboard } from '../../lib/clipboard'
 import {
   LayoutDashboard,
   FileText,
@@ -213,7 +214,7 @@ export default function AppShell() {
 
   const handleCopyLink = (inviteId: string) => {
     const link = `${window.location.origin}/login?invite=true`
-    navigator.clipboard.writeText(link)
+    copyToClipboard(link)
     setCopiedId(inviteId)
     setTimeout(() => setCopiedId(null), 2000)
   }
