@@ -1,15 +1,10 @@
 /**
- * Quick Specs — 2-3 lightweight spec fields per job type that appear
+ * Quick Specs — concrete pricing questions per job type that appear
  * inline in the QuickQuote page when the user selects a job type.
  *
- * These are the minimum questions needed to compute a defensible
- * ballpark price during a phone call. The full spec sheet (for post-
- * site-visit detailed quotes) is a future extension that builds on
- * these same fields.
- *
- * Each spec field affects the pricing via adjustments to the base
- * materials cost and/or labour hours — these adjustments are applied
- * BEFORE the difficulty/hassle/emergency multipliers.
+ * These are the questions an electrician would ask on the phone to
+ * produce a defensible ballpark price. Each field directly affects
+ * the calculated materials cost and/or labour hours.
  */
 
 export interface QuickSpecField {
@@ -42,14 +37,18 @@ export type QuickSpecValues = Record<string, number | boolean | string>
 
 /**
  * Default quick specs per job type. Keyed by jobTypeId matching
- * the IDs in DEFAULT_JOB_TYPE_CONFIGS.
+ * the IDs in DEFAULT_JOB_TYPE_CONFIGS (or normalised name fallback).
  */
 export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
+
+  // ═══════════════════════════════════════════════════
+  // LIGHTING
+  // ═══════════════════════════════════════════════════
   'lighting': [
     {
       key: 'fittings', label: 'Fittings', type: 'number',
       default: 4, min: 1, max: 30,
-      hint: 'Number of light fittings',
+      hint: 'Number of light fittings to install',
       materialsPer: 15, labourMinsPer: 25,
     },
     {
@@ -58,9 +57,10 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
       options: [
         { label: 'Downlights', value: 'downlights' },
         { label: 'Pendants', value: 'pendants' },
-        { label: 'Wall Lights', value: 'wall' },
+        { label: 'Wall lights', value: 'wall' },
         { label: 'Outdoor', value: 'outdoor' },
-        { label: 'LED Panels', value: 'panels' },
+        { label: 'LED panels', value: 'panels' },
+        { label: 'Under-cabinet', value: 'under-cabinet' },
       ],
       optionAdjustments: {
         downlights: { materials: 0 },
@@ -68,17 +68,64 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
         wall: { materials: 5 },
         outdoor: { materials: 20, labourMins: 15 },
         panels: { materials: 25, labourMins: 10 },
+        'under-cabinet': { materials: 10, labourMins: 10 },
+      },
+    },
+    {
+      key: 'fixType', label: 'Fix', type: 'select',
+      default: 'second',
+      options: [
+        { label: '1st fix (new cabling)', value: 'first' },
+        { label: '2nd fix (replace)', value: 'second' },
+      ],
+      optionAdjustments: {
+        first: { labourMins: 60, materials: 30 },
+        second: {},
       },
     },
     {
       key: 'newCircuit', label: 'New circuit', type: 'toggle',
       default: false,
-      hint: 'Requires running a new circuit from the board',
+      hint: 'Run a new circuit from the board',
       materialsAdder: 60, labourMinsAdder: 90,
+    },
+    {
+      key: 'dimmer', label: 'Dimmer switches', type: 'toggle',
+      default: false,
+      materialsAdder: 15, labourMinsAdder: 10,
+    },
+    {
+      key: 'access', label: 'Access', type: 'select',
+      default: 'standard',
+      options: [
+        { label: 'Standard', value: 'standard' },
+        { label: 'High ceiling', value: 'high' },
+        { label: 'Loft/void', value: 'loft' },
+      ],
+      optionAdjustments: {
+        standard: {},
+        high: { labourMins: 30 },
+        loft: { labourMins: 45 },
+      },
     },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // CONSUMER UNIT
+  // ═══════════════════════════════════════════════════
   'consumer-unit': [
+    {
+      key: 'scope', label: 'Scope', type: 'select',
+      default: 'full',
+      options: [
+        { label: 'Full replacement', value: 'full' },
+        { label: 'Upgrade existing', value: 'upgrade' },
+      ],
+      optionAdjustments: {
+        full: {},
+        upgrade: { labourMins: -120 },
+      },
+    },
     {
       key: 'ways', label: 'Ways', type: 'select',
       default: '12',
@@ -98,26 +145,30 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
       },
     },
     {
-      key: 'rcbos', label: 'RCBOs per circuit', type: 'toggle',
+      key: 'rcbos', label: 'RCBOs', type: 'toggle',
       default: false,
-      hint: 'Individual protection per circuit (recommended)',
-      // Cost scales with ways — approximated as flat adder
+      hint: 'Individual protection per circuit',
       materialsAdder: 144, labourMinsAdder: 30,
     },
     {
-      key: 'scope', label: 'Scope', type: 'select',
-      default: 'full',
+      key: 'propertyAge', label: 'Property age', type: 'select',
+      default: 'modern',
       options: [
-        { label: 'Full replacement', value: 'full' },
-        { label: 'Upgrade existing', value: 'upgrade' },
+        { label: 'Pre-1970s', value: 'pre1970' },
+        { label: '1970s–2000s', value: 'mid' },
+        { label: 'Modern', value: 'modern' },
       ],
       optionAdjustments: {
-        full: {},
-        upgrade: { labourMins: -120 },
+        pre1970: { labourMins: 90, materials: 40 },
+        mid: { labourMins: 30 },
+        modern: {},
       },
     },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // EV CHARGER
+  // ═══════════════════════════════════════════════════
   'ev-charger': [
     {
       key: 'rating', label: 'Rating', type: 'select',
@@ -134,22 +185,43 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
     {
       key: 'cableRun', label: 'Cable run (m)', type: 'number',
       default: 10, min: 1, max: 50,
-      hint: 'Approximate metres from consumer unit',
+      hint: 'Metres from consumer unit to charger',
       materialsPer: 3, labourMinsPer: 5,
     },
     {
       key: 'earthRod', label: 'Earth rod', type: 'toggle',
       default: false,
-      hint: 'Required if no suitable earth at the board',
+      hint: 'Required if no suitable earth',
       materialsAdder: 65, labourMinsAdder: 45,
+    },
+    {
+      key: 'mounting', label: 'Mounting', type: 'select',
+      default: 'wall',
+      options: [
+        { label: 'Wall mount', value: 'wall' },
+        { label: 'Post mount', value: 'post' },
+      ],
+      optionAdjustments: {
+        wall: {},
+        post: { materials: 80, labourMins: 60 },
+      },
+    },
+    {
+      key: 'cuUpgrade', label: 'CU upgrade needed', type: 'toggle',
+      default: false,
+      hint: 'Board needs spare way or upgrade',
+      materialsAdder: 120, labourMinsAdder: 120,
     },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // REWIRE
+  // ═══════════════════════════════════════════════════
   'rewire': [
     {
       key: 'bedrooms', label: 'Bedrooms', type: 'number',
       default: 3, min: 1, max: 8,
-      hint: 'Number of bedrooms in the property',
+      hint: 'Number of bedrooms',
       materialsPer: 80, labourMinsPer: 180,
     },
     {
@@ -169,11 +241,42 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
     {
       key: 'includeCU', label: 'Include new CU', type: 'toggle',
       default: true,
-      hint: 'New consumer unit as part of the rewire',
+      hint: 'New consumer unit as part of rewire',
       materialsAdder: 320, labourMinsAdder: 240,
+    },
+    {
+      key: 'propertyAge', label: 'Property age', type: 'select',
+      default: 'mid',
+      options: [
+        { label: 'Pre-1950s', value: 'pre1950' },
+        { label: '1950s–1980s', value: 'mid' },
+        { label: 'Post-1980s', value: 'modern' },
+      ],
+      optionAdjustments: {
+        pre1950: { labourMins: 360, materials: 80 },
+        mid: {},
+        modern: { labourMins: -120 },
+      },
+    },
+    {
+      key: 'access', label: 'Access', type: 'select',
+      default: 'standard',
+      options: [
+        { label: 'Standard', value: 'standard' },
+        { label: 'Difficult (solid walls)', value: 'difficult' },
+        { label: 'Listed building', value: 'listed' },
+      ],
+      optionAdjustments: {
+        standard: {},
+        difficult: { labourMins: 240, materials: 40 },
+        listed: { labourMins: 480, materials: 80 },
+      },
     },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // EICR
+  // ═══════════════════════════════════════════════════
   'eicr': [
     {
       key: 'propertyType', label: 'Property', type: 'select',
@@ -205,8 +308,17 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
         '20+': { labourMins: 90 },
       },
     },
+    {
+      key: 'remedials', label: 'Remedial work likely', type: 'toggle',
+      default: false,
+      hint: 'Known issues that may need fixing',
+      materialsAdder: 80, labourMinsAdder: 90,
+    },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // FAULT FINDING
+  // ═══════════════════════════════════════════════════
   'fault-finding': [
     {
       key: 'issueType', label: 'Issue', type: 'select',
@@ -227,11 +339,11 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
       },
     },
     {
-      key: 'circuitsAffected', label: 'Circuits', type: 'select',
+      key: 'circuitsAffected', label: 'Affected', type: 'select',
       default: '1',
       options: [
         { label: '1 circuit', value: '1' },
-        { label: '2–3', value: '2-3' },
+        { label: '2–3 circuits', value: '2-3' },
         { label: 'Multiple', value: 'multiple' },
         { label: 'Whole property', value: 'whole' },
       ],
@@ -242,19 +354,28 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
         'whole': { labourMins: 90 },
       },
     },
+    {
+      key: 'access', label: 'Access', type: 'select',
+      default: 'standard',
+      options: [
+        { label: 'Standard', value: 'standard' },
+        { label: 'Difficult', value: 'difficult' },
+      ],
+      optionAdjustments: {
+        standard: {},
+        difficult: { labourMins: 30 },
+      },
+    },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // CCTV
+  // ═══════════════════════════════════════════════════
   'cctv': [
     {
       key: 'cameras', label: 'Cameras', type: 'number',
       default: 4, min: 1, max: 16,
       materialsPer: 60, labourMinsPer: 40,
-    },
-    {
-      key: 'nvr', label: 'NVR/DVR included', type: 'toggle',
-      default: true,
-      hint: 'Recording unit for the cameras',
-      materialsAdder: 120, labourMinsAdder: 60,
     },
     {
       key: 'resolution', label: 'Resolution', type: 'select',
@@ -270,8 +391,31 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
         '4k': { materials: 25 },
       },
     },
+    {
+      key: 'nvr', label: 'NVR/DVR', type: 'toggle',
+      default: true,
+      hint: 'Recording unit included',
+      materialsAdder: 120, labourMinsAdder: 60,
+    },
+    {
+      key: 'cabling', label: 'Cabling', type: 'select',
+      default: 'external',
+      options: [
+        { label: 'External run', value: 'external' },
+        { label: 'Internal concealed', value: 'concealed' },
+        { label: 'Wireless', value: 'wireless' },
+      ],
+      optionAdjustments: {
+        external: {},
+        concealed: { labourMins: 60, materials: 20 },
+        wireless: { materials: 40, labourMins: -30 },
+      },
+    },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // ETHERNET
+  // ═══════════════════════════════════════════════════
   'ethernet': [
     {
       key: 'points', label: 'Points', type: 'number',
@@ -292,8 +436,31 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
         cat6a: { materials: 10 },
       },
     },
+    {
+      key: 'routing', label: 'Routing', type: 'select',
+      default: 'surface',
+      options: [
+        { label: 'Surface/trunking', value: 'surface' },
+        { label: 'Concealed', value: 'concealed' },
+        { label: 'Loft run', value: 'loft' },
+      ],
+      optionAdjustments: {
+        surface: {},
+        concealed: { labourMins: 45, materials: 10 },
+        loft: { labourMins: 20 },
+      },
+    },
+    {
+      key: 'patch', label: 'Patch panel', type: 'toggle',
+      default: false,
+      hint: 'Central patch panel + cabinet',
+      materialsAdder: 60, labourMinsAdder: 45,
+    },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // SMOKE DETECTORS
+  // ═══════════════════════════════════════════════════
   'smoke-detectors': [
     {
       key: 'units', label: 'Units', type: 'number',
@@ -324,8 +491,23 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
         d2: { materials: 15 },
       },
     },
+    {
+      key: 'existing', label: 'Existing system', type: 'select',
+      default: 'none',
+      options: [
+        { label: 'None / new install', value: 'none' },
+        { label: 'Replacing existing', value: 'replace' },
+      ],
+      optionAdjustments: {
+        none: { labourMins: 20 },
+        replace: {},
+      },
+    },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // SMART HOME
+  // ═══════════════════════════════════════════════════
   'smart-home': [
     {
       key: 'scope', label: 'Scope', type: 'select',
@@ -348,8 +530,17 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
       default: 4, min: 1, max: 15,
       materialsPer: 30, labourMinsPer: 30,
     },
+    {
+      key: 'hub', label: 'Hub/controller', type: 'toggle',
+      default: false,
+      hint: 'Central smart hub needed',
+      materialsAdder: 80, labourMinsAdder: 60,
+    },
   ],
 
+  // ═══════════════════════════════════════════════════
+  // MINOR WORKS
+  // ═══════════════════════════════════════════════════
   'minor-works': [
     {
       key: 'workType', label: 'Work type', type: 'select',
@@ -378,10 +569,8 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
     {
       key: 'quantity', label: 'Quantity', type: 'number',
       default: 1, min: 1, max: 10,
-      materialsPer: 0, labourMinsPer: 0,
-      // Quantity is handled by the existing qty mechanism — this spec
-      // just makes it visible in context. materialsPer/labourMinsPer
-      // come from the job type base costs.
+      hint: 'Number of items',
+      materialsPer: 20, labourMinsPer: 30,
     },
     {
       key: 'newCircuit', label: 'New circuit', type: 'toggle',
@@ -390,7 +579,37 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
     },
   ],
 
-  // 'other' has no quick specs — uses the existing manual fields
+  // ═══════════════════════════════════════════════════
+  // GENERAL WORK
+  // ═══════════════════════════════════════════════════
+  'general-work': [
+    {
+      key: 'hours', label: 'Estimated hours', type: 'number',
+      default: 2, min: 1, max: 40,
+      materialsPer: 0, labourMinsPer: 60,
+    },
+    {
+      key: 'materials', label: 'Materials (£)', type: 'number',
+      default: 50, min: 0, max: 5000,
+      materialsPer: 1, labourMinsPer: 0,
+    },
+    {
+      key: 'complexity', label: 'Complexity', type: 'select',
+      default: 'standard',
+      options: [
+        { label: 'Straightforward', value: 'simple' },
+        { label: 'Standard', value: 'standard' },
+        { label: 'Complex', value: 'complex' },
+      ],
+      optionAdjustments: {
+        simple: { labourMins: -30 },
+        standard: {},
+        complex: { labourMins: 60 },
+      },
+    },
+  ],
+
+  // 'other' has no quick specs — uses manual Materials/Hours inputs
 }
 
 /**
