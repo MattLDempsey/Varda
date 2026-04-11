@@ -878,8 +878,8 @@ export default function QuickQuote() {
             scrolling past the form. */}
         <div className="qq-field">
           <div className="qq-toggles-row">
-            <Toggle label="🚨 Emergency" on={isEmergency} onToggle={() => setIsEmergency(!isEmergency)} />
-            <Toggle label="🌙 Out of hours" on={isOutOfHours} onToggle={() => setIsOutOfHours(!isOutOfHours)} />
+            <Toggle label="Emergency" on={isEmergency} onToggle={() => setIsEmergency(!isEmergency)} />
+            <Toggle label="Out of hours" on={isOutOfHours} onToggle={() => setIsOutOfHours(!isOutOfHours)} />
           </div>
         </div>
 
@@ -929,7 +929,7 @@ export default function QuickQuote() {
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--color-steel-light)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {specSummary || `${line.estHours}h`}
-                      {line.emergency ? ' · 🚨' : ''}{line.outOfHours ? ' · 🌙' : ''}
+                      {line.emergency ? ' · Emergency' : ''}{line.outOfHours ? ' · OOH' : ''}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -1748,15 +1748,15 @@ export default function QuickQuote() {
       <div
         className="qq-mobile-sticky-total"
         style={{
-          display: 'none', // Shown via CSS media query on mobile
+          display: 'none',
           position: 'fixed', bottom: 0, left: 0, right: 0,
           background: 'var(--color-charcoal)',
           borderTop: '1px solid var(--color-steel)',
-          padding: '8px 16px',
-          paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0))',
+          padding: '6px 16px',
+          paddingBottom: 'calc(6px + env(safe-area-inset-bottom, 0))',
           zIndex: 50,
           flexDirection: 'column',
-          gap: 6,
+          gap: 4,
         }}
       >
         {/* Panel dots */}
