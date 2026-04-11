@@ -972,25 +972,50 @@ export default function QuickQuote() {
             {lines.length > 0 ? 'Add Another Line' : 'Add Line Item'}
           </div>
 
-          {/* Job Type Grid */}
-          <div className="qq-field">
-            <div className="qq-job-grid">
-              {jobTypeConfigs.map(jt => (
-                <button
-                  key={jt.id}
-                  className={`qq-job-btn${curJobTypeId === jt.id ? ' qq-job-btn--active' : ''}`}
-                  onClick={() => handleJobTypeSelect(jt.id)}
-                  type="button"
-                >
-                  {jt.name}
-                </button>
-              ))}
+          {/* Job Type Grid — hidden on mobile when a type is selected */}
+          {(!isMobile || !curJobTypeId) && (
+            <div className="qq-field">
+              <div className="qq-job-grid">
+                {jobTypeConfigs.map(jt => (
+                  <button
+                    key={jt.id}
+                    className={`qq-job-btn${curJobTypeId === jt.id ? ' qq-job-btn--active' : ''}`}
+                    onClick={() => handleJobTypeSelect(jt.id)}
+                    type="button"
+                  >
+                    {jt.name}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Quantity */}
+          {/* Selected job type config — on mobile replaces the grid */}
           {hasJobSelected && (
             <>
+              {/* Mobile: show selected type header with change button */}
+              {isMobile && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 12px', borderRadius: 8,
+                  background: 'var(--color-gold)', marginBottom: 4,
+                }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-black)' }}>
+                    {jobTypeConfigs.find(j => j.id === curJobTypeId)?.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setCurJobTypeId(''); setEditingLineId(null); setCurSpecs({}) }}
+                    style={{
+                      background: 'rgba(0,0,0,0.15)', border: 'none', borderRadius: 6,
+                      padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                      color: 'var(--color-black)', cursor: 'pointer',
+                    }}
+                  >
+                    Change
+                  </button>
+                </div>
+              )}
               <div className="qq-qty-desc-row">
                 <div className="qq-field">
                   <span className="qq-label">Qty</span>
@@ -1188,6 +1213,7 @@ export default function QuickQuote() {
                         setCurCustMaterials(false)
                         setCurSpecs({})
                       }}
+                      aria-label="Cancel editing"
                       style={{ flex: 1 }}
                     >
                       Cancel
