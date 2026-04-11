@@ -119,7 +119,6 @@ export default function AppShell() {
   }, [])
   const [showProfile, setShowProfile] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
-  const [showMobileMore, setShowMobileMore] = useState(false)
 
   // Ctrl+K / Cmd+K keyboard shortcut for global search
   useEffect(() => {
@@ -346,10 +345,14 @@ export default function AppShell() {
     emptyText: { fontSize: 13, color: C.silver, fontStyle: 'italic' as const },
   }
 
-  // Mobile bottom nav: 5 core items, rest in the More slide-up
-  const mobileCorePaths = ['/', '/quote', '/jobs', '/calendar', '/customers']
-  const mobileNavItems = navItems.filter(n => mobileCorePaths.includes(n.to))
-  const mobileMoreItems = navItems.filter(n => !mobileCorePaths.includes(n.to))
+  // Mobile layout: bottom bar (4 anchors) + scrollable top tabs (all features)
+  const mobileBottomItems: NavItem[] = [
+    { to: '/',         icon: <LayoutDashboard size={22} />, label: 'Home' },
+    { to: '/jobs',     icon: <Briefcase size={22} />,       label: 'Jobs' },
+    { to: '/calendar', icon: <Calendar size={22} />,        label: 'Calendar' },
+  ]
+  // Top tabs: all feature pages (visible to user based on role)
+  const mobileTopTabs = navItems.filter(n => n.to !== '/')
 
   return (
     <div className="app-shell">
@@ -430,9 +433,9 @@ export default function AppShell() {
         </div>
       </nav>
 
-      {/* Mobile bottom navigation bar */}
+      {/* Mobile bottom navigation bar — 3 core + profile */}
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        {mobileNavItems.map((item) => (
+        {mobileBottomItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -455,34 +458,26 @@ export default function AppShell() {
             )}
           </NavLink>
         ))}
-        {(mobileMoreItems.length > 0 || isAdmin) && (
-          <button
-            className={`mobile-nav-item${showMobileMore ? ' mobile-nav-item--active' : ''}`}
-            onClick={() => setShowMobileMore(prev => !prev)}
-          >
-            <MoreHorizontal size={24} />
-            <span className="mobile-nav-label">More</span>
-          </button>
-        )}
+        <button
+          className={`mobile-nav-item${showProfile ? ' mobile-nav-item--active' : ''}`}
+          onClick={() => setShowProfile(true)}
+        >
+          <User size={22} />
+          <span className="mobile-nav-label">Profile</span>
+        </button>
       </nav>
 
-      {/* Mobile "More" slide-up menu */}
-      {showMobileMore && (
-        <>
-          <div className="mobile-more-overlay" onClick={() => setShowMobileMore(false)} />
-          <div className="mobile-more-menu">
-            <div className="mobile-more-header">
-              <span>More</span>
-              <button onClick={() => setShowMobileMore(false)} style={{ background: 'none', border: 'none', color: C.silver, padding: 8, cursor: 'pointer' }}>
-                <X size={20} />
-              </button>
-            </div>
-            {mobileMoreItems.map((item) => (
+      <main className="main-content" aria-label="Main content">
+        {/* Mobile scrollable top tabs */}
+        <div className="mobile-top-tabs">
+          <div className="mobile-top-tabs-scroll">
+            {mobileTopTabs.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
-                className="mobile-more-item"
-                onClick={() => setShowMobileMore(false)}
+                className={({ isActive }) =>
+                  `mobile-top-tab${isActive ? ' mobile-top-tab--active' : ''}`
+                }
               >
                 {item.icon}
                 <span>{item.label}</span>
@@ -491,51 +486,21 @@ export default function AppShell() {
             {isAdmin && (
               <NavLink
                 to="/settings"
-                className="mobile-more-item"
-                onClick={() => setShowMobileMore(false)}
+                className={({ isActive }) =>
+                  `mobile-top-tab${isActive ? ' mobile-top-tab--active' : ''}`
+                }
               >
                 <Settings size={20} />
                 <span>Settings</span>
               </NavLink>
             )}
             <button
-              className="mobile-more-item"
-              onClick={toggle}
-            >
-              {mode === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-              <span>{mode === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-            </button>
-          </div>
-        </>
-      )}
-
-      <main className="main-content" aria-label="Main content">
-        {/* Mobile top bar — profile & settings access */}
-        <div className="mobile-top-bar">
-          <div
-            className="sidebar-avatar"
-            role="button"
-            tabIndex={0}
-            onClick={() => setShowProfile(true)}
-            style={{ width: 36, height: 36, minWidth: 36, minHeight: 36, fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
-          >
-            {initials}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
+              className="mobile-top-tab"
               onClick={() => setShowSearch(true)}
-              style={{ background: 'none', border: 'none', color: C.steel, cursor: 'pointer', padding: 6, display: 'flex' }}
             >
               <Search size={20} />
+              <span>Search</span>
             </button>
-            {isAdmin && (
-              <button
-                onClick={() => navigate('/settings')}
-                style={{ background: 'none', border: 'none', color: C.steel, cursor: 'pointer', padding: 6, display: 'flex' }}
-              >
-                <Settings size={20} />
-              </button>
-            )}
           </div>
         </div>
         <TrialBanner />
