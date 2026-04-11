@@ -196,7 +196,10 @@ export default function QuickQuote() {
   const [curManualHours, setCurManualHours] = useState(1)
   // Quick-spec values for the currently-selected job type
   const [curSpecs, setCurSpecs] = useState<QuickSpecValues>({})
-  const curSpecDefs = QUICK_SPECS[curJobTypeId] ?? []
+  // Resolve spec defs by ID first, then by normalised name (handles UUID IDs from DB)
+  const curSpecDefs = QUICK_SPECS[curJobTypeId]
+    ?? QUICK_SPECS[jobTypeConfigs.find(j => j.id === curJobTypeId)?.name?.toLowerCase()?.replace(/\s+/g, '-') ?? '']
+    ?? []
   // When editing an existing line, this holds its ID. Null = adding new.
   const [editingLineId, setEditingLineId] = useState<number | null>(null)
 
@@ -294,7 +297,8 @@ export default function QuickQuote() {
     const jt = jobTypeConfigs.find(j => j.id === id)
     if (jt) setCurCert(jt.certRequired)
     // Initialise quick specs with defaults for this job type
-    const specDefs = QUICK_SPECS[id]
+    const nameKey = jt?.name?.toLowerCase()?.replace(/\s+/g, '-') ?? ''
+    const specDefs = QUICK_SPECS[id] ?? QUICK_SPECS[nameKey]
     if (specDefs) {
       const defaults: QuickSpecValues = {}
       for (const spec of specDefs) {
@@ -326,7 +330,8 @@ export default function QuickQuote() {
     if (line.specs && Object.keys(line.specs).length > 0) {
       setCurSpecs(line.specs)
     } else {
-      const specDefs = QUICK_SPECS[line.jobTypeId]
+      const editNameKey = jobTypeConfigs.find(j => j.id === line.jobTypeId)?.name?.toLowerCase()?.replace(/\s+/g, '-') ?? ''
+      const specDefs = QUICK_SPECS[line.jobTypeId] ?? QUICK_SPECS[editNameKey]
       if (specDefs) {
         const defaults: QuickSpecValues = {}
         for (const spec of specDefs) defaults[spec.key] = spec.default
@@ -838,36 +843,22 @@ export default function QuickQuote() {
           )}
         </div>
 
-        {/* Job Site + Description row */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-          <div style={{ flex: '0 0 auto' }}>
-            <span className="qq-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <MapPin size={12} /> Job Site
-            </span>
-            <input
-              className="qq-input"
-              type="text"
-              placeholder="e.g. CO3 4QR"
-              value={jobPostcode}
-              onChange={e => {
-                setJobPostcode(e.target.value.toUpperCase())
-                setHassleManuallyOverridden(false)
-              }}
-              style={{ width: 110, textTransform: 'uppercase', fontSize: 13 }}
-            />
-          </div>
-          {!isMobile && (
-            <div style={{ flex: 1 }}>
-              <span className="qq-label">Job Description</span>
-              <input
-                className="qq-input"
-                type="text"
-                placeholder="Brief overview of the work..."
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-              />
-            </div>
-          )}
+        {/* Job Site */}
+        <div>
+          <span className="qq-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <MapPin size={12} /> Job Site
+          </span>
+          <input
+            className="qq-input"
+            type="text"
+            placeholder="e.g. CO3 4QR"
+            value={jobPostcode}
+            onChange={e => {
+              setJobPostcode(e.target.value.toUpperCase())
+              setHassleManuallyOverridden(false)
+            }}
+            style={{ width: 130, textTransform: 'uppercase', fontSize: 13 }}
+          />
         </div>
         {distanceMiles !== null && (
           <div style={{ fontSize: 11, color: 'var(--color-steel-light)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
