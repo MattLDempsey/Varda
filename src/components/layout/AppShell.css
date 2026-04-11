@@ -180,10 +180,13 @@
   .mobile-top-tabs-scroll {
     display: flex;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     gap: 0;
     padding: 0 12px;
+    overscroll-behavior: contain;
+    touch-action: pan-x;
   }
 
   .mobile-top-tabs-scroll::-webkit-scrollbar {
