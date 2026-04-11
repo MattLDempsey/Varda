@@ -304,7 +304,11 @@ export default function QuickQuote() {
     } else {
       setCurSpecs({})
     }
-  }, [jobTypeConfigs])
+    // On mobile, collapse customer section so specs are immediately visible
+    if (isMobile) {
+      setSectionsOpen(p => ({ ...p, customer: false }))
+    }
+  }, [jobTypeConfigs, isMobile])
 
 
   // ── Load an existing line into the form for editing ──
@@ -834,7 +838,7 @@ export default function QuickQuote() {
           )}
         </div>
 
-        {/* Job Site + Description in one row */}
+        {/* Job Site + Description row */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
           <div style={{ flex: '0 0 auto' }}>
             <span className="qq-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -852,16 +856,18 @@ export default function QuickQuote() {
               style={{ width: 110, textTransform: 'uppercase', fontSize: 13 }}
             />
           </div>
-          <div style={{ flex: 1 }}>
-            <span className="qq-label">Job Description</span>
-            <input
-              className="qq-input"
-              type="text"
-              placeholder="Brief overview of the work..."
-              value={description}
-            onChange={e => setDescription(e.target.value)}
-          />
-          </div>
+          {!isMobile && (
+            <div style={{ flex: 1 }}>
+              <span className="qq-label">Job Description</span>
+              <input
+                className="qq-input"
+                type="text"
+                placeholder="Brief overview of the work..."
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+              />
+            </div>
+          )}
         </div>
         {distanceMiles !== null && (
           <div style={{ fontSize: 11, color: 'var(--color-steel-light)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
@@ -1016,6 +1022,99 @@ export default function QuickQuote() {
                   </button>
                 </div>
               )}
+
+              {/* On mobile, show specs FIRST (the key questions) before qty/options */}
+              {isMobile && curSpecDefs.length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                  gap: 8,
+                  marginBottom: 4,
+                }}>
+                  {curSpecDefs.map(spec => {
+                    const val = curSpecs[spec.key] ?? spec.default
+                    if (spec.type === 'number') {
+                      return (
+                        <div key={spec.key} className="qq-field">
+                          <span className="qq-label">{spec.label}</span>
+                          <div className="qq-stepper">
+                            <button
+                              className="qq-stepper__btn" type="button"
+                              onClick={() => setCurSpecs(prev => ({
+                                ...prev,
+                                [spec.key]: Math.max(spec.min ?? 1, (Number(prev[spec.key] ?? spec.default) || 0) - 1),
+                              }))}
+                            >&minus;</button>
+                            <span className="qq-stepper__value">{val}</span>
+                            <button
+                              className="qq-stepper__btn" type="button"
+                              onClick={() => setCurSpecs(prev => ({
+                                ...prev,
+                                [spec.key]: Math.min(spec.max ?? 99, (Number(prev[spec.key] ?? spec.default) || 0) + 1),
+                              }))}
+                            >+</button>
+                          </div>
+                          {spec.hint && <span style={{ fontSize: 10, color: 'var(--color-steel)', marginTop: 2 }}>{spec.hint}</span>}
+                        </div>
+                      )
+                    }
+                    if (spec.type === 'toggle') {
+                      return (
+                        <div key={spec.key} className="qq-field">
+                          <span className="qq-label">{spec.label}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCurSpecs(prev => ({ ...prev, [spec.key]: !prev[spec.key] }))}
+                            style={{
+                              padding: '8px 12px', borderRadius: 8, border: 'none',
+                              background: val ? 'var(--color-gold)' : 'var(--color-black)',
+                              color: val ? 'var(--color-charcoal)' : 'var(--color-steel-light)',
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                              minHeight: 38, width: '100%',
+                              transition: 'background .15s',
+                            }}
+                          >
+                            {val ? '✓ Yes' : 'No'}
+                          </button>
+                        </div>
+                      )
+                    }
+                    if (spec.type === 'select' && spec.options) {
+                      return (
+                        <div key={spec.key} className="qq-field">
+                          <span className="qq-label">{spec.label}</span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {spec.options.map(opt => {
+                              const active = String(val) === opt.value
+                              return (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => setCurSpecs(prev => ({ ...prev, [spec.key]: opt.value }))}
+                                  style={{
+                                    flex: 1, minWidth: 0,
+                                    padding: '6px 6px', borderRadius: 6,
+                                    border: `1px solid ${active ? 'var(--color-gold)' : 'var(--color-steel)'}`,
+                                    background: active ? 'var(--color-gold)' : 'transparent',
+                                    color: active ? 'var(--color-charcoal)' : 'var(--color-white)',
+                                    fontSize: 11, fontWeight: active ? 700 : 500,
+                                    cursor: 'pointer', whiteSpace: 'nowrap',
+                                    minHeight: 32,
+                                  }}
+                                >
+                                  {opt.label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  })}
+                </div>
+              )}
+
               <div className="qq-qty-desc-row">
                 <div className="qq-field">
                   <span className="qq-label">Qty</span>
@@ -1065,7 +1164,8 @@ export default function QuickQuote() {
                   Replace the abstract difficulty/hassle sliders with
                   concrete questions the electrician would ask the customer
                   on the phone. ── */}
-              {curSpecDefs.length > 0 && (
+              {/* Desktop specs (mobile shows them above qty) */}
+              {!isMobile && curSpecDefs.length > 0 && (
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
