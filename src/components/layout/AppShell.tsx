@@ -345,14 +345,8 @@ export default function AppShell() {
     emptyText: { fontSize: 13, color: C.silver, fontStyle: 'italic' as const },
   }
 
-  // Mobile layout: bottom bar (4 anchors) + scrollable top tabs (all features)
-  const mobileBottomItems: NavItem[] = [
-    { to: '/',         icon: <LayoutDashboard size={22} />, label: 'Home' },
-    { to: '/jobs',     icon: <Briefcase size={22} />,       label: 'Jobs' },
-    { to: '/calendar', icon: <Calendar size={22} />,        label: 'Calendar' },
-  ]
-  // Top tabs: all feature pages (visible to user based on role)
-  const mobileTopTabs = navItems.filter(n => n.to !== '/')
+  // Mobile: all nav in scrollable top tabs
+  const mobileTopTabs = navItems
 
   return (
     <div className="app-shell">
@@ -433,39 +427,6 @@ export default function AppShell() {
         </div>
       </nav>
 
-      {/* Mobile bottom navigation bar — 3 core + profile */}
-      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        {mobileBottomItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) =>
-              `mobile-nav-item${isActive ? ' mobile-nav-item--active' : ''}`
-            }
-            style={{ position: 'relative' }}
-          >
-            {item.icon}
-            <span className="mobile-nav-label">{item.label}</span>
-            {item.to === '/' && followUpCount > 0 && (
-              <span style={{
-                position: 'absolute', top: 2, right: 6,
-                background: '#D46A6A', color: '#fff', fontSize: 8, fontWeight: 700,
-                borderRadius: 7, minWidth: 14, height: 14, padding: '0 3px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                lineHeight: 1, boxShadow: '0 1px 4px rgba(0,0,0,.4)',
-              }}>{followUpCount > 9 ? '9+' : followUpCount}</span>
-            )}
-          </NavLink>
-        ))}
-        <button
-          className={`mobile-nav-item${showProfile ? ' mobile-nav-item--active' : ''}`}
-          onClick={() => setShowProfile(true)}
-        >
-          <User size={22} />
-          <span className="mobile-nav-label">Profile</span>
-        </button>
-      </nav>
 
       <main className="main-content" aria-label="Main content">
         {/* Mobile scrollable top tabs */}
@@ -500,6 +461,13 @@ export default function AppShell() {
             >
               <Search size={20} />
               <span>Search</span>
+            </button>
+            <button
+              className="mobile-top-tab"
+              onClick={() => setShowProfile(true)}
+            >
+              <User size={20} />
+              <span>Profile</span>
             </button>
           </div>
         </div>

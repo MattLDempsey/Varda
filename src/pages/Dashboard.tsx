@@ -351,8 +351,8 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* ── Quick Actions (only when onboarding is not showing) ── */}
-      {!showOnboarding && (
+      {/* ── Quick Actions (desktop only — mobile has top tabs) ── */}
+      {!showOnboarding && !isMobile && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(4, 1fr)',
