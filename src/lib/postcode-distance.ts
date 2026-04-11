@@ -195,3 +195,22 @@ export function getDistanceHassleAdjustment(miles: number): number {
   if (miles <= 50) return 20
   return 30
 }
+
+/**
+ * Get a flat travel surcharge (£) based on distance from base.
+ * This replaces the abstract hassle-slider approach with a concrete
+ * monetary value visible in the quote breakdown.
+ *
+ *   0-10 miles:   £0
+ *  10-20 miles:  £15
+ *  20-30 miles:  £30
+ *  30-50 miles:  £50
+ *  50+ miles:    £80
+ */
+export function getDistanceSurcharge(miles: number): number {
+  if (miles <= 10) return 0
+  if (miles <= 20) return 15
+  if (miles <= 30) return 30
+  if (miles <= 50) return 50
+  return 80
+}

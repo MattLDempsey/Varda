@@ -10,7 +10,7 @@ import { sendEmail, buildFromName } from '../lib/send-email'
 import { QUICK_SPECS, computeSpecAdjustments, type QuickSpecValues } from '../data/quick-specs'
 import { buildQuoteEmail } from '../lib/email-templates'
 import PricingSuggestion from '../components/PricingSuggestion'
-import { estimateDistance, getDistanceHassleAdjustment } from '../lib/postcode-distance'
+import { estimateDistance, getDistanceHassleAdjustment, getDistanceSurcharge } from '../lib/postcode-distance'
 import { copyToClipboard } from '../lib/clipboard'
 import './QuickQuote.css'
 
@@ -125,12 +125,12 @@ export default function QuickQuote() {
     const waste = materials * pricingConfig.wastePct
     const subtotal = materials + labour + certificates + waste
 
-    const diffMult = 1 + (difficulty / 100) * 0.5
-    const hassleMult = 1 + (hassleFactor / 100) * 0.3
     const emergencyMult = emergency ? pricingConfig.emergencyMult : 1
     const oohMult = outOfHours ? pricingConfig.outOfHoursMult : 1
 
-    const adjustments = subtotal * (diffMult - 1) + subtotal * (hassleMult - 1) + subtotal * (emergencyMult - 1) + subtotal * (oohMult - 1)
+    const emergencyAdj = subtotal * (emergencyMult - 1)
+    const oohAdj = subtotal * (oohMult - 1)
+    const adjustments = emergencyAdj + oohAdj
     let lineTotal = subtotal + adjustments
 
     if (jobType.minCharge && lineTotal < jobType.minCharge) lineTotal = jobType.minCharge
@@ -396,14 +396,17 @@ export default function QuickQuote() {
     const certificates = lines.reduce((s, l) => s + l.certificates, 0)
     const waste = lines.reduce((s, l) => s + l.waste, 0)
     const adjustments = lines.reduce((s, l) => s + l.adjustments, 0)
-    const netTotal = lines.reduce((s, l) => s + l.lineTotal, 0)
+    const travelSurcharge = distanceMiles !== null ? getDistanceSurcharge(distanceMiles) : 0
+    const emergencyAdj = lines.length > 0 && isEmergency ? lines.reduce((s, l) => s + l.materials + l.labour + l.certificates + l.waste, 0) * (pricingConfig.emergencyMult - 1) : 0
+    const oohAdj = lines.length > 0 && isOutOfHours ? lines.reduce((s, l) => s + l.materials + l.labour + l.certificates + l.waste, 0) * (pricingConfig.outOfHoursMult - 1) : 0
+    const netTotal = lines.reduce((s, l) => s + l.lineTotal, 0) + travelSurcharge
     const vat = netTotal * pricingConfig.vatRate
     const grandTotal = netTotal + vat
     const estHours = lines.reduce((s, l) => s + l.estHours, 0)
     const margin = netTotal > 0 ? ((netTotal - materials) / netTotal) * 100 : 0
     const dayRate = estHours > 0 ? (netTotal / estHours) * 8 : 0
-    return { materials, labour, certificates, waste, adjustments, netTotal, vat, grandTotal, estHours, margin, dayRate }
-  }, [lines])
+    return { materials, labour, certificates, waste, adjustments, travelSurcharge, emergencyAdj, oohAdj, netTotal, vat, grandTotal, estHours, margin, dayRate }
+  }, [lines, distanceMiles, isEmergency, isOutOfHours, pricingConfig])
 
   // ── Recalculate all lines when emergency/OOH changes ──
   const prevEmergency = useRef(isEmergency)
@@ -1305,12 +1308,22 @@ export default function QuickQuote() {
           )}
           {totals.waste > 0 && (
             <div className="qq-breakdown__row">
-              <span>Waste</span><AnimatedValue value={totals.waste} prefix="£" />
+              <span>Waste ({Math.round(pricingConfig.wastePct * 100)}%)</span><AnimatedValue value={totals.waste} prefix="£" />
             </div>
           )}
-          {totals.adjustments > 0 && (
-            <div className="qq-breakdown__row">
-              <span>Adjustments</span><AnimatedValue value={totals.adjustments} prefix="+ £" />
+          {isEmergency && totals.emergencyAdj > 0 && (
+            <div className="qq-breakdown__row" style={{ color: 'var(--color-gold)' }}>
+              <span>Emergency ({Math.round((pricingConfig.emergencyMult - 1) * 100)}%)</span><AnimatedValue value={totals.emergencyAdj} prefix="+ £" />
+            </div>
+          )}
+          {isOutOfHours && totals.oohAdj > 0 && (
+            <div className="qq-breakdown__row" style={{ color: 'var(--color-gold)' }}>
+              <span>Out of hours ({Math.round((pricingConfig.outOfHoursMult - 1) * 100)}%)</span><AnimatedValue value={totals.oohAdj} prefix="+ £" />
+            </div>
+          )}
+          {totals.travelSurcharge > 0 && (
+            <div className="qq-breakdown__row" style={{ color: 'var(--color-gold)' }}>
+              <span>Travel (~{distanceMiles} miles)</span><AnimatedValue value={totals.travelSurcharge} prefix="+ £" />
             </div>
           )}
 
