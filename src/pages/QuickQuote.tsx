@@ -1775,7 +1775,7 @@ export default function QuickQuote() {
         className="qq-mobile-sticky-total"
         style={{
           display: 'none',
-          position: 'fixed', bottom: 0, left: 0, right: 0, width: '100vw',
+          position: 'fixed', bottom: 0, left: 0, right: 0,
           background: 'var(--color-charcoal)',
           borderTop: '1px solid var(--color-steel)',
           padding: '6px 16px',
@@ -1783,7 +1783,6 @@ export default function QuickQuote() {
           zIndex: 50,
           flexDirection: 'column',
           gap: 4,
-          boxSizing: 'border-box',
         }}
       >
         {/* Panel dots */}
