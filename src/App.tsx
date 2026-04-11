@@ -27,6 +27,7 @@ import InvoiceView from './pages/InvoiceView'
 import BookingPage from './pages/BookingPage'
 import CertificateForm from './pages/CertificateForm'
 import Integrations from './pages/Integrations'
+import Install from './pages/Install'
 import { UndoProvider } from './hooks/useUndo'
 import { useTheme } from './theme/ThemeContext'
 import type { ReactNode, CSSProperties } from 'react'
@@ -107,6 +108,7 @@ export default function App() {
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
+              <Route path="/install" element={<Install />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/q/:quoteId" element={<QuoteView />} />
               <Route path="/inv/:invoiceId" element={<InvoiceView />} />

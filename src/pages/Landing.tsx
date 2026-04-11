@@ -603,6 +603,7 @@ export default function Landing() {
         <div style={s.footerLinks as CSSProperties}>
           <Link to="/terms" style={s.footerLink}>Terms of Service</Link>
           <Link to="/privacy" style={s.footerLink}>Privacy Policy</Link>
+          <Link to="/install" style={s.footerLink}>Install the App</Link>
           <Link to="/login" style={s.footerLink}>Sign In</Link>
         </div>
         <p style={s.footerCopy}>&copy; 2026 Varda. All rights reserved.</p>
