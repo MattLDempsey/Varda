@@ -1021,8 +1021,8 @@ export default function QuickQuote() {
               {curSpecDefs.length > 0 && (
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                  gap: 8,
+                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(120px, 1fr))',
+                  gap: 10,
                   marginBottom: 4,
                 }}>
                   {curSpecDefs.map(spec => {
@@ -1074,33 +1074,53 @@ export default function QuickQuote() {
                       )
                     }
                     if (spec.type === 'select' && spec.options) {
+                      // Use a real select dropdown when there are 4+ options to avoid overflow
+                      const useDropdown = spec.options.length >= 4
                       return (
                         <div key={spec.key} className="qq-field">
                           <span className="qq-label">{spec.label}</span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {spec.options.map(opt => {
-                              const active = String(val) === opt.value
-                              return (
-                                <button
-                                  key={opt.value}
-                                  type="button"
-                                  onClick={() => setCurSpecs(prev => ({ ...prev, [spec.key]: opt.value }))}
-                                  style={{
-                                    flex: 1, minWidth: 0,
-                                    padding: '6px 6px', borderRadius: 6,
-                                    border: `1px solid ${active ? 'var(--color-gold)' : 'var(--color-steel)'}`,
-                                    background: active ? 'var(--color-gold)' : 'transparent',
-                                    color: active ? 'var(--color-charcoal)' : 'var(--color-white)',
-                                    fontSize: 11, fontWeight: active ? 700 : 500,
-                                    cursor: 'pointer', whiteSpace: 'nowrap',
-                                    minHeight: 32,
-                                  }}
-                                >
-                                  {opt.label}
-                                </button>
-                              )
-                            })}
-                          </div>
+                          {useDropdown ? (
+                            <select
+                              value={String(val)}
+                              onChange={e => setCurSpecs(prev => ({ ...prev, [spec.key]: e.target.value }))}
+                              style={{
+                                width: '100%', padding: '10px 12px', borderRadius: 8,
+                                background: 'var(--color-black)', color: 'var(--color-white)',
+                                border: '1px solid var(--color-steel)', fontSize: 14,
+                                outline: 'none', minHeight: 40, cursor: 'pointer',
+                                colorScheme: 'dark',
+                              }}
+                            >
+                              {spec.options.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {spec.options.map(opt => {
+                                const active = String(val) === opt.value
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => setCurSpecs(prev => ({ ...prev, [spec.key]: opt.value }))}
+                                    style={{
+                                      flex: '1 1 auto', minWidth: 0,
+                                      padding: '8px 10px', borderRadius: 8,
+                                      border: `1px solid ${active ? 'var(--color-gold)' : 'var(--color-steel)'}`,
+                                      background: active ? 'var(--color-gold)' : 'transparent',
+                                      color: active ? 'var(--color-charcoal)' : 'var(--color-white)',
+                                      fontSize: 13, fontWeight: active ? 700 : 500,
+                                      cursor: 'pointer', whiteSpace: 'nowrap',
+                                      minHeight: 38,
+                                    }}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )
                     }
@@ -1391,23 +1411,25 @@ export default function QuickQuote() {
 
         {/* Actions */}
         <div className="qq-actions">
-          <button
-            className="qq-btn qq-btn--primary"
-            type="button"
-            onClick={() => {
-              if (!hasLines) { setSavedMsg('Add at least one line item'); setTimeout(() => setSavedMsg(''), 2500); return }
-              if (!customerName) { setSavedMsg('Enter a customer name first'); setTimeout(() => setSavedMsg(''), 2500); return }
-              // Warn if critical business details are still placeholder values
-              const biz = settings.business
-              if (!biz.businessName || biz.businessName === 'Grey Havens Electrical' || biz.phone === '07XXX XXX XXX' || !biz.email || biz.email === 'info@thegreyhavens.co.uk') {
-                const ok = window.confirm('Your business details look incomplete (name, phone, or email are still default values). The customer will see these on the quote.\n\nContinue anyway, or update in Settings first?')
-                if (!ok) return
-              }
-              setShowSendModal(true)
-            }}
-          >
-            Send to Customer
-          </button>
+          {!isMobile && (
+            <button
+              className="qq-btn qq-btn--primary"
+              type="button"
+              onClick={() => {
+                if (!hasLines) { setSavedMsg('Add at least one line item'); setTimeout(() => setSavedMsg(''), 2500); return }
+                if (!customerName) { setSavedMsg('Enter a customer name first'); setTimeout(() => setSavedMsg(''), 2500); return }
+                // Warn if critical business details are still placeholder values
+                const biz = settings.business
+                if (!biz.businessName || biz.businessName === 'Grey Havens Electrical' || biz.phone === '07XXX XXX XXX' || !biz.email || biz.email === 'info@thegreyhavens.co.uk') {
+                  const ok = window.confirm('Your business details look incomplete (name, phone, or email are still default values). The customer will see these on the quote.\n\nContinue anyway, or update in Settings first?')
+                  if (!ok) return
+                }
+                setShowSendModal(true)
+              }}
+            >
+              Send to Customer
+            </button>
+          )}
           <button
             className="qq-btn qq-btn--secondary"
             type="button"
