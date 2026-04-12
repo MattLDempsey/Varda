@@ -72,16 +72,16 @@ export const QUICK_SPECS: Record<string, QuickSpecField[]> = {
       },
     },
     {
-      key: 'fixType', label: 'Fix', type: 'select',
-      default: 'second',
-      options: [
-        { label: '1st fix (new cabling)', value: 'first' },
-        { label: '2nd fix (replace)', value: 'second' },
-      ],
-      optionAdjustments: {
-        first: { labourMins: 60, materials: 30 },
-        second: {},
-      },
+      key: 'firstFix', label: '1st fix (new cabling)', type: 'toggle',
+      default: false,
+      hint: 'Running new cable from circuit',
+      materialsAdder: 30, labourMinsAdder: 60,
+    },
+    {
+      key: 'secondFix', label: '2nd fix (install fitting)', type: 'toggle',
+      default: true,
+      hint: 'Fitting the light to existing cable',
+      materialsAdder: 0, labourMinsAdder: 0,
     },
     {
       key: 'newCircuit', label: 'New circuit', type: 'toggle',

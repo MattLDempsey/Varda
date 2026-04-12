@@ -91,8 +91,10 @@ export default function QuickQuote() {
     const jobType = jobTypeConfigs.find(j => j.id === jobTypeId)
     if (!jobType) return { materials: 0, labour: 0, certificates: 0, waste: 0, adjustments: 0, lineTotal: 0, estHours: 0 }
 
-    const isManual = jobTypeId === 'other'
-    const specDefs = QUICK_SPECS[jobTypeId]
+    const isManual = jobType.name.toLowerCase() === 'other' || jobTypeId === 'other'
+    // Resolve specs by ID first, then fall back to normalised name (DB may use UUID IDs)
+    const nameKey = jobType.name?.toLowerCase()?.replace(/\s+/g, '-') ?? ''
+    const specDefs = QUICK_SPECS[jobTypeId] ?? QUICK_SPECS[nameKey]
 
     let materials: number
     let hours: number
@@ -349,10 +351,16 @@ export default function QuickQuote() {
     if (!jt) return
 
     const calc = calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, curSpecs)
+    // Pull the "core quantity" from specs if available (e.g. fittings count for lighting)
+    const nameKey = jt.name?.toLowerCase()?.replace(/\s+/g, '-') ?? ''
+    const specDefs = QUICK_SPECS[curJobTypeId] ?? QUICK_SPECS[nameKey]
+    const coreQty = specDefs && Object.keys(curSpecs).length > 0
+      ? (computeSpecAdjustments(specDefs, curSpecs).coreQuantity ?? curQuantity)
+      : curQuantity
     const lineData = {
       jobTypeId: curJobTypeId,
-      jobTypeName: curJobTypeId === 'other' ? 'Other' : jt.name,
-      quantity: curQuantity,
+      jobTypeName: jt.name.toLowerCase() === 'other' ? 'Other' : jt.name,
+      quantity: coreQty,
       difficulty: curDifficulty,
       hassleFactor: curHassle,
       emergency: isEmergency,
@@ -428,7 +436,8 @@ export default function QuickQuote() {
   const curPreview = useMemo(() => {
     if (!curJobTypeId) return null
     return calculateLine(curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, curSpecs)
-  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curJobTypeId, curQuantity, curDifficulty, curHassle, isEmergency, isOutOfHours, curCert, curCustMaterials, curManualMaterials, curManualHours, calculateLine, JSON.stringify(curSpecs)])
 
   // ── Grand total including current unsaved line ──
   const grandWithPreview = totals.grandTotal + (curPreview ? (curPreview.lineTotal * (1 + pricingConfig.vatRate)) : 0)
@@ -903,11 +912,23 @@ export default function QuickQuote() {
           <div className="qq-field">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {lines.map(line => {
-                // Build a short spec summary (e.g. "6 fittings · Downlights · New circuit")
-                const specSummary = line.specs ? Object.entries(line.specs)
-                  .filter(([, v]) => v !== false && v !== '' && v !== 0)
-                  .map(([, v]) => typeof v === 'boolean' ? '✓' : String(v))
-                  .slice(0, 3).join(' · ') : ''
+                // Build a human-readable spec summary
+                const jt = jobTypeConfigs.find(j => j.id === line.jobTypeId)
+                const nmKey = jt?.name?.toLowerCase()?.replace(/\s+/g, '-') ?? ''
+                const defs = QUICK_SPECS[line.jobTypeId] ?? QUICK_SPECS[nmKey] ?? []
+                const parts: string[] = []
+                if (line.specs) {
+                  for (const def of defs) {
+                    const v = line.specs[def.key]
+                    if (v === undefined || v === '' || v === 0 || v === false) continue
+                    if (def.type === 'toggle' && v === true) parts.push(def.label)
+                    else if (def.type === 'select' && def.options) {
+                      const opt = def.options.find(o => o.value === String(v))
+                      if (opt) parts.push(opt.label)
+                    } else if (def.type === 'number') parts.push(`${v} ${def.label.toLowerCase()}`)
+                  }
+                }
+                const specSummary = parts.slice(0, 3).join(' · ')
                 const isEditing = editingLineId === line.id
                 return (
                 <div
@@ -925,7 +946,7 @@ export default function QuickQuote() {
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
                     <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-white)' }}>
-                      {line.jobTypeName}{line.quantity > 1 ? ` x${line.quantity}` : ''}
+                      {line.quantity > 1 ? `${line.quantity} × ` : ''}{line.jobTypeName}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--color-steel-light)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {specSummary || `${line.estHours}h`}
@@ -1276,18 +1297,46 @@ export default function QuickQuote() {
         {/* Line items breakdown */}
         {lines.length > 0 && (
           <div className="qq-breakdown">
-            {lines.map(line => (
+            {lines.map(line => {
+              // Build a human-readable summary from the line's specs
+              const jt = jobTypeConfigs.find(j => j.id === line.jobTypeId)
+              const nmKey = jt?.name?.toLowerCase()?.replace(/\s+/g, '-') ?? ''
+              const defs = QUICK_SPECS[line.jobTypeId] ?? QUICK_SPECS[nmKey] ?? []
+              const specSummary: string[] = []
+              if (line.specs) {
+                for (const def of defs) {
+                  const val = line.specs[def.key]
+                  if (val === undefined || val === '' || val === 0 || val === false) continue
+                  if (def.type === 'toggle' && val === true) {
+                    specSummary.push(def.label)
+                  } else if (def.type === 'select' && def.options) {
+                    const opt = def.options.find(o => o.value === String(val))
+                    if (opt) specSummary.push(opt.label)
+                  } else if (def.type === 'number') {
+                    specSummary.push(`${val} ${def.label.toLowerCase()}`)
+                  }
+                }
+              }
+              return (
               <div key={line.id} className="qq-breakdown__row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 500 }}>{line.jobTypeName}{line.quantity > 1 ? ` x${line.quantity}` : ''}</span>
+                  <span style={{ fontWeight: 500 }}>
+                    {line.quantity > 1 ? `${line.quantity} × ` : ''}{line.jobTypeName}
+                  </span>
                   <AnimatedValue value={line.lineTotal} prefix="£" />
                 </div>
+                {specSummary.length > 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--color-steel-light)' }}>
+                    {specSummary.slice(0, 4).join(' · ')}
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: 'var(--color-steel-light)' }}>
                   Mat £{fmt(line.materials)} · Lab £{fmt(line.labour)} ({line.estHours}h)
                   {line.certificates > 0 ? ` · Cert £${fmt(line.certificates)}` : ''}
                 </div>
               </div>
-            ))}
+              )
+            })}
 
             {curPreview && curJobTypeId && (
               <div className="qq-breakdown__row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2, opacity: 0.5 }}>
@@ -1807,7 +1856,7 @@ export default function QuickQuote() {
               type="button"
               onClick={() => setShowSendModal(true)}
               className="qq-btn qq-btn--primary"
-              style={{ padding: '8px 20px', fontSize: 13 }}
+              style={{ padding: '8px 24px', fontSize: 13, flex: '0 0 auto', minWidth: 0, width: 'auto', minHeight: 38 }}
             >
               Send
             </button>
