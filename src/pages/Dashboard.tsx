@@ -298,7 +298,7 @@ export default function Dashboard() {
       borderRadius: 20, textTransform: 'uppercase' as const, letterSpacing: 0.5,
     },
     amount: { fontSize: isMobile ? 12 : 14, fontWeight: 600, color: C.gold },
-    empty: { textAlign: 'center' as const, padding: isMobile ? '20px 12px' : '32px 16px', color: C.steel, fontSize: isMobile ? 12 : 13 },
+    empty: { textAlign: 'center' as const, padding: isMobile ? '14px 12px' : '22px 16px', color: C.steel, fontSize: isMobile ? 12 : 13 },
   }
 
   /* ── Onboarding checklist ── */
@@ -517,8 +517,8 @@ export default function Dashboard() {
             </span>
           </div>
           {todaysEvents.length === 0 && (
-            <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
-              <CheckCircle size={32} color={C.green} />
+            <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6 }}>
+              <CheckCircle size={22} color={C.green} />
               <span>Nothing scheduled today</span>
             </div>
           )}
@@ -632,14 +632,9 @@ export default function Dashboard() {
                     are on the current page. */}
                 <div style={{ flex: 1, minHeight: (isMobile || visibleFollowUps.length === 0) ? undefined : ACTIONS_PER_PAGE * 56 }}>
                   {visibleFollowUps.length === 0 && (
-                    <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
-                      <CheckCircle size={32} color={C.green} />
+                    <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6 }}>
+                      <CheckCircle size={22} color={C.green} />
                       <span>All clear — nothing needs attention</span>
-                      {snoozedCount > 0 && (
-                        <span style={{ fontSize: 11, color: C.steel }}>
-                          {snoozedCount} snoozed item{snoozedCount === 1 ? '' : 's'} will reappear within 24h
-                        </span>
-                      )}
                     </div>
                   )}
                   {pageItems.map((item) => {
