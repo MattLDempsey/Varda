@@ -152,6 +152,8 @@ export default function Jobs() {
     if (isMobile && view === 'kanban') setView('table')
   }, [isMobile, view])
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
+  // Status filter for the table view ('all' = no filter)
+  const [statusFilter, setStatusFilter] = useState<JobStatus | 'all'>('all')
   const [dragOverCol, setDragOverCol] = useState<JobStatus | null>(null)
   const [scheduleDate, setScheduleDate] = useState('')
   const [scheduleSlot, setScheduleSlot] = useState<'morning' | 'afternoon' | 'full' | 'quick'>('morning')
@@ -833,7 +835,44 @@ export default function Jobs() {
       })()}
 
       {/* table view */}
-      {view === 'table' && !isMobile && (
+      {view === 'table' && !isMobile && (() => {
+        const stages: (JobStatus | 'all')[] = ['all', 'Lead', 'Quoted', 'Accepted', 'Scheduled', 'In Progress', 'Complete', 'Invoiced']
+        const filtered = visibleJobs.filter(j => {
+          if (j.status === 'Paid') return false
+          if (statusFilter === 'all') return true
+          return j.status === statusFilter
+        })
+        const countFor = (s: JobStatus | 'all') =>
+          s === 'all'
+            ? visibleJobs.filter(j => j.status !== 'Paid').length
+            : visibleJobs.filter(j => j.status === s).length
+        return (
+        <div>
+          {/* Status filter pills */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            {stages.map(stage => {
+              const count = countFor(stage)
+              const active = statusFilter === stage
+              const color = stage === 'all' ? C.gold : statusColor[stage as JobStatus]
+              return (
+                <button
+                  key={stage}
+                  onClick={() => setStatusFilter(stage)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px', borderRadius: 20,
+                    border: `1px solid ${active ? color : C.steel + '44'}`,
+                    background: active ? color + '1A' : 'transparent',
+                    color: active ? color : C.silver,
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  {stage === 'all' ? 'All' : stage}
+                  <span style={{ fontSize: 11, fontWeight: 700, color: active ? color : C.steel }}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
         <div style={{ borderRadius: 12, overflow: 'hidden' }}>
           <table style={s.table}>
             <thead>
@@ -847,7 +886,7 @@ export default function Jobs() {
               </tr>
             </thead>
             <tbody>
-              {visibleJobs.filter(j => j.status !== 'Paid').map((job) => (
+              {filtered.map((job) => (
                 <tr
                   key={job.id}
                   style={s.tableRow}
@@ -876,20 +915,70 @@ export default function Jobs() {
             </tbody>
           </table>
         </div>
-      )}
+        </div>
+        )
+      })()}
 
       {/* Mobile table view — card list. Each row is a tappable card
           showing customer + status on top, type + date + short ref in
           the middle, and value + warning on the bottom. Job # references
           collapse to a 6-char tail (#3EAB67) so they don't dominate. */}
-      {view === 'table' && isMobile && (
+      {view === 'table' && isMobile && (() => {
+        const stages: (JobStatus | 'all')[] = ['all', 'Lead', 'Quoted', 'Accepted', 'Scheduled', 'In Progress', 'Complete', 'Invoiced']
+        const filtered = visibleJobs.filter(j => {
+          if (j.status === 'Paid') return false
+          if (statusFilter === 'all') return true
+          return j.status === statusFilter
+        })
+        const countFor = (s: JobStatus | 'all') =>
+          s === 'all'
+            ? visibleJobs.filter(j => j.status !== 'Paid').length
+            : visibleJobs.filter(j => j.status === s).length
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {visibleJobs.filter(j => j.status !== 'Paid').length === 0 && (
+          {/* Status filter pills — horizontally scrollable */}
+          <div
+            style={{
+              display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4,
+              marginBottom: 4, scrollbarWidth: 'none',
+            }}
+          >
+            {stages.map(stage => {
+              const count = countFor(stage)
+              const active = statusFilter === stage
+              const color = stage === 'all' ? C.gold : statusColor[stage as JobStatus]
+              return (
+                <button
+                  key={stage}
+                  onClick={() => setStatusFilter(stage)}
+                  style={{
+                    flex: '0 0 auto',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '6px 10px', borderRadius: 16,
+                    border: `1px solid ${active ? color : C.steel + '44'}`,
+                    background: active ? color + '1A' : 'transparent',
+                    color: active ? color : C.silver,
+                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  {stage === 'all' ? 'All' : stage}
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: active ? color : C.steel,
+                  }}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {filtered.length === 0 && (
             <div style={{ textAlign: 'center', padding: 32, color: C.steel, fontSize: 13 }}>
-              No active jobs.
+              {statusFilter === 'all' ? 'No active jobs.' : `No jobs in ${statusFilter}.`}
             </div>
           )}
-          {visibleJobs.filter(j => j.status !== 'Paid').map((job) => {
+          {filtered.map((job) => {
             const warning = getJobWarning(job)
             const shortRef = `#${job.id.slice(-6).toUpperCase()}`
             return (
@@ -978,7 +1067,8 @@ export default function Jobs() {
             )
           })}
         </div>
-      )}
+        )
+      })()}
 
       {/* history view */}
       {view === 'history' && (
