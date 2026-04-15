@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, LayoutGrid, Table, X, FileDown, Send, Link2, Receipt, Pencil, CalendarDays, AlertCircle, Clock, Search, Filter, ChevronRight, Copy, Trash2, Package, FileCheck, Paperclip, FileText, Upload, RefreshCw, CheckCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useTheme } from '../theme/ThemeContext'
@@ -138,6 +138,7 @@ export default function Jobs() {
   }, [paidJobs, historySearch, historyFilterType, historyFilterCustomer])
   const historyRevenue = useMemo(() => filteredHistory.reduce((s, j) => s + j.value, 0), [filteredHistory])
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   // Mobile users default straight into the table (card-list) view —
   // kanban is impractical on a phone screen and the table is the
   // workflow view for managing the day on the go.
@@ -205,6 +206,21 @@ export default function Jobs() {
   const [uploadCategory, setUploadCategory] = useState('general')
   const [uploadError, setUploadError] = useState('')
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null)
+
+  /* ── Open job from URL (e.g. from follow-up action items) ── */
+  useEffect(() => {
+    const jobIdParam = searchParams.get('jobId')
+    if (!jobIdParam || selectedJob?.id === jobIdParam) return
+    const job = jobs.find(j => j.id === jobIdParam)
+    if (job) {
+      selectJob(job)
+      // Clean the URL so refresh doesn't re-trigger
+      const next = new URLSearchParams(searchParams)
+      next.delete('jobId')
+      setSearchParams(next, { replace: true })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, jobs])
 
   /* ── select job handler (resets panel tab) ── */
   function selectJob(job: Job) {
@@ -529,6 +545,9 @@ export default function Jobs() {
       zIndex: 100,
       overflowY: 'auto' as const,
       padding: 'clamp(16px, 4vw, 28px)',
+      paddingTop: isMobile
+        ? 'calc(env(safe-area-inset-top, 0px) + 16px)'
+        : 'clamp(16px, 4vw, 28px)',
       boxShadow: '-8px 0 32px rgba(0,0,0,.5)',
     },
     panelHeader: {

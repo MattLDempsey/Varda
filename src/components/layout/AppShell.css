@@ -161,11 +161,11 @@
     display: none;
   }
 
-  /* Main content takes full width */
+  /* Main content takes full width, respects iOS safe-area top */
   .main-content {
     margin-left: 0;
     padding: 16px;
-    padding-top: 8px;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
     min-height: 100dvh;
   }
 
@@ -173,9 +173,10 @@
   .mobile-top-tabs {
     display: block;
     position: sticky;
-    top: 0;
+    top: calc(env(safe-area-inset-top, 0px) * -1 - 8px);
     z-index: 90;
     margin: 0 -16px 12px;
+    padding-top: calc(env(safe-area-inset-top, 0px));
     background: var(--color-black);
     border-bottom: 1px solid rgba(75, 80, 87, 0.25);
   }

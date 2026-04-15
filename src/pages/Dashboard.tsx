@@ -509,15 +509,25 @@ export default function Dashboard() {
         {/* Today's Schedule — always compact so Action Items drives
             the row height. Shows time + type + status + Start on a
             single row per event. Detail lives in the calendar. */}
-        <div style={s.panel}>
-          <div style={s.panelHeader}>
+        <div style={{
+          ...s.panel,
+          ...(todaysEvents.length === 0 ? {
+            padding: isMobile ? '10px 14px' : '14px 20px',
+          } : {}),
+        }}>
+          <div style={{
+            ...s.panelHeader,
+            ...(todaysEvents.length === 0 ? { marginBottom: 4 } : {}),
+          }}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
             <span style={s.panelLink} onClick={() => navigate('/calendar')}>
               View Calendar <ChevronRight size={14} />
             </span>
           </div>
           {todaysEvents.length === 0 && (
-            <div style={s.empty}>Nothing scheduled today.</div>
+            <div style={{ fontSize: isMobile ? 11 : 12, color: C.steel, fontStyle: 'italic' }}>
+              Nothing scheduled today
+            </div>
           )}
           {todaysEvents.map((ev) => {
             const isInternal = !!ev.category

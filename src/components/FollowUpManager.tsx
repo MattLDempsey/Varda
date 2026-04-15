@@ -99,16 +99,20 @@ export function computeFollowUps(
     })
 
   // 3. Quotes going cold (> 7 days, no response)
+  // Route to the linked job's detail panel where the user can resend /
+  // chase / edit. Fall back to the quote editor only if no job is linked.
   quotes
     .filter(q => (q.status === 'Sent' || q.status === 'Viewed') && q.sentAt)
     .forEach(q => {
       const days = daysBetween(q.sentAt!, today)
+      const linkedJob = jobs.find(j => j.quoteId === q.id)
+      const route = linkedJob ? `/jobs?jobId=${linkedJob.id}` : `/quote?quoteId=${q.id}`
       if (days > 7) {
         items.push({
           id: `followup-quote-cold-${q.id}`,
           priority: 'high',
           message: `Quote ${q.ref} is going cold — follow up urgently`,
-          route: `/quote?quoteId=${q.id}`,
+          route,
           urgency: 2,
         })
       } else if (days > 3) {
@@ -116,7 +120,7 @@ export function computeFollowUps(
           id: `followup-quote-${q.id}`,
           priority: 'medium',
           message: `Follow up on quote ${q.ref} for ${q.customerName}`,
-          route: `/quote?quoteId=${q.id}`,
+          route,
           urgency: 3,
         })
       }
@@ -224,11 +228,12 @@ export function computeFollowUps(
     .forEach(q => {
       const daysSinceSent = daysBetween(q.sentAt!, today)
       if (daysSinceSent > validityDays) {
+        const linkedJob = jobs.find(j => j.quoteId === q.id)
         items.push({
           id: `followup-quote-expired-${q.id}`,
           priority: 'high',
           message: `Quote ${q.ref} for ${q.customerName} has expired — follow up or extend`,
-          route: `/quote?quoteId=${q.id}`,
+          route: linkedJob ? `/jobs?jobId=${linkedJob.id}` : `/quote?quoteId=${q.id}`,
           urgency: 1.5,
         })
       }
