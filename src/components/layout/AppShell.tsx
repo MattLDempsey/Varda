@@ -345,8 +345,8 @@ export default function AppShell() {
     emptyText: { fontSize: 13, color: C.silver, fontStyle: 'italic' as const },
   }
 
-  // Mobile: all nav in scrollable top tabs
-  const mobileTopTabs = navItems
+  // Mobile: Home is pinned on the left (icon only), rest scroll
+  const mobileTopTabs = navItems.filter(n => n.to !== '/')
 
   return (
     <div className="app-shell">
@@ -429,8 +429,18 @@ export default function AppShell() {
 
 
       <main className="main-content" aria-label="Main content">
-        {/* Mobile scrollable top tabs */}
+        {/* Mobile top tabs: pinned Home + scrollable rest */}
         <div className="mobile-top-tabs">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              `mobile-top-tab mobile-top-tab--home${isActive ? ' mobile-top-tab--active' : ''}`
+            }
+            aria-label="Home"
+          >
+            <LayoutDashboard size={20} />
+          </NavLink>
           <div className="mobile-top-tabs-scroll">
             {mobileTopTabs.map((item) => (
               <NavLink
