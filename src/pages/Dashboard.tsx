@@ -74,7 +74,7 @@ export default function Dashboard() {
   const today = todayStr()
 
   // Follow-up system
-  const { activeFollowUps, dismiss: dismissFollowUp } = useFollowUps(quotes, jobs, invoices, settings, events, customers)
+  const { activeFollowUps, snoozedCount, dismiss: dismissFollowUp, undismissAll } = useFollowUps(quotes, jobs, invoices, settings, events, customers)
   const [localDismissed, setLocalDismissed] = useState<string[]>([])
   const handleDismiss = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -593,20 +593,36 @@ export default function Dashboard() {
                 }}>{visibleFollowUps.length}</span>
               )}
             </h2>
-            {pendingReminders.length > 0 && (
-              <button
-                onClick={handleRemindAll}
-                disabled={sendingReminders}
-                style={{
-                  padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                  cursor: sendingReminders ? 'not-allowed' : 'pointer',
-                  background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
-                  opacity: sendingReminders ? 0.5 : 1,
-                }}
-              >
-                {sendingReminders ? 'Sending...' : `Remind All (${pendingReminders.length})`}
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {snoozedCount > 0 && (
+                <button
+                  onClick={undismissAll}
+                  title={`${snoozedCount} item${snoozedCount === 1 ? '' : 's'} snoozed — click to restore`}
+                  style={{
+                    padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', background: 'transparent',
+                    border: `1px solid ${C.steel}66`, color: C.silver,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  <Clock size={12} /> {snoozedCount} snoozed
+                </button>
+              )}
+              {pendingReminders.length > 0 && (
+                <button
+                  onClick={handleRemindAll}
+                  disabled={sendingReminders}
+                  style={{
+                    padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    cursor: sendingReminders ? 'not-allowed' : 'pointer',
+                    background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
+                    opacity: sendingReminders ? 0.5 : 1,
+                  }}
+                >
+                  {sendingReminders ? 'Sending...' : `Remind All (${pendingReminders.length})`}
+                </button>
+              )}
+            </div>
           </div>
           {(() => {
             const totalPages = Math.max(1, Math.ceil(visibleFollowUps.length / ACTIONS_PER_PAGE))
@@ -626,6 +642,11 @@ export default function Dashboard() {
                     <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
                       <CheckCircle size={32} color={C.green} />
                       <span>All clear — nothing needs attention</span>
+                      {snoozedCount > 0 && (
+                        <span style={{ fontSize: 11, color: C.steel }}>
+                          {snoozedCount} snoozed item{snoozedCount === 1 ? '' : 's'} will reappear within 24h
+                        </span>
+                      )}
                     </div>
                   )}
                   {pageItems.map((item) => {

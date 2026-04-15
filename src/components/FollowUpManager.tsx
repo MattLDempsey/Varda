@@ -26,27 +26,69 @@ function daysBetween(a: string, b: string): number {
   return Math.floor((new Date(b).getTime() - new Date(a).getTime()) / 86400000)
 }
 
+/**
+ * Follow-up dismissals are time-limited snoozes rather than permanent
+ * deletions. When the user taps the X on an action item, it hides for
+ * `SNOOZE_HOURS` and then comes back if the underlying condition still
+ * applies. This prevents important items being lost forever.
+ */
 const DISMISSED_KEY = 'varda-dismissed-followups'
+const SNOOZE_HOURS = 24
 
-function getDismissedIds(): string[] {
+type DismissalMap = Record<string, number> // id → timestamp (ms) when dismissed
+
+function getDismissalMap(): DismissalMap {
   try {
     const raw = localStorage.getItem(DISMISSED_KEY)
-    if (raw) return JSON.parse(raw)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    // Support legacy array format by converting on read
+    if (Array.isArray(parsed)) {
+      const map: DismissalMap = {}
+      const now = Date.now()
+      for (const id of parsed) map[id] = now
+      return map
+    }
+    return parsed as DismissalMap
   } catch { /* ignore */ }
-  return []
+  return {}
+}
+
+function saveDismissalMap(map: DismissalMap) {
+  try { localStorage.setItem(DISMISSED_KEY, JSON.stringify(map)) } catch { /* ignore */ }
+}
+
+function getActiveDismissalIds(): string[] {
+  const map = getDismissalMap()
+  const cutoff = Date.now() - SNOOZE_HOURS * 60 * 60 * 1000
+  const active: string[] = []
+  let changed = false
+  for (const [id, ts] of Object.entries(map)) {
+    if (ts > cutoff) {
+      active.push(id)
+    } else {
+      delete map[id]
+      changed = true
+    }
+  }
+  if (changed) saveDismissalMap(map)
+  return active
 }
 
 function dismissFollowUp(id: string) {
-  const current = getDismissedIds()
-  if (!current.includes(id)) {
-    current.push(id)
-    localStorage.setItem(DISMISSED_KEY, JSON.stringify(current))
-  }
+  const map = getDismissalMap()
+  map[id] = Date.now()
+  saveDismissalMap(map)
 }
 
 function undismissFollowUp(id: string) {
-  const current = getDismissedIds().filter(x => x !== id)
-  localStorage.setItem(DISMISSED_KEY, JSON.stringify(current))
+  const map = getDismissalMap()
+  delete map[id]
+  saveDismissalMap(map)
+}
+
+function undismissAllFollowUps() {
+  saveDismissalMap({})
 }
 
 /* ── Core computation ── */
@@ -340,10 +382,16 @@ export function useFollowUps(
     [quotes, jobs, invoices, settings, events, customers],
   )
 
-  const dismissed = useMemo(() => getDismissedIds(), [allFollowUps]) // re-read on data change
+  // Re-read on data change so newly dismissed items update immediately
+  const dismissed = useMemo(() => getActiveDismissalIds(), [allFollowUps])
 
   const activeFollowUps = useMemo(
     () => allFollowUps.filter(f => !dismissed.includes(f.id)),
+    [allFollowUps, dismissed],
+  )
+
+  const snoozedFollowUps = useMemo(
+    () => allFollowUps.filter(f => dismissed.includes(f.id)),
     [allFollowUps, dismissed],
   )
 
@@ -355,12 +403,19 @@ export function useFollowUps(
     undismissFollowUp(id)
   }, [])
 
+  const undismissAll = useCallback(() => {
+    undismissAllFollowUps()
+  }, [])
+
   return {
     allFollowUps,
     activeFollowUps,
+    snoozedFollowUps,
     activeCount: activeFollowUps.length,
+    snoozedCount: snoozedFollowUps.length,
     dismiss,
     undismiss,
+    undismissAll,
   }
 }
 
