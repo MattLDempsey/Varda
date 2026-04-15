@@ -632,8 +632,8 @@ export default function Dashboard() {
                     are on the current page. */}
                 <div style={{ flex: 1, minHeight: (isMobile || visibleFollowUps.length === 0) ? undefined : ACTIONS_PER_PAGE * 56 }}>
                   {visibleFollowUps.length === 0 && (
-                    <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6 }}>
-                      <CheckCircle size={22} color={C.green} />
+                    <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 3 }}>
+                      <CheckCircle size={18} color={C.green} />
                       <span>All clear — nothing needs attention</span>
                     </div>
                   )}
