@@ -6,6 +6,7 @@ import { useTheme } from '../theme/ThemeContext'
 import { useData, isEventConfirmed, type ScheduleEvent, type EventSlot } from '../data/DataContext'
 import { exportWeekEvents, exportAllEvents, exportSingleEvent } from '../lib/calendar-export'
 import { useUndo } from '../hooks/useUndo'
+import { useIsMobile } from '../hooks/useIsMobile'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const statusColor: Record<string, string> = {
@@ -77,6 +78,7 @@ export default function CalendarPage() {
   const navigate = useNavigate()
   const { events, customers, jobs, addEvent, updateEvent, deleteEvent, isDataLoading } = useData()
   const { showUndo } = useUndo()
+  const isMobile = useIsMobile()
 
   /** Look up the job value for an event */
   const getEventValue = (ev: ScheduleEvent): number => {
@@ -85,7 +87,9 @@ export default function CalendarPage() {
     return job?.value ?? 0
   }
 
-  const [view, setView] = useState<'month' | 'week' | 'day'>('week')
+  const [view, setView] = useState<'month' | 'week' | 'day'>(
+    typeof window !== 'undefined' && window.innerWidth <= 768 ? 'day' : 'week',
+  )
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null)
   const [editDate, setEditDate] = useState('')
@@ -491,25 +495,25 @@ export default function CalendarPage() {
 
   /* ── styles (inside component to access theme C) ── */
   const s: Record<string, CSSProperties> = {
-    page: { padding: 32, maxWidth: 1400, margin: '0 auto' },
-    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 },
-    heading: { fontSize: 28, fontWeight: 600, color: C.white },
-    navRow: { display: 'flex', alignItems: 'center', gap: 8 },
+    page: { padding: isMobile ? 16 : 32, maxWidth: 1400, margin: '0 auto' },
+    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isMobile ? 12 : 24, flexWrap: 'wrap', gap: isMobile ? 8 : 12 },
+    heading: { fontSize: isMobile ? 22 : 28, fontWeight: 600, color: C.white },
+    navRow: { display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 8, flex: isMobile ? '1 1 100%' : undefined },
     navBtn: {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      width: 40, height: 40, borderRadius: 10, background: C.charcoalLight,
+      width: isMobile ? 34 : 40, height: isMobile ? 34 : 40, borderRadius: 10, background: C.charcoalLight,
       border: 'none', color: C.silver, cursor: 'pointer', transition: 'background .15s',
     },
-    weekLabel: { fontSize: 15, fontWeight: 500, color: C.silver, minWidth: 0, padding: '0 8px', textAlign: 'center' as const, whiteSpace: 'nowrap' as const },
+    weekLabel: { fontSize: isMobile ? 13 : 15, fontWeight: 500, color: C.silver, minWidth: 0, padding: '0 8px', textAlign: 'center' as const, whiteSpace: 'nowrap' as const, flex: isMobile ? 1 : undefined },
     todayBtn: {
-      padding: '8px 16px', borderRadius: 8, background: 'transparent',
-      border: `1px solid ${C.steel}`, color: C.silver, fontSize: 13, fontWeight: 500,
-      cursor: 'pointer', minHeight: 40, transition: 'all .15s',
+      padding: isMobile ? '6px 12px' : '8px 16px', borderRadius: 8, background: 'transparent',
+      border: `1px solid ${C.steel}`, color: C.silver, fontSize: isMobile ? 12 : 13, fontWeight: 500,
+      cursor: 'pointer', minHeight: isMobile ? 32 : 40, transition: 'all .15s',
     },
     viewToggle: { display: 'flex', background: C.black, borderRadius: 8, overflow: 'hidden' },
     viewBtn: {
-      padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13,
-      fontWeight: 500, minHeight: 40, transition: 'background .15s, color .15s',
+      padding: isMobile ? '6px 12px' : '8px 16px', border: 'none', cursor: 'pointer', fontSize: isMobile ? 12 : 13,
+      fontWeight: 500, minHeight: isMobile ? 32 : 40, transition: 'background .15s, color .15s',
     },
     exportBtn: {
       display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -641,12 +645,14 @@ export default function CalendarPage() {
           >
             Month
           </button>
-          <button
-            style={{ ...s.viewBtn, background: view === 'week' ? C.charcoalLight : 'transparent', color: view === 'week' ? C.gold : C.steel }}
-            onClick={() => setView('week')}
-          >
-            Week
-          </button>
+          {!isMobile && (
+            <button
+              style={{ ...s.viewBtn, background: view === 'week' ? C.charcoalLight : 'transparent', color: view === 'week' ? C.gold : C.steel }}
+              onClick={() => setView('week')}
+            >
+              Week
+            </button>
+          )}
           <button
             style={{ ...s.viewBtn, background: view === 'day' ? C.charcoalLight : 'transparent', color: view === 'day' ? C.gold : C.steel }}
             onClick={() => setView('day')}
@@ -655,24 +661,26 @@ export default function CalendarPage() {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            style={s.exportBtn}
-            onClick={() => exportWeekEvents(events, customers, monday)}
-            onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}33` }}
-            onMouseLeave={e => { e.currentTarget.style.background = `${C.steel}15` }}
-          >
-            <Download size={14} /> Export Week
-          </button>
-          <button
-            style={s.exportBtn}
-            onClick={() => exportAllEvents(events, customers)}
-            onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}33` }}
-            onMouseLeave={e => { e.currentTarget.style.background = `${C.steel}15` }}
-          >
-            <Calendar size={14} /> Export All
-          </button>
-        </div>
+        {!isMobile && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              style={s.exportBtn}
+              onClick={() => exportWeekEvents(events, customers, monday)}
+              onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}33` }}
+              onMouseLeave={e => { e.currentTarget.style.background = `${C.steel}15` }}
+            >
+              <Download size={14} /> Export Week
+            </button>
+            <button
+              style={s.exportBtn}
+              onClick={() => exportAllEvents(events, customers)}
+              onMouseEnter={e => { e.currentTarget.style.background = `${C.steel}33` }}
+              onMouseLeave={e => { e.currentTarget.style.background = `${C.steel}15` }}
+            >
+              <Calendar size={14} /> Export All
+            </button>
+          </div>
+        )}
       </div>
 
       {/* empty state */}
@@ -984,15 +992,33 @@ export default function CalendarPage() {
           the morning block. */}
       {view === 'day' && (
         <>
-          <div style={{
-            position: 'relative',
-            display: 'grid',
-            gridTemplateColumns: '64px 1fr',
-            background: `${C.steel}22`,
-            borderRadius: 12,
-            overflow: 'hidden',
-            gap: 1,
-          }}>
+          <div
+            onTouchStart={(e) => {
+              if (!isMobile) return
+              (e.currentTarget as any).__startX = e.touches[0].clientX
+              ;(e.currentTarget as any).__startY = e.touches[0].clientY
+            }}
+            onTouchEnd={(e) => {
+              if (!isMobile) return
+              const startX = (e.currentTarget as any).__startX
+              const startY = (e.currentTarget as any).__startY
+              if (startX == null) return
+              const dx = e.changedTouches[0].clientX - startX
+              const dy = e.changedTouches[0].clientY - startY
+              if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                if (dx < 0) handleNext()
+                else handlePrev()
+              }
+            }}
+            style={{
+              position: 'relative',
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '48px 1fr' : '64px 1fr',
+              background: `${C.steel}22`,
+              borderRadius: 12,
+              overflow: 'hidden',
+              gap: 1,
+            }}>
             {/* Hour labels column */}
             <div style={{ background: C.charcoalLight, position: 'relative', height: DAY_GRID_HEIGHT }}>
               {dayGridHours.map(hour => (

@@ -371,12 +371,14 @@ export default function Jobs() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 24,
+      marginBottom: isMobile ? 12 : 24,
+      gap: 12,
+      flexWrap: 'wrap' as const,
       flexWrap: 'wrap' as const,
       gap: 12,
     },
     heading: {
-      fontSize: 'clamp(22px, 5vw, 28px)' as any,
+      fontSize: isMobile ? 22 : ('clamp(22px, 5vw, 28px)' as any),
       fontWeight: 600,
       color: C.white,
     },
@@ -389,13 +391,13 @@ export default function Jobs() {
     toggleBtn: {
       display: 'flex',
       alignItems: 'center',
-      gap: 6,
-      padding: '10px 18px',
+      gap: 5,
+      padding: isMobile ? '7px 12px' : '10px 18px',
       border: 'none',
       cursor: 'pointer',
-      fontSize: 13,
+      fontSize: isMobile ? 12 : 13,
       fontWeight: 500,
-      minHeight: 44,
+      minHeight: isMobile ? 34 : 44,
       transition: 'background .15s, color .15s',
     },
     /* kanban */
@@ -695,7 +697,7 @@ export default function Jobs() {
             }}
             onClick={() => setView('table')}
           >
-            <Table size={16} /> Table
+            <Table size={isMobile ? 14 : 16} /> Table
           </button>
           <button
             style={{
@@ -705,7 +707,7 @@ export default function Jobs() {
             }}
             onClick={() => setView('history')}
           >
-            <Clock size={16} /> History
+            <Clock size={isMobile ? 14 : 16} /> History
           </button>
         </div>
       </div>
