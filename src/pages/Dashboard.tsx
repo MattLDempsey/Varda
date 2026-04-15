@@ -509,24 +509,17 @@ export default function Dashboard() {
         {/* Today's Schedule — always compact so Action Items drives
             the row height. Shows time + type + status + Start on a
             single row per event. Detail lives in the calendar. */}
-        <div style={{
-          ...s.panel,
-          ...(todaysEvents.length === 0 ? {
-            padding: isMobile ? '10px 14px' : '14px 20px',
-          } : {}),
-        }}>
-          <div style={{
-            ...s.panelHeader,
-            ...(todaysEvents.length === 0 ? { marginBottom: 4 } : {}),
-          }}>
+        <div style={s.panel}>
+          <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Today's Schedule</h2>
             <span style={s.panelLink} onClick={() => navigate('/calendar')}>
               View Calendar <ChevronRight size={14} />
             </span>
           </div>
           {todaysEvents.length === 0 && (
-            <div style={{ fontSize: isMobile ? 11 : 12, color: C.steel, fontStyle: 'italic' }}>
-              Nothing scheduled today
+            <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
+              <CheckCircle size={32} color={C.green} />
+              <span>Nothing scheduled today</span>
             </div>
           )}
           {todaysEvents.map((ev) => {
@@ -585,7 +578,7 @@ export default function Dashboard() {
         <div style={{ ...s.panel, display: 'flex', flexDirection: 'column' }}>
           <div style={s.panelHeader}>
             <h2 style={{ ...s.panelTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Bell size={18} /> Action Items
+              Action Items
               {visibleFollowUps.length > 0 && (
                 <span style={{
                   fontSize: 11, fontWeight: 700, background: '#D46A6A', color: '#fff',
@@ -596,7 +589,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               {snoozedCount > 0 && (
                 <button
-                  onClick={undismissAll}
+                  onClick={() => { undismissAll(); setLocalDismissed([]) }}
                   title={`${snoozedCount} item${snoozedCount === 1 ? '' : 's'} snoozed — click to restore`}
                   style={{
                     padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600,
@@ -637,7 +630,7 @@ export default function Dashboard() {
                     ACTIONS_PER_PAGE items so the pagination dots stay
                     in the same position regardless of how many items
                     are on the current page. */}
-                <div style={{ flex: 1, minHeight: isMobile ? undefined : ACTIONS_PER_PAGE * 56 }}>
+                <div style={{ flex: 1, minHeight: (isMobile || visibleFollowUps.length === 0) ? undefined : ACTIONS_PER_PAGE * 56 }}>
                   {visibleFollowUps.length === 0 && (
                     <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 8 }}>
                       <CheckCircle size={32} color={C.green} />

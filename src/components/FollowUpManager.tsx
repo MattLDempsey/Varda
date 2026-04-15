@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useState } from 'react'
 import type { Quote, Job, Invoice, AppSettings, ScheduleEvent, Customer } from '../data/DataContext'
 import { getUpcomingReminders, type Reminder, markReminderSent } from '../lib/notifications'
 
@@ -382,8 +382,14 @@ export function useFollowUps(
     [quotes, jobs, invoices, settings, events, customers],
   )
 
-  // Re-read on data change so newly dismissed items update immediately
-  const dismissed = useMemo(() => getActiveDismissalIds(), [allFollowUps])
+  // Bump counter to force re-read of dismissals after dismiss/undismiss calls
+  const [dismissalVersion, setDismissalVersion] = useState(0)
+
+  const dismissed = useMemo(
+    () => getActiveDismissalIds(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allFollowUps, dismissalVersion],
+  )
 
   const activeFollowUps = useMemo(
     () => allFollowUps.filter(f => !dismissed.includes(f.id)),
@@ -397,14 +403,17 @@ export function useFollowUps(
 
   const dismiss = useCallback((id: string) => {
     dismissFollowUp(id)
+    setDismissalVersion(v => v + 1)
   }, [])
 
   const undismiss = useCallback((id: string) => {
     undismissFollowUp(id)
+    setDismissalVersion(v => v + 1)
   }, [])
 
   const undismissAll = useCallback(() => {
     undismissAllFollowUps()
+    setDismissalVersion(v => v + 1)
   }, [])
 
   return {
