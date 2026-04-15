@@ -298,7 +298,7 @@ export default function Dashboard() {
       borderRadius: 20, textTransform: 'uppercase' as const, letterSpacing: 0.5,
     },
     amount: { fontSize: isMobile ? 12 : 14, fontWeight: 600, color: C.gold },
-    empty: { textAlign: 'center' as const, padding: isMobile ? '14px 12px' : '22px 16px', color: C.steel, fontSize: isMobile ? 12 : 13 },
+    empty: { textAlign: 'center' as const, padding: isMobile ? '8px 12px' : '14px 16px', color: C.steel, fontSize: isMobile ? 12 : 13 },
   }
 
   /* ── Onboarding checklist ── */
@@ -517,8 +517,8 @@ export default function Dashboard() {
             </span>
           </div>
           {todaysEvents.length === 0 && (
-            <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6 }}>
-              <CheckCircle size={22} color={C.green} />
+            <div style={{ ...s.empty, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 3 }}>
+              <CheckCircle size={18} color={C.green} />
               <span>Nothing scheduled today</span>
             </div>
           )}
