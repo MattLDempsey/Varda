@@ -596,6 +596,9 @@ export default function Dashboard() {
                     cursor: 'pointer', background: 'transparent',
                     border: `1px solid ${C.steel}66`, color: C.silver,
                     display: 'flex', alignItems: 'center', gap: 4,
+                    // Collapse vertical contribution so the header doesn't
+                    // grow taller than Today's Schedule's title-only header.
+                    marginTop: -8, marginBottom: -8,
                   }}
                 >
                   <Clock size={12} /> {snoozedCount} snoozed
@@ -610,6 +613,7 @@ export default function Dashboard() {
                     cursor: sendingReminders ? 'not-allowed' : 'pointer',
                     background: `${C.gold}15`, border: `1px solid ${C.gold}44`, color: C.gold,
                     opacity: sendingReminders ? 0.5 : 1,
+                    marginTop: -8, marginBottom: -8,
                   }}
                 >
                   {sendingReminders ? 'Sending...' : `Remind All (${pendingReminders.length})`}
