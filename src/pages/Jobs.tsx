@@ -848,30 +848,26 @@ export default function Jobs() {
             : visibleJobs.filter(j => j.status === s).length
         return (
         <div>
-          {/* Status filter pills */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-            {stages.map(stage => {
-              const count = countFor(stage)
-              const active = statusFilter === stage
-              const color = stage === 'all' ? C.gold : statusColor[stage as JobStatus]
-              return (
-                <button
-                  key={stage}
-                  onClick={() => setStatusFilter(stage)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '7px 14px', borderRadius: 20,
-                    border: `1px solid ${active ? color : C.steel + '44'}`,
-                    background: active ? color + '1A' : 'transparent',
-                    color: active ? color : C.silver,
-                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  }}
-                >
-                  {stage === 'all' ? 'All' : stage}
-                  <span style={{ fontSize: 11, fontWeight: 700, color: active ? color : C.steel }}>{count}</span>
-                </button>
-              )
-            })}
+          {/* Status filter dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <span style={{ fontSize: 12, color: C.steel, fontWeight: 500 }}>Stage</span>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value as JobStatus | 'all')}
+              style={{
+                padding: '8px 12px', borderRadius: 8,
+                background: C.black, color: C.white,
+                border: `1px solid ${C.steel}44`, fontSize: 13, fontWeight: 500,
+                outline: 'none', cursor: 'pointer', colorScheme: 'dark',
+                minHeight: 36,
+              }}
+            >
+              {stages.map(stage => (
+                <option key={stage} value={stage}>
+                  {stage === 'all' ? 'All stages' : stage} ({countFor(stage)})
+                </option>
+              ))}
+            </select>
           </div>
         <div style={{ borderRadius: 12, overflow: 'hidden' }}>
           <table style={s.table}>
@@ -936,41 +932,26 @@ export default function Jobs() {
             : visibleJobs.filter(j => j.status === s).length
         return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Status filter pills — horizontally scrollable */}
-          <div
-            style={{
-              display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4,
-              marginBottom: 4, scrollbarWidth: 'none',
-            }}
-          >
-            {stages.map(stage => {
-              const count = countFor(stage)
-              const active = statusFilter === stage
-              const color = stage === 'all' ? C.gold : statusColor[stage as JobStatus]
-              return (
-                <button
-                  key={stage}
-                  onClick={() => setStatusFilter(stage)}
-                  style={{
-                    flex: '0 0 auto',
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '6px 10px', borderRadius: 16,
-                    border: `1px solid ${active ? color : C.steel + '44'}`,
-                    background: active ? color + '1A' : 'transparent',
-                    color: active ? color : C.silver,
-                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    WebkitTapHighlightColor: 'transparent',
-                  }}
-                >
-                  {stage === 'all' ? 'All' : stage}
-                  <span style={{
-                    fontSize: 10, fontWeight: 700,
-                    color: active ? color : C.steel,
-                  }}>{count}</span>
-                </button>
-              )
-            })}
+          {/* Status filter dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, color: C.steel, fontWeight: 500 }}>Stage</span>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value as JobStatus | 'all')}
+              style={{
+                flex: 1, padding: '8px 12px', borderRadius: 8,
+                background: C.black, color: C.white,
+                border: `1px solid ${C.steel}44`, fontSize: 13, fontWeight: 500,
+                outline: 'none', cursor: 'pointer', colorScheme: 'dark',
+                minHeight: 38,
+              }}
+            >
+              {stages.map(stage => (
+                <option key={stage} value={stage}>
+                  {stage === 'all' ? 'All stages' : stage} ({countFor(stage)})
+                </option>
+              ))}
+            </select>
           </div>
 
           {filtered.length === 0 && (
