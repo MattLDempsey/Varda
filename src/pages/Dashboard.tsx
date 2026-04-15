@@ -745,12 +745,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Row 3: Recent Quotes + Pipeline Overview ── */}
+      {/* ── Row 3: Pipeline Overview + Recent Quotes ── */}
       <div style={s.columns}>
         {/* Recent Quotes — clickable rows go to the linked job or the
             quote editor, depending on whether a job exists. Shows the job's
             pipeline status alongside the quote status for context. */}
-        <div style={s.panel}>
+        <div style={{ ...s.panel, order: 2 }}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Recent Quotes</h2>
             <span style={s.panelLink} onClick={() => navigate('/jobs')}>
@@ -803,7 +803,7 @@ export default function Dashboard() {
         </div>
 
         {/* Pipeline Overview */}
-        <div style={s.panel}>
+        <div style={{ ...s.panel, order: 1 }}>
           <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>Pipeline Overview</h2>
             <span style={s.panelLink} onClick={() => navigate('/jobs')}>
